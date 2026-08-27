@@ -1,0 +1,25 @@
+# Nimbalyst workspace-local state
+.nimbalyst/
+
+# Environment files and local configuration
+.env
+.env.*
+!.env.example
+*.local
+*.local.*
+local.settings.json
+
+# Credentials, keys, and secret material
+*.pem
+*.key
+*.pfx
+*.p12
+.pgpass
+*.pgpass
+*.secret
+*.secrets
+secrets/
+
+# Cloud and database client state
+.azure/
+.psql_history

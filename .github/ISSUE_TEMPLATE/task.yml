@@ -1,0 +1,71 @@
+name: Task
+description: Define one independently reviewable behavior slice and its acceptance evidence
+title: "[Task] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This Issue is the canonical task record. Keep it limited to one independently reviewable behavior and its tests or other acceptance evidence. Do not include production data, credentials, or confidential information.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Behavior slice
+      description: Describe the single observable behavior this task will add or change.
+      placeholder: Given ..., the system returns ...
+    validations:
+      required: true
+  - type: dropdown
+    id: review_level
+    attributes:
+      label: Review level
+      description: Select the highest applicable level from docs/ai-development-workflow.md.
+      options:
+        - L0 - mechanical or non-normative; no AI review
+        - L1 - contained implementation under an accepted contract; one Codex review
+        - L2 - contract, architecture, security, CI, deployment, or cross-cutting change
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+      description: List the fixtures, tests, conformance checks, or recorded human decisions that will prove the behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: human_review
+    attributes:
+      label: Required human review gates
+      description: Record the required pre-implementation contract/fixture review and the applicable milestone decision. Link the recorded decision when available.
+      placeholder: "Contract/fixture review: ...; acceptance decision: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Contract and architecture impact
+      description: Identify affected contracts, fixed SQL templates, parameters, statuses, evidence fields, or ADRs. Write "None" only when the task does not change them.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations and deferred work
+      description: State known limitations and link separate Issues for out-of-scope follow-up.
+    validations:
+      required: true
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Guardrails
+      options:
+        - label: This task is limited to one independently reviewable behavior and its acceptance evidence.
+          required: true
+        - label: The task preserves registered fixed SQL, read-only database access, fail-closed behavior, and required evidence output contracts.
+          required: true
+        - label: Required human review and approval gates are recorded; bounded model review does not replace them.
+          required: true
+        - label: GitHub is the canonical task record; any Nimbalyst-local state is non-authoritative.
+          required: true
+        - label: The Issue contains no production data, credentials, or confidential information.
+          required: true

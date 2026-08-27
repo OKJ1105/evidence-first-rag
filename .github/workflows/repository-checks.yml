@@ -1,0 +1,59 @@
+name: Repository checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-checks:
+    name: repository-checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed lines for whitespace errors
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --check "$BASE_SHA...$HEAD_SHA"
+
+      - name: Validate local Markdown links
+        shell: python
+        run: |
+          import pathlib
+          import re
+          import sys
+          import urllib.parse
+
+          fence = re.compile(r"(?ms)^```.*?^```\s*$")
+          link = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+          failures = []
+
+          for document in pathlib.Path(".").rglob("*.md"):
+              if ".git" in document.parts:
+                  continue
+              text = fence.sub("", document.read_text(encoding="utf-8"))
+              for match in link.finditer(text):
+                  raw_target = match.group(1).strip()
+                  if raw_target.startswith("<") and ">" in raw_target:
+                      raw_target = raw_target[1:raw_target.index(">")]
+                  else:
+                      raw_target = raw_target.split(maxsplit=1)[0]
+                  target = urllib.parse.unquote(raw_target.split("#", 1)[0])
+                  if not target or urllib.parse.urlparse(target).scheme:
+                      continue
+                  resolved = (document.parent / target).resolve()
+                  if not resolved.exists():
+                      failures.append(f"{document}: {raw_target}")
+
+          if failures:
+              print("Broken local Markdown links:")
+              print("\n".join(failures))
+              sys.exit(1)
+
+          print("Local Markdown links: PASS")
