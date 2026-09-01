@@ -32,4 +32,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Agent loop unit tests
-        run: node --test scripts/agent/
+        # The glob is quoted deliberately: node's test runner expands it
+        # itself, so the same form works in CI and in the checks manifest,
+        # which spawns commands without a shell.
+        run: node --test "scripts/agent/*.test.mjs"

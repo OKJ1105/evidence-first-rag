@@ -11,7 +11,7 @@
     },
     {
       "name": "agent-unit-tests",
-      "command": ["node", "--test", "scripts/agent/"]
+      "command": ["node", "--test", "scripts/agent/*.test.mjs"]
     }
   ]
 }
