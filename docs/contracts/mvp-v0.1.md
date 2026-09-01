@@ -4,7 +4,7 @@
 
 **Identifier:** `mvp-v0.1`
 
-**Version:** `0.1.0`
+**Version:** `0.2.0` — the identifier names the document; the version tracks its obligations. `0.2.0` fills the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9; both versions are `Proposed` states of the same unaccepted contract.
 
 This contract combines the data, route, result, evidence, query-template-registry, runtime, and evaluation families described in [Contract Shape Framework](README.md) Section 5 into one document. Section 5 of that framework assigns responsibilities per family; it does not require one document per family.
 
@@ -53,7 +53,12 @@ The Milestone 2 gate is preserved rather than skipped: Section 4.7 defines the d
 
 ### 3.4 Platform
 
-Python and PostgreSQL, consistent with [ADR-0001](../adr/0001-postgresql-runtime-and-normalized-fixture-boundary.md). The local environment is provisioned with Docker Compose. The exact PostgreSQL version, required extensions, and provisioning tool remain open; see Section 9.
+Python and PostgreSQL, consistent with [ADR-0001](../adr/0001-postgresql-runtime-and-normalized-fixture-boundary.md).
+
+- **PostgreSQL 17** — pinned at the major version; any patch release satisfies the contract. PostgreSQL 17 is available on the declared Azure Database for PostgreSQL Flexible Server target, which keeps the ADR-0001 compatibility boundary a subset of the deployment target.
+- **No extensions.** v0.2.0 requires none. Adding one is a minor version change under Section 10.
+- **Provisioning is plain SQL.** Version-controlled DDL and grant scripts, applied in lexical order by the official `postgres:17` image's init mechanism under Docker Compose. No migration framework in this contract: there is exactly one schema version, and reproducibility comes from re-provisioning, not from migration history. Adopting a migration tool later is a contract change, not an implementation detail.
+- The fixture loader runs inside the same provisioning step, as the provisioning identity, before the runtime identity ever connects. Section 4.11 fixes the fixture format.
 
 ## 4. Normative requirements
 
@@ -167,6 +172,17 @@ Registry safeguards, enforced at registry construction time where possible and a
 
 `TPL_SNAPSHOT_CANDIDATES_V1` exists so that an `ambiguous` outcome can list candidate scopes without an unregistered query. It returns scope columns only; it returns no message, signal, or mapping facts.
 
+**Limits and timeouts.** Charter Section 3.2 fixes these in this contract:
+
+| Template | Row limit | Meaning of hitting it |
+| --- | --- | --- |
+| `TPL_SNAPSHOT_CANDIDATES_V1` | 100 | Candidates beyond the limit are truncated; `limitations` records the truncation (Section 7). |
+| `TPL_MESSAGE_FACTS_V1` | 2 | The Section 4.1 uniqueness constraints guarantee at most one row. The limit is deliberately 2, not 1: a second row means the loaded database violates its own invariants, and the runtime reports a failure (conformance class `data`) instead of silently returning one of several. |
+| `TPL_SIGNAL_FACTS_V1` | 2 | Same overflow-detection rule. |
+| `TPL_SIGNAL_MAPPING_V1` | 200 | Rows beyond the limit are truncated; `limitations` records the truncation. |
+
+There is no pagination in v0.2.0; adding it is a minor version change. The runtime identity runs with `statement_timeout = 5s`, set at the role level by provisioning. A timeout is an operational fault, not an outcome: it fails the request rather than producing a status family, and the conformance runner classes it `runtime`.
+
 ### 4.5 Routes
 
 | Route | Required arguments | Template | Returns |
@@ -252,6 +268,14 @@ Before and after every conformance run, the runner records a database state dige
 
 The runner additionally asserts that the runtime identity is refused when it attempts an `INSERT`, an `UPDATE`, a `DELETE`, and a `CREATE TABLE`. Refusal must originate from PostgreSQL privileges, not from an application guard. Both the digest comparison and the four refusals are recorded in the conformance artifact.
 
+### 4.11 Fixture serialization and keys
+
+- Fixtures are **JSON Lines**, one file per Section 4.1 table, under `fixtures/`, named for the table they load. One line is one row. The files are version-controlled and are the registered inputs the conformance fixtures in Section 8.1 run against.
+- Fixture rows reference each other by **natural keys only** — the canonical reference tuples of Section 4.2 — never by surrogate values. The loader resolves references to surrogate keys at load time.
+- Surrogate keys are PostgreSQL identity columns, assigned at load. They appear in no fixture file and no public payload (Section 4.2), so two provisioning runs may assign different values without violating determinism (Section 6).
+- Identifiers in fixtures are ASCII (`A–Z a–z 0–9 _ . -`) and use the `SAMPLE_*` convention for entity-like names. Keeping fixtures ASCII makes the byte-wise collation of Section 6 also the intuitive ordering.
+- A fixture file that fails to parse, or a reference that does not resolve, aborts provisioning. There is no partial load: the loader either loads every row of every file or leaves the database absent.
+
 ## 5. Outcome coverage
 
 | Status | Condition |
@@ -270,9 +294,10 @@ Every status carries an `evidence_bundle`, a `source_trace`, and a `limitations`
 
 - Every registered template carries its ordering clause; the runtime never applies caller-supplied ordering.
 - Every ordering is total. Where the declared columns could tie, the template appends its surrogate key as the final tiebreaker so that row order is reproducible.
-- Text comparison and ordering use one collation declared by the schema and recorded in the evidence bundle. The specific collation is open; see Section 9.
+- Text comparison and ordering use the **`C` collation**: the database is created with `ENCODING UTF8`, `LC_COLLATE='C'`, `LC_CTYPE='C'`, and ordering is byte-wise. The evidence bundle records `"C"`. Rationale: byte-wise ordering is identical on every platform and PostgreSQL build, where ICU and libc collations drift between a local container and a managed service; the fixtures are ASCII (Section 4.11), so byte order is also the readable order.
+- **No text normalization.** Lookup keys are compared byte-exact: no case folding, no Unicode normalization, no trimming. A lookup that differs from a stored key only by case is `not_found` — fail-closed, never fuzzy. Any future approved-alias mechanism belongs to Entity Discovery (Milestone 3), not to comparison semantics.
 - Numeric values are returned with the precision stored in the schema; no rounding occurs in the runtime or the renderer.
-- Null ordering is declared per template and is identical across runs.
+- **Null ordering is `NULLS LAST`**, written explicitly in every registered template's ordering clause rather than left to the database default.
 - Repeatable provisioning from the same schema and fixtures produces the same logical rows, constraints, contract-visible values, and query ordering. Surrogate key values need not match, and no public payload exposes them.
 - The adapter is not part of the determinism guarantee. Every deterministic guarantee above applies to the path after revalidation. Adapter variability is measured, not assumed away; see Section 8.
 
@@ -320,6 +345,8 @@ Each obligation is either an automated assertion over registered inputs or a rec
 | Section 4.2 identity and scope | Automated. Fixtures `FX-101`, `FX-102`, `FX-105`, `FX-106` below, plus the invariant check. |
 | Section 4.3 database identities | Automated. The four refusal assertions in Section 4.10. |
 | Section 4.4 registry safeguards | Automated. Negative tests for unregistered template, write-keyword registration, unknown parameter, missing required parameter, and absence of any arbitrary-SQL entry point. |
+| Section 4.4 limits and timeouts | Automated. Template-level tests assert each registered `LIMIT` value and explicit `NULLS LAST` clause; the invariance check reads the runtime role's `statement_timeout` setting; the facts-template overflow rule (limit 2 → runtime `data` failure) is asserted at unit level. |
+| Section 4.11 fixture loading | Automated. Provisioning against a fixture set containing an unresolvable natural-key reference must abort with no partial load; provisioning the registered fixtures twice must satisfy the Section 6 repeatability assertions. |
 | Section 4.5 routes | Automated. One success fixture per route. |
 | Section 4.6 adapter | Automated for revalidation and the no-database-content rule; the latter asserts that the adapter call payload contains no row, fixture, or evidence content. Recorded human decision for adopting the adapter, based on the Milestone 2 comparison below. |
 | Section 4.6 model pinning | Automated. The recorded model identifier and decoding configuration in the evaluation artifact must equal the pinned values. |
@@ -364,14 +391,11 @@ Every fixture uses `SAMPLE_*` identifiers only. Every status family in Section 5
 | TSV export and any renderer beyond Section 4.8 template rendering | Milestone 4 contract |
 | Azure App Service and PostgreSQL Flexible Server deployment, identity, networking, sizing | Milestone 5 contract |
 | Vector search and any semantic candidate retrieval | Milestone 3 evaluation contract. Not adopted without a lexical baseline and a pre-registered acceptance metric. |
-| Exact PostgreSQL version, required extensions, provisioning tool, Docker Compose service definition | Open. Needed before implementation of Section 4.3 begins. |
-| Collation, normalization, and null-ordering values named in Section 6 | Open. Needed before the first template is written. |
-| Fixture serialization format and key-generation strategy | Open. |
-| Maximum row counts, pagination, truncation, and timeout values per template | Open. Charter Section 3.2 assigns these to the SQL and data contracts, which is this document; the values are not yet chosen. |
-| Numeric thresholds for the Section 8 adapter-versus-baseline comparison | Open. Must be registered before the run that judges them. |
-| The curated request set backing Section 4.7 | Open. |
+| Numeric thresholds for the Section 8 adapter-versus-baseline comparison | Open. Owned by this contract; must be filled, as a minor version change, before the evaluation run that judges the adapter. |
+| The curated request set backing Section 4.7 | Open. Owned by this contract; authored alongside the Section 8.1 fixtures, before the Milestone 2 comparison. |
+| The exact Docker Compose service definition (image digest, ports, volumes) | Implementation detail of the first provisioning slice, bounded by Section 3.4. Not a contract decision unless it changes an obligation. |
 
-The last six are decisions this contract owns but does not yet make. They are listed rather than guessed. Each requires a value before the corresponding implementation slice starts, and each addition is a minor version change under Section 10.
+Version 0.1.0 also listed the PostgreSQL version and extensions, the provisioning mechanism, collation, normalization, null ordering, fixture serialization, key generation, row limits, and timeouts here. Version 0.2.0 fills them in Sections 3.4, 4.4, 4.11, and 6. The two rows that remain open above are evaluation-stage values: registering them now, before any fixture or curated request exists, would be guessing — Charter Section 9 requires thresholds to be registered before the run they judge, not before the contract is accepted.
 
 ## 10. Change control
 
