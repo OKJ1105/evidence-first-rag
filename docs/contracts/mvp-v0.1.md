@@ -4,7 +4,7 @@
 
 **Identifier:** `mvp-v0.1`
 
-**Version:** `0.2.0` — the identifier names the document; the version tracks its obligations. `0.2.0` fills the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9; both versions are `Proposed` states of the same unaccepted contract.
+**Version:** `0.3.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted.
 
 This contract combines the data, route, result, evidence, query-template-registry, runtime, and evaluation families described in [Contract Shape Framework](README.md) Section 5 into one document. Section 5 of that framework assigns responsibilities per family; it does not require one document per family.
 
@@ -12,9 +12,13 @@ The version changes when any observable obligation in Section 4, 5, 6, or 7 chan
 
 ## 2. Status
 
-**Status:** `Proposed`
+**Status:** `Accepted 2026-09-01`
 
-This contract is not binding on implementation until it becomes `Accepted <date>` under [Contract Shape Framework](README.md) Section 2.1: the repository owner records the required human review of this contract and its acceptance evidence on its own pull request, and records merge approval.
+This contract is binding on implementation from that date under [Contract Shape Framework](README.md) Section 2.1. The repository owner recorded the required human review of this contract and its acceptance evidence on the pull request that set this line, and recorded merge approval by merging it.
+
+Section 10 sets two preconditions for acceptance. Both are discharged in this document rather than only in pull request comments: the Section 3.3 decision on the Milestone 1 and Milestone 2 span is recorded in Section 3.3, and the Section 8 acceptance evidence is explicitly deferred with a named owner in Section 8.2.
+
+An accepted contract may still be amended. Section 10 governs how, and no amendment may weaken an obligation.
 
 ## 3. Scope
 
@@ -50,6 +54,8 @@ Charter Section 5 places the deterministic backend in Milestone 1. Charter Secti
 This contract covers both. That is a deliberate scope choice by the repository owner to shorten the path to a demonstrable portfolio artifact. Charter Section 6 states that deferred does not mean pre-approved, so this span requires a recorded human decision before the contract is accepted. Section 10 records that condition.
 
 The Milestone 2 gate is preserved rather than skipped: Section 4.7 defines the deterministic baseline that the adapter must be compared against, and Section 8 registers the comparison as an acceptance item. No adapter output reaches the database without passing the deterministic revalidation in Section 4.6.
+
+**Recorded decision, 2026-09-01.** The repository owner approves this contract spanning Milestone 1 and the Milestone 2 adapter, on the condition stated above: the Milestone 2 acceptance gate in Charter Section 9 is preserved in full. Accepting this contract authorizes implementation of the Milestone 1 deterministic backend and of the adapter as specified; it does not adopt the adapter. Adoption remains a separate recorded decision governed by the Section 4.7 comparison and the Section 8 acceptance evidence for Section 4.6. This satisfies the first of the two preconditions in Section 10.
 
 ### 3.4 Platform
 
@@ -213,6 +219,10 @@ A deterministic exact-match resolver over a curated request set. A request whose
 
 This exists only as the control group for the Milestone 2 adapter comparison required by Charter Section 9. It is not a product path, it is not exposed by any public interface, and it is not a fallback when the adapter fails.
 
+**Which reading of the Charter this implements.** Charter Section 9 requires the adapter to be compared with "the Milestone 1 deterministic baseline". Milestone 1 itself never parses free text, so that phrase does not name an existing component and admits two readings. The reading adopted here is that the baseline accepts the same input the adapter accepts — a natural-language request — and resolves it by exact match against a curated table. The rejected reading is that the baseline is the Milestone 1 runtime invoked with canonical references supplied directly.
+
+The adopted reading is required by the Charter's own adoption criteria. Charter Section 9 admits the adapter only against pre-registered **task-coverage** and **false-resolution** thresholds. Neither quantity is defined for a baseline that is handed canonical references: its coverage is trivially total and it cannot resolve falsely, because resolution is exactly the step it skips. A control group must accept the same input as the treatment for those two numbers to mean anything. Recorded 2026-09-01 so that the Milestone 2 comparison is not later judged against a different control.
+
 ### 4.8 Answer rendering
 
 User-facing prose is produced by rendering a fixed template over the normalized result. The renderer inserts values from the result and never adds a fact, a qualifier, or an inference. No model generates answer prose in v0.1. A rendered answer that cannot be produced from the normalized result is a defect, not a degraded success.
@@ -310,7 +320,7 @@ Every result, including every negative outcome, carries these three structures.
 - `contract_identifier` and `contract_version` of this contract.
 - `route`.
 - `template_name` and `template_version`, or an explicit empty value when no database was opened.
-- `bound_parameters`, containing exactly the parameters bound, with values.
+- `bound_parameters`, containing exactly the parameters bound, with values. Empty when no template executed. An `unsupported`, `invalid_request`, or `needs_entity_discovery` outcome binds nothing, so the arguments the adapter proposed are not bound parameters and are never reported as such; they failed revalidation or were never validated, and recording them here would present a rejected proposal as a fact the runtime acted on.
 - `row_count`, the number of source rows the template returned.
 - `resolved_scope`: the single `(project_code, revision_label, network_name, snapshot_label)` actually used, or an explicit empty value.
 - `collation` in effect.
@@ -382,6 +392,25 @@ Every fixture uses `SAMPLE_*` identifiers only. Every status family in Section 5
 
 `FX-104` deliberately expects `success`, not a negative status. A superseded snapshot still holds facts about itself; what is prohibited is presenting its mapping as holding in a later snapshot. The `limitations` entry carries that boundary.
 
+### 8.2 Deferral of the acceptance evidence, recorded 2026-09-01
+
+Section 10 permits this contract to be accepted with its acceptance evidence "explicitly deferred with a named owner". Every obligation in the Section 8 table is deferred on that basis, and this section is the record.
+
+The deferral is structural, not a concession. Each row of Section 8 is an assertion over an implementation that does not exist on the date of acceptance: the repository holds no runtime, no schema, no fixture, and no runner. Requiring the evidence before acceptance would make acceptance unreachable, because [Contract Shape Framework](README.md) Section 2.1 forbids implementing against a contract that is not accepted. The order is therefore contract first, evidence with the implementation that the contract governs.
+
+Named owner: the repository owner. Nothing here is delegated to an AI writer or reviewer.
+
+Where each obligation is discharged:
+
+| Class | Discharged |
+| --- | --- |
+| Every row marked **Automated** | On the pull request that introduces the behavior that row governs. Its assertions are a merge condition for that pull request. A pull request that implements a behavior without them is incomplete, not deferred again. |
+| Section 4.6 adapter adoption | At the Milestone 2 gate, as a recorded human decision, after the Section 4.7 comparison has run. |
+| Section 4.7 baseline comparison | At the Milestone 2 gate. Its thresholds and curated request set are the two items still open in Section 9 and are registered before the run that judges them. |
+| Section 3.3 milestone span | Already discharged. Recorded in Section 3.3 on 2026-09-01. |
+
+This deferral does not weaken any obligation, and Section 10 forbids using it to. No implementation pull request may cite this section as a reason to omit the evidence its own slice owes.
+
 ## 9. Deferred decisions
 
 | Decision | Owner |
@@ -399,11 +428,11 @@ Version 0.1.0 also listed the PostgreSQL version and extensions, the provisionin
 
 ## 10. Change control
 
-- While this contract is `Proposed`, it is amended by an ordinary contract-only pull request.
+- This contract is `Accepted`. Under [Contract Shape Framework](README.md) Section 7, a change that does not weaken a Charter or ADR invariant produces a new contract version with a recorded human decision. The looser rule that governed it while `Proposed` — amendment by an ordinary contract-only pull request — no longer applies.
 - Filling an open decision from Section 9 is a minor version change with a recorded human decision.
 - Adding a fixture that exercises an existing obligation is a patch version change.
 - Adding or removing a route, template, status condition, or evidence field is a minor version change and requires a fresh independent design review.
 - A change that would weaken a Charter or ADR invariant is not a contract-level change. It requires an architecture decision recorded in an ADR, a Charter update where the change materially changes the Charter, and a recorded human decision.
-- This contract may not move to `Accepted` until the repository owner records the Section 3.3 decision on the Milestone 1 and Milestone 2 span, and the Section 8 acceptance evidence is either satisfied or explicitly deferred with a named owner.
+- This contract may not move to `Accepted` until the repository owner records the Section 3.3 decision on the Milestone 1 and Milestone 2 span, and the Section 8 acceptance evidence is either satisfied or explicitly deferred with a named owner. Both were discharged on 2026-09-01: the span decision in Section 3.3, and the deferral, with its named owner and the point at which each obligation is discharged, in Section 8.2. The rule is retained rather than deleted so that the acceptance record stays interpretable.
 - This contract's acceptance does not depend on a separate recorded acceptance of ADR-0002. Section 3.1's citation of ADR-0002 alongside [Project Charter](../PROJECT_CHARTER.md) Section 3.6 is non-binding rationale, not coordinate authority: Charter Section 3.6 alone already carries the operative identity and scope invariants that Section 4.1 and 4.2 enforce. Should ADR-0002 later be rejected or materially revised, the invariants this contract enforces do not change unless the Charter itself changes; only then does this contract require an amendment under this section.
 - A superseded version is retained with a `Superseded by` status rather than deleted.
