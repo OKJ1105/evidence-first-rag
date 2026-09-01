@@ -27,6 +27,14 @@ jobs:
       - name: Validate local Markdown links
         run: python3 scripts/checks/validate_links.py
 
+      - name: Validate the registered fixtures
+        run: python3 scripts/checks/validate_fixtures.py
+
+      - name: Fixture check unit tests
+        # The negative cases: each breaks one rule on a copy of the fixtures
+        # and asserts the check above notices.
+        run: python3 scripts/checks/test_validate_fixtures.py
+
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc

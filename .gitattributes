@@ -1,0 +1,8 @@
+# Line endings are LF in the repository and in every checkout.
+#
+# Section 6 of the MVP runtime contract fixes byte-exact comparison with no
+# normalization, so a fixture whose line ending depends on the platform that
+# checked it out is not the same input everywhere. Pinning this also stops the
+# class of local-only test failure where a checker parses a file that CI sees
+# with different bytes.
+* text=auto eol=lf
