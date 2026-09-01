@@ -21,7 +21,7 @@ body:
       description: Select the highest applicable level from docs/ai-development-workflow.md.
       options:
         - L0 - mechanical or non-normative; no AI review
-        - L1 - contained implementation under an accepted contract; one Codex review
+        - L1 - contained implementation under an accepted contract; one review round
         - L2 - contract, architecture, security, CI, deployment, or cross-cutting change
     validations:
       required: true

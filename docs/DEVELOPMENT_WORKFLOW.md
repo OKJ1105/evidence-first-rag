@@ -6,7 +6,7 @@ This workflow keeps changes small, reviewable, and consistent with the repositor
 
 - A GitHub Issue is the canonical record for each task. Record the intended behavior, acceptance criteria, affected contracts, and known limitations there before implementation.
 - One pull request contains one independently reviewable behavior and the tests or other acceptance evidence for that behavior. Split unrelated cleanup, additional behaviors, and deferred improvements into separate Issues and pull requests.
-- The [AI Development Workflow](ai-development-workflow.md) assigns Claude Code, Codex, ChatGPT, and human responsibilities and defines the L0/L1/L2 review levels. This document remains authoritative for contract, acceptance, and merge gates.
+- The [AI Development Workflow](ai-development-workflow.md) assigns the writer, independent-reviewer, and human responsibilities and defines the L0/L1/L2 review levels. This document remains authoritative for contract, acceptance, and merge gates.
 - Before changing code or contracts, follow the read order and stop conditions in `AGENTS.md`.
 
 ## Change sequence

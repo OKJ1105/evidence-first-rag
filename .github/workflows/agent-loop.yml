@@ -1,0 +1,220 @@
+# Writer/Reviewer loop, run entirely inside one Actions run.
+#
+# Replaces the Claude Code Cloud trigger mechanism: nothing here creates or
+# deletes a trigger, and no session has to be standing for the loop to work.
+#
+# Started from a phone by commenting `/agent-loop` on a pull request, or by
+# adding the `agent:run` label. Everything after that is automatic until the
+# loop hands the pull request back with a label. The owner merges.
+#
+# Deliberately NOT triggered by `push`. The Writer pushes inside the run, and a
+# push trigger here would restart the loop on its own output. `ci.yml` still
+# runs on those pushes and stays authoritative for merge; the loop's own check
+# subset exists to give the Reviewer something to review against.
+#
+# TWO CHECKOUTS, and the split is the point (BF4). `base/` holds the loop's own
+# code and the governing documents, taken from the base branch. `head/` is the
+# branch under review, which the agents edit. The orchestrator is always run
+# from `base/`, so a branch cannot supply the reviewer that judges it, the
+# prompts it is judged by, or the code that holds the token.
+name: Agent loop
+
+on:
+  issue_comment:
+    types: [created]
+  # Runs the workflow definition from the default branch rather than from the
+  # pull request. That covers the definition only; see the two-checkout note.
+  pull_request_target:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+        type: string
+      reset:
+        description: Clear the recorded round count before starting
+        required: false
+        type: boolean
+        default: false
+
+# One loop per pull request. Queued rather than cancelled: cancelling mid-turn
+# could leave the branch half-edited with no status comment explaining why.
+concurrency:
+  group: agent-loop-${{ github.event.issue.number || github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
+
+jobs:
+  gate:
+    # Decides whether this event is a real request from the owner. Kept as its
+    # own job so the expensive job below never starts on a stray comment. The
+    # decision itself lives in scripts/agent/gate.mjs, taken from the base
+    # branch, and is unit-tested there (NB3).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Read only. The gate decides; it never touches the pull request.
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      pr: ${{ steps.decide.outputs.pr }}
+      reset: ${{ steps.decide.outputs.reset }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - id: decide
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_EVENT_ACTOR: ${{ github.actor }}
+          CI_REPO_OWNER: ${{ github.repository_owner }}
+          CI_COMMENT_BODY: ${{ github.event.comment.body }}
+          CI_COMMENT_USER_TYPE: ${{ github.event.comment.user.type }}
+          CI_IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
+          CI_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CI_LABEL_NAME: ${{ github.event.label.name }}
+          CI_PULL_NUMBER: ${{ github.event.pull_request.number }}
+          CI_INPUT_PR: ${{ inputs.pr }}
+          CI_INPUT_RESET: ${{ inputs.reset }}
+        run: node scripts/agent/gate.mjs
+
+  loop:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    # A hard ceiling on the whole loop. Each agent turn has its own, smaller,
+    # timeout inside the orchestrator.
+    timeout-minutes: 60
+    # Minimum that lets the Writer push and the orchestrator post status.
+    #
+    # `issues: read` is for the one call that reads a real Issue rather than a
+    # pull request: `getIssue`, which is BF1's design — the Reviewer is handed
+    # the Issue, never the pull request body. GitHub routes pull-request
+    # comments and labels through the issues API but governs them by
+    # `pull-requests`, so that permission does not cover reading Issue #n, and
+    # the loop's first live run died on a 403 there (#80). Read, not write:
+    # `getIssue` is the only Issue-scoped call the loop makes, and every other
+    # call in `github.mjs` is passed the pull request number.
+    #
+    # Notably absent: `actions`, `checks`, `id-token`, and anything
+    # administrative.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Resolve the pull request branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ needs.gate.outputs.pr }}
+        run: |
+          set -eu
+          data=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR")
+          echo "ref=$(printf '%s' "$data" | jq -r .head.ref)"  >> "$GITHUB_OUTPUT"
+          echo "base=$(printf '%s' "$data" | jq -r .base.ref)" >> "$GITHUB_OUTPUT"
+          echo "state=$(printf '%s' "$data" | jq -r .state)"   >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to run on a closed pull request
+        if: steps.pr.outputs.state != 'open'
+        run: |
+          echo "Pull request is ${{ steps.pr.outputs.state }}; nothing to do." >&2
+          exit 1
+
+      # The loop's own code and the governing documents. Never from the head.
+      - name: Check out the base branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.base }}
+          path: base
+          persist-credentials: false
+
+      # The branch under review. The agents edit this tree.
+      - name: Check out the branch under review
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+          path: head
+          # The publication check reads a commit range, and the loop diffs
+          # against the base branch.
+          fetch-depth: 0
+          # BF3: no token in head/.git/config. Both agents hold `Read` over this
+          # tree, and `github.mjs` claims to be the only holder of the token.
+          # The push step supplies its own credential through the environment.
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: base/.nvmrc
+
+      # The orchestrator uses the Node standard library only. Project setup,
+      # when the implementation grows one, belongs to the checks manifest and
+      # runs with the stripped environment, never with the job's secrets.
+      #
+      # Pinned: this job holds both secrets, so the CLI version changes only
+      # by a deliberate commit, not by whatever npm serves that day.
+      - name: Install the Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.252
+
+      # Pinned settings, written outside both checkouts, so a branch that adds
+      # .claude/settings.json cannot widen what its own reviewer may do (BF4).
+      - name: Pin the agent settings
+        env:
+          settings_dir: ${{ runner.temp }}/agent
+        run: |
+          set -eu
+          mkdir -p "$settings_dir"
+          printf '%s\n' '{"permissions":{"deny":["Bash","WebFetch","WebSearch","Task","NotebookEdit"]}}' \
+            > "$settings_dir/settings.json"
+
+      - name: Run the loop
+        # From base/, against head/. The orchestrator is never the branch's.
+        working-directory: base
+        env:
+          # The only credential the orchestrator holds. `claude.mjs` strips it
+          # from every agent process, and `run.mjs` strips it again before any
+          # repository script runs (BF3).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CI_AGENT_WORKTREE: ${{ github.workspace }}/head
+          CI_AGENT_BASE_DIR: ${{ github.workspace }}/base
+          CI_AGENT_SETTINGS: ${{ runner.temp }}/agent/settings.json
+          CI_AGENT_PR_NUMBER: ${{ needs.gate.outputs.pr }}
+          CI_AGENT_BRANCH: ${{ steps.pr.outputs.ref }}
+          CI_AGENT_BASE_REF: ${{ steps.pr.outputs.base }}
+          CI_AGENT_RESET: ${{ needs.gate.outputs.reset }}
+          CI_AGENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/agent/run.mjs
+
+      - name: Report a crashed run
+        # The orchestrator reports its own failures. This covers the case where
+        # it could not start at all, so the pull request never goes silent.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ needs.gate.outputs.pr }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -eu
+          body=$(jq -n --arg url "$CI_RUN_URL" \
+            '{body: ("## Agent loop failed\n\nThe run did not complete. No conclusion was reached and nothing was approved or merged.\n\nRun: " + $url)}')
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$PR/comments" -d "$body" > /dev/null
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$PR/labels" \
+            -d '{"labels":["agent:failed"]}' > /dev/null
+          curl -sS -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$PR/labels/agent:running" > /dev/null || true

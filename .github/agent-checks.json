@@ -1,0 +1,17 @@
+{
+  "//": "Checks the agent loop runs between a Writer turn and the Reviewer that follows. The loop reads this file from the BASE branch (BF4), so a branch cannot weaken the checks it is judged against; a pull request that adds checks gets them in the loop only after it merges. Commands run in the branch checkout with a credential-stripped environment; {baseRef} is replaced with the pull request's base ref. CI stays authoritative for merge.",
+  "checks": [
+    {
+      "name": "whitespace",
+      "command": ["git", "diff", "--check", "origin/{baseRef}...HEAD"]
+    },
+    {
+      "name": "markdown-links",
+      "command": ["python3", "scripts/checks/validate_links.py"]
+    },
+    {
+      "name": "agent-unit-tests",
+      "command": ["node", "--test", "scripts/agent/*.test.mjs"]
+    }
+  ]
+}

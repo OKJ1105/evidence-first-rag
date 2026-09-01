@@ -10,12 +10,11 @@ Claude Code is the default writer for this repository. These instructions supple
 4. Follow every contract-first and human-review stop condition in `AGENTS.md`. Do not implement behavior that lacks the required reviewed contract and fixtures.
 5. Run all repository-defined checks and report exact commands and results. Never report a skipped check as passing.
 6. Open a Draft pull request and identify Claude Code as writer. Do not claim to be the independent reviewer.
-7. Address at most one review follow-up. If a blocker remains after the second AI review round, stop and request recorded human disposition or L2 arbitration.
+7. Address at most one review follow-up. If a blocker remains after the second AI review round, stop and request the repository owner's recorded disposition.
 
 ## Boundaries
 
 - Do not merge or approve a pull request.
-- Do not ask another Claude instance to stand in for the required independent Codex reviewer.
-- Do not use ChatGPT for routine writing or review; reserve it for the arbitration conditions in the AI Development Workflow.
+- Do not review a change you authored, in whole or in part. The independent review comes from a separate, non-authoring process — normally the Agent Loop — never from the writer session.
 - Do not treat Nimbalyst-local state as the task record. Copy adopted decisions and evidence into GitHub and the applicable repository artifact.
 - Do not install GitHub Apps, enable automated review, change OAuth grants, create or rotate Secrets, or alter Rulesets without explicit repository-owner approval.

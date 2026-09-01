@@ -22,11 +22,9 @@ List every lint, test, conformance, and read-only invariance command run, with i
 
 - Review level: L0 / L1 / L2
 - Writer/model (default: Claude Code):
-- Independent reviewer/model (default: Codex; N/A for L0):
+- Independent reviewer (default: agent loop; N/A for L0):
 - Review stage: design / code or configuration / N/A
-- Round 1 record: N/A / link or summary
-- Round 2 final inspection: N/A / link or summary
-- ChatGPT arbitration: not used / link to question and human disposition
+- Loop outcome label and rounds used: N/A / label, rounds
 - Required human contract/fixture review and approval record:
 
 - [ ] The declared review level matches the change risk and affected surfaces.

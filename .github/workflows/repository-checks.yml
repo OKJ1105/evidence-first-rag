@@ -22,38 +22,17 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: git diff --check "$BASE_SHA...$HEAD_SHA"
 
+      # Shared with the agent loop's checks manifest so both verify the same
+      # thing with the same code.
       - name: Validate local Markdown links
-        shell: python
-        run: |
-          import pathlib
-          import re
-          import sys
-          import urllib.parse
+        run: python3 scripts/checks/validate_links.py
 
-          fence = re.compile(r"(?ms)^```.*?^```\s*$")
-          link = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
-          failures = []
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
 
-          for document in pathlib.Path(".").rglob("*.md"):
-              if ".git" in document.parts:
-                  continue
-              text = fence.sub("", document.read_text(encoding="utf-8"))
-              for match in link.finditer(text):
-                  raw_target = match.group(1).strip()
-                  if raw_target.startswith("<") and ">" in raw_target:
-                      raw_target = raw_target[1:raw_target.index(">")]
-                  else:
-                      raw_target = raw_target.split(maxsplit=1)[0]
-                  target = urllib.parse.unquote(raw_target.split("#", 1)[0])
-                  if not target or urllib.parse.urlparse(target).scheme:
-                      continue
-                  resolved = (document.parent / target).resolve()
-                  if not resolved.exists():
-                      failures.append(f"{document}: {raw_target}")
-
-          if failures:
-              print("Broken local Markdown links:")
-              print("\n".join(failures))
-              sys.exit(1)
-
-          print("Local Markdown links: PASS")
+      - name: Agent loop unit tests
+        # The glob is quoted deliberately: node's test runner expands it
+        # itself, so the same form works in CI and in the checks manifest,
+        # which spawns commands without a shell.
+        run: node --test "scripts/agent/*.test.mjs"

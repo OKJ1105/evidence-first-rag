@@ -2,21 +2,21 @@
 
 These settings change external accounts, credentials, GitHub Apps, or repository administration. They are deliberately not automated by this pull request. The repository owner performs each applicable item and records completion in the canonical GitHub Issue or pull request without copying secret values.
 
-## Codex Cloud and GitHub
+## Agent loop
 
-- [ ] Sign in to [Codex](https://chatgpt.com/codex) with the intended ChatGPT account and workspace.
-- [ ] Connect GitHub through the Codex setup flow and grant access only to `OKJ1105/evidence-first-rag` unless broader access is explicitly intended.
-- [ ] Create a Codex cloud environment for this repository using the [Codex cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environment).
-- [ ] Confirm the environment checks out the default branch and can create a test branch without bypassing protection on `main`.
-- [ ] Keep automatic review disabled. Enable repository **Code review** in [Codex settings](https://chatgpt.com/codex/settings/code-review), then use a top-level `@codex review` pull request comment only when L1 or L2 requires it. See [Use Codex in GitHub](https://learn.chatgpt.com/docs/third-party/github).
-- [ ] Confirm Codex reads the root `AGENTS.md` review rules on a representative pull request.
+See [agent-loop.md](agent-loop.md) for what the loop is and how it is used.
+
+- [ ] Create the `CLAUDE_CODE_OAUTH_TOKEN` repository secret from `claude setup-token`: Settings > Secrets and variables > Actions > New repository secret. Rotate it when the Claude subscription plan changes.
+- [ ] Create the loop's labels: `agent:run`, `agent:running`, `agent:ready-for-human-merge`, `agent:needs-human`, `agent:failed`.
+- [ ] Set Settings > Actions > General > Workflow permissions to **Read and write permissions**, or the Writer cannot push.
+- [ ] Confirm the loop concludes with a label and a status comment on a representative pull request before relying on it.
 
 ## Claude Code Web and GitHub
 
 - [ ] Sign in to Claude with the intended account and open Claude Code on the web.
 - [ ] Connect GitHub through the product flow and grant the Claude GitHub App access only to this repository unless broader access is explicitly intended.
 - [ ] Select this repository and run a documentation-only test task in an isolated branch. Confirm that the proposed change is reviewable before opening or merging a pull request.
-- [ ] Do not install Claude Code GitHub Actions and do not enable automatic Claude review. This workflow uses Claude Code Web as the writer, not an AI Action.
+- [ ] Do not enable any automatic AI review trigger. The only AI-invoking Action is the owner-started [agent loop](agent-loop.md); nothing reviews a pull request unless the owner starts it.
 - [ ] Review the current [Claude Code on the web guide](https://support.claude.com/en/articles/12618689-claude-code-on-the-web) and [GitHub integration guide](https://support.claude.com/en/articles/10167454-use-the-github-integration) when reconnecting or changing repository access.
 
 ## Cloud environments, dependencies, variables, and Secrets
@@ -42,10 +42,6 @@ Perform this only after the `repository-checks` job has run successfully on a pu
 - [ ] Keep automatic merge disabled for this repository workflow; the repository owner manually confirms scope, review level, CI, conversations, and required human decisions before merge.
 - [ ] Test the Ruleset with a small L0 pull request before relying on it for product work. GitHub documents the available protections in [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-## Optional smartphone Remote connection
+## Working from a phone
 
-- [ ] Install current ChatGPT desktop and mobile apps and sign in to the same account and workspace.
-- [ ] On the desktop host, open **Settings > Connections > Control this Mac or PC** and start setup.
-- [ ] Scan the displayed QR code from the mobile device and complete any MFA, SSO, or passkey checks.
-- [ ] Keep the host awake, online, and running the desktop app while using Remote. Existing sandbox and approval settings still apply.
-- [ ] Review connected devices periodically and remove devices that are no longer used. Availability can vary by account or workspace rollout; see the current [Remote connections guide](https://learn.chatgpt.com/docs/remote).
+No dedicated remote-control setup is required. Starting the agent loop needs only the GitHub mobile app or a browser: comment `/agent-loop` on the pull request, or add the `agent:run` label, then read the status comment and outcome label when the run finishes.
