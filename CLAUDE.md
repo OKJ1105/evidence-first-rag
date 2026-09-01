@@ -15,7 +15,6 @@ Claude Code is the default writer for this repository. These instructions supple
 ## Boundaries
 
 - Do not merge or approve a pull request.
-- Do not ask another Claude instance to stand in for the required independent Codex reviewer.
-- Do not use ChatGPT for routine writing or review; reserve it for the arbitration conditions in the AI Development Workflow.
+- Do not review a change you authored, in whole or in part. The independent review comes from a separate, non-authoring process — normally the Agent Loop — never from the writer session.
 - Do not treat Nimbalyst-local state as the task record. Copy adopted decisions and evidence into GitHub and the applicable repository artifact.
 - Do not install GitHub Apps, enable automated review, change OAuth grants, create or rotate Secrets, or alter Rulesets without explicit repository-owner approval.

@@ -50,7 +50,7 @@ The current repository phase is documentation and architecture-level contract-sh
 ## Change process
 
 - Follow the repository [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) for Issue ownership, pull request scope, writer/reviewer separation, validation reporting, and durable decision capture.
-- Follow the [AI Development Workflow](docs/ai-development-workflow.md) for L0/L1/L2 classification and the Claude Code, Codex, ChatGPT, and human roles.
+- Follow the [AI Development Workflow](docs/ai-development-workflow.md) for L0/L1/L2 classification and the writer, independent-reviewer, and human roles.
 - Implement one independently reviewable behavior slice per pull request.
 - Keep unrelated cleanup out of the slice.
 - Add or update the contract and applicable acceptance fixtures before implementing new behavior.
@@ -76,9 +76,9 @@ A conformance `fail` result always blocks acceptance and cannot be overridden in
 ## AI collaboration
 
 - GitHub Issues, branches, commits, pull requests, review records, and CI results are the canonical development record. Nimbalyst may present or edit that record, but its local session or Issue state is not authoritative.
-- Claude Code is the default writer. Codex is the independent reviewer and must not edit files during a review. ChatGPT is reserved for L2 design arbitration or a disagreement that remains after the bounded review cycle.
+- Claude Code is the default writer. The independent reviewer is a separate, non-authoring Claude process — normally the [Agent Loop](docs/agent-loop.md) — and must not edit files during a review. A disagreement that survives the bounded review cycle goes to the repository owner.
 - Record the L0, L1, or L2 review level in the canonical Issue and pull request. When in doubt, choose the higher level.
-- L0 requires no AI review. L1 requires one Codex review. L2 requires a pre-implementation design review and a post-implementation code or configuration review.
+- L0 requires no AI review. L1 requires one independent review round. L2 requires a pre-implementation design review and a post-implementation code or configuration review.
 - An AI review cycle has at most two rounds: the initial review and one final inspection after fixes. Do not start a third AI round; record the unresolved point for human disposition or L2 arbitration.
 - No AI may approve or merge a pull request. Only the repository owner records final acceptance, resolves the required conversations, and initiates merge.
 - Do not install GitHub Apps, enable automatic reviews, change OAuth grants, create or rotate Secrets, or modify repository Rulesets without explicit repository-owner approval.

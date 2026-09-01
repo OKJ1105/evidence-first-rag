@@ -1,0 +1,17 @@
+{
+  "//": "Checks the agent loop runs between a Writer turn and the Reviewer that follows. Commands run in the branch checkout with a credential-stripped environment. This file lives under .github/, a protected path: a Writer turn may not edit it, and a branch that changes it shows that change in the diff the Reviewer reads. CI stays authoritative for merge.",
+  "checks": [
+    {
+      "name": "whitespace",
+      "command": ["git", "diff", "--check", "origin/main...HEAD"]
+    },
+    {
+      "name": "markdown-links",
+      "command": ["python3", "scripts/checks/validate_links.py"]
+    },
+    {
+      "name": "agent-unit-tests",
+      "command": ["node", "--test", "scripts/agent/"]
+    }
+  ]
+}
