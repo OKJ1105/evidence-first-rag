@@ -69,13 +69,14 @@ export const reviewerDocs = [
 ];
 
 /**
- * Where the branch defines its checks.
+ * Where the checks are defined.
  *
- * The manifest lives under `.github/`, which is a protected path: a Writer
- * turn that edits it aborts the run, and a branch that changes it shows that
- * change in the very diff the Reviewer reads. `ci.yml` stays authoritative
- * for merge; this subset exists to give the Reviewer something to review
- * against.
+ * The manifest is machinery (BF4): the orchestrator reads it from the BASE
+ * checkout, never from the branch under review, so a branch cannot weaken or
+ * empty the checks it is judged against. A pull request that adds checks gets
+ * them in the loop only after it merges; CI, which runs the branch's own
+ * definitions, stays authoritative for merge. `.github/` is additionally a
+ * protected path, so a Writer turn cannot edit the manifest mid-run either.
  */
 export const checksManifestPath = ".github/agent-checks.json";
 
@@ -101,6 +102,13 @@ export function loadChecksManifest(cwd) {
   }
   if (!Array.isArray(doc.checks)) {
     return { error: `${checksManifestPath} has no "checks" array.` };
+  }
+  if (doc.checks.length === 0) {
+    return {
+      error:
+        `${checksManifestPath} defines no checks. An empty manifest would ` +
+        "conclude a run with nothing verified, so it fails closed instead.",
+    };
   }
   for (const c of doc.checks) {
     if (
@@ -213,10 +221,19 @@ export function checkEnv(base = process.env) {
   return env;
 }
 
-/** Run the manifest's checks and render a summary the agents can read. */
+/**
+ * Run the manifest's checks and render a summary the agents can read.
+ *
+ * The commands execute in `cwd` (the branch under review); the manifest is
+ * read from `manifestDir` (the base checkout, per BF4). `{baseRef}` in a
+ * command argument is replaced with the pull request's base ref, so the
+ * manifest does not hardcode a branch name.
+ */
 export async function runChecks({
   cwd,
-  manifest = loadChecksManifest(cwd),
+  manifestDir = cwd,
+  baseRef = "main",
+  manifest = loadChecksManifest(manifestDir),
   timeoutMs = 10 * 60_000,
   env = checkEnv(),
 }) {
@@ -227,16 +244,13 @@ export async function runChecks({
       summary: `A check failed.\n\n- \`${checksManifestPath}\`: **FAIL**\n\n${manifest.error}`,
     };
   }
-  if (manifest.checks.length === 0) {
-    return {
-      ok: true,
-      results: [],
-      summary: `No checks are defined in \`${checksManifestPath}\`. Nothing was verified by a check on this run.`,
-    };
-  }
   const results = [];
   for (const check of manifest.checks) {
-    const r = await runCommand(check, { cwd, timeoutMs, env });
+    const bound = {
+      name: check.name,
+      command: check.command.map((a) => a.replaceAll("{baseRef}", baseRef)),
+    };
+    const r = await runCommand(bound, { cwd, timeoutMs, env });
     results.push(r);
     if (!r.ok) break; // Cheapest-first, like CI: stop at the first failure.
   }
@@ -565,6 +579,12 @@ export async function runLoop({
   }
 
   const ready = concluded.action === ACTIONS.ready;
+
+  // Before publishing any conclusion: if something approved the pull request
+  // while the loop held it, fail now rather than after a "ready" label and
+  // comment have already gone out.
+  await assertNothingApproved(gh, prNumber, startedAt);
+
   state = {
     ...state,
     phase: concluded.action,
@@ -586,7 +606,6 @@ export async function runLoop({
   );
   await writeState(gh, prNumber, commentId, state);
   await setOutcomeLabel(gh, prNumber, ready ? LABELS.ready : LABELS.needsHuman);
-  await assertNothingApproved(gh, prNumber, startedAt);
 
   return {
     action: concluded.action,
@@ -682,7 +701,8 @@ async function main() {
           settingsPath,
           model: process.env.CI_AGENT_MODEL,
         }),
-      checks: () => runChecks({ cwd: worktree }),
+      checks: () =>
+        runChecks({ cwd: worktree, manifestDir: baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: async () =>
         (await git(["status", "--porcelain"], worktree))

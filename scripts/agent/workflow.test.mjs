@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
 import { governingDocs, reviewerDocs } from "./run.mjs";
+import { deniedTools } from "./claude.mjs";
 
 // The workflow grants permissions; `github.mjs` spends them. Nothing connects
 // the two, and a mismatch is invisible until a live run — the loop's first one
@@ -83,6 +84,20 @@ describe("the documents each role is given", () => {
     for (const rel of [...governingDocs, ...reviewerDocs]) {
       expect(existsSync(rel), `${rel} is missing`).toBe(true);
       expect(statSync(rel).size, `${rel} is empty`).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("the two tool denylists agree", () => {
+  // claude.mjs passes --disallowed-tools per process; the workflow pins a
+  // settings file so a branch-supplied .claude/settings.json cannot widen
+  // anything. They are two expressions of one rule, and they drifted once.
+  it("every CLI-denied tool is denied in the pinned settings too", () => {
+    const line = /"deny":\[([^\]]+)\]/.exec(workflow);
+    expect(line).not.toBeNull();
+    const pinned = [...line[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    for (const tool of deniedTools) {
+      expect(pinned).toContain(tool);
     }
   });
 });

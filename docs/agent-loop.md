@@ -67,7 +67,7 @@ The code comments reference these by name; they are the loop's load-bearing rule
 
 ## 5. Safety
 
-**The agents hold no GitHub credential, and neither does anything they write.** `scripts/agent/claude.mjs` deletes the token from every agent process; `scripts/agent/run.mjs` strips it again before any manifest command runs, because the Writer's *output* is executed by the privileged parent moments later. A Writer turn that edits `scripts/`, `.github/`, `.githooks/` or `.claude/` **aborts the run** — those are the machinery the orchestrator executes with privileges the agents do not hold, and the checks manifest lives at `.github/agent-checks.json` precisely so that it is covered. `actions/checkout` runs with `persist-credentials: false`, so the token is not in `.git/config` either; the push step supplies its own credential through the environment of that one command. `scripts/agent/github.mjs` has no approve method and no merge method.
+**The agents hold no GitHub credential, and neither does anything they write.** `scripts/agent/claude.mjs` deletes the token from every agent process; `scripts/agent/run.mjs` strips it again before any manifest command runs, because the Writer's *output* is executed by the privileged parent moments later. A Writer turn that edits `scripts/`, `.github/`, `.githooks/` or `.claude/` **aborts the run** — those are the machinery the orchestrator executes with privileges the agents do not hold. `actions/checkout` runs with `persist-credentials: false`, so the token is not in `.git/config` either; the push step supplies its own credential through the environment of that one command. `scripts/agent/github.mjs` has no approve method and no merge method.
 
 **A guard fails the run if anything approved.** The workflow token *could* submit a review, so the orchestrator lists reviews at the end and fails if an approval appeared while it held the pull request.
 
@@ -94,7 +94,9 @@ The code comments reference these by name; they are the loop's load-bearing rule
 
 ## 6. Checks
 
-The loop runs the commands in [.github/agent-checks.json](../.github/agent-checks.json), in order, stopping at the first failure, each with a credential-stripped environment. The manifest is a protected path: a Writer turn may not edit it, and a branch that changes it shows that change in the diff the Reviewer reads. CI stays authoritative for merge; the manifest exists to give the Reviewer something to review against. When the implementation grows checks that need services a runner must provide — a database, for instance — they are added to CI first, and to the manifest only if the loop's runner can support them.
+The loop runs the commands in [.github/agent-checks.json](../.github/agent-checks.json), in order, stopping at the first failure, each with a credential-stripped environment and `{baseRef}` bound to the pull request's base ref.
+
+The manifest is machinery under BF4: **the loop reads it from the base branch**, never from the branch under review, so a branch cannot weaken or empty the checks it is judged against — and a missing, malformed, or empty manifest fails closed rather than concluding with nothing verified. A pull request that adds checks gets them in the loop only after it merges; CI, which runs the branch's own definitions, stays authoritative for merge. The manifest is also a protected path, so a Writer turn cannot edit it mid-run. When the implementation grows checks that need services a runner must provide — a database, for instance — they are added to CI first, and to the manifest only if the loop's runner can support them.
 
 ## 7. Commit identity
 

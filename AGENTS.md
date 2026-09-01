@@ -79,7 +79,7 @@ A conformance `fail` result always blocks acceptance and cannot be overridden in
 - Claude Code is the default writer. The independent reviewer is a separate, non-authoring Claude process — normally the [Agent Loop](docs/agent-loop.md) — and must not edit files during a review. A disagreement that survives the bounded review cycle goes to the repository owner.
 - Record the L0, L1, or L2 review level in the canonical Issue and pull request. When in doubt, choose the higher level.
 - L0 requires no AI review. L1 requires one independent review round. L2 requires a pre-implementation design review and a post-implementation code or configuration review.
-- An AI review cycle has at most two rounds: the initial review and one final inspection after fixes. Do not start a third AI round; record the unresolved point for human disposition or L2 arbitration.
+- An AI review cycle has at most two rounds: the initial review and one final inspection after fixes. Do not start a third AI round; record the unresolved point for the repository owner's recorded disposition.
 - No AI may approve or merge a pull request. Only the repository owner records final acceptance, resolves the required conversations, and initiates merge.
 - Do not install GitHub Apps, enable automatic reviews, change OAuth grants, create or rotate Secrets, or modify repository Rulesets without explicit repository-owner approval.
 

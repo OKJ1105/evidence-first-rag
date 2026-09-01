@@ -161,8 +161,11 @@ jobs:
       # The orchestrator uses the Node standard library only. Project setup,
       # when the implementation grows one, belongs to the checks manifest and
       # runs with the stripped environment, never with the job's secrets.
+      #
+      # Pinned: this job holds both secrets, so the CLI version changes only
+      # by a deliberate commit, not by whatever npm serves that day.
       - name: Install the Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.252
 
       # Pinned settings, written outside both checkouts, so a branch that adds
       # .claude/settings.json cannot widen what its own reviewer may do (BF4).
@@ -172,7 +175,7 @@ jobs:
         run: |
           set -eu
           mkdir -p "$settings_dir"
-          printf '%s\n' '{"permissions":{"deny":["Bash","WebFetch","WebSearch"]}}' \
+          printf '%s\n' '{"permissions":{"deny":["Bash","WebFetch","WebSearch","Task","NotebookEdit"]}}' \
             > "$settings_dir/settings.json"
 
       - name: Run the loop

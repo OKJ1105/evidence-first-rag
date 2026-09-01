@@ -10,7 +10,7 @@ Claude Code is the default writer for this repository. These instructions supple
 4. Follow every contract-first and human-review stop condition in `AGENTS.md`. Do not implement behavior that lacks the required reviewed contract and fixtures.
 5. Run all repository-defined checks and report exact commands and results. Never report a skipped check as passing.
 6. Open a Draft pull request and identify Claude Code as writer. Do not claim to be the independent reviewer.
-7. Address at most one review follow-up. If a blocker remains after the second AI review round, stop and request recorded human disposition or L2 arbitration.
+7. Address at most one review follow-up. If a blocker remains after the second AI review round, stop and request the repository owner's recorded disposition.
 
 ## Boundaries
 
