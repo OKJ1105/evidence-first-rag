@@ -19,7 +19,7 @@ from evidence_first_rag import (
     route_name,
 )
 
-from .support import closed_safeguards, executed_bundle, scope, unexecuted_bundle
+from .support import executed_bundle, scope, unexecuted_bundle
 
 
 class TheBundleCitesThisContract(unittest.TestCase):

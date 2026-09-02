@@ -53,6 +53,12 @@ class EveryResultCarriesAllThreeStructures(unittest.TestCase):
         with self.assertRaises(TypeError):
             Result(status=Status.SUCCESS, evidence_bundle=executed_bundle())
 
+    def test_the_status_is_one_of_the_seven(self):
+        # Section 5 again, at the point a result would carry it: a status the
+        # enum refuses cannot arrive here as a bare string instead.
+        with self.assertRaises(ValueError):
+            success_result(status="success")
+
     def test_limitations_is_present_and_may_be_empty(self):
         self.assertEqual(success_result().limitations, ())
 
