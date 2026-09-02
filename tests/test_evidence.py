@@ -98,6 +98,28 @@ class TheReadOnlySafeguards(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     ReadOnlySafeguards(**values)
 
+    def test_an_opened_connection_names_the_runtime_identity(self):
+        # Section 7 requires the role name recorded, and Section 4.3 says every
+        # connection is opened with the runtime identity. A connection reported
+        # as opened under no role is missing evidence, not an empty value.
+        with self.assertRaises(ValueError) as raised:
+            ReadOnlySafeguards(
+                role_name="", read_only_transaction=True, connection_opened=True
+            )
+        self.assertIn("runtime identity", str(raised.exception))
+
+    def test_an_opened_connection_may_still_report_a_missing_transaction(self):
+        # Left representable on purpose: Section 4.10 wants the refusal to come
+        # from PostgreSQL, not an application guard, and check B3 exists to
+        # catch a connection that was not read-only. Making it unconstructible
+        # would lose the evidence rather than prevent the fault.
+        safeguards = ReadOnlySafeguards(
+            role_name="SAMPLE_RUNTIME_ROLE",
+            read_only_transaction=False,
+            connection_opened=True,
+        )
+        self.assertFalse(safeguards.read_only_transaction)
+
     def test_the_flags_are_bools_not_truthy_values(self):
         with self.assertRaises(ValueError):
             ReadOnlySafeguards(

@@ -107,6 +107,22 @@ class ReadOnlySafeguards:
                 raise ValueError(
                     "role_name must be empty when no connection was opened"
                 )
+        # The mirror of that rule. Section 7 requires the runtime role name to
+        # be recorded; a connection reported as opened under no role at all is
+        # a missing field, not an empty value the contract permits, and it is
+        # the one identity Section 4.3 says every connection is opened with.
+        #
+        # `read_only_transaction` is deliberately left free. A False flag on an
+        # opened connection reports a Section 4.3 violation rather than hiding
+        # one, and the contract wants that reportable: Section 4.10 requires
+        # the refusals to originate from PostgreSQL privileges "not from an
+        # application guard", and check B3 exists to catch exactly this. A type
+        # that made the flag unrepresentable would turn a runtime defect into a
+        # construction crash and lose the evidence of it.
+        elif self.role_name == "":
+            raise ValueError(
+                "role_name must name the runtime identity when a connection was opened"
+            )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
