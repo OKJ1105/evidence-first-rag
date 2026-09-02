@@ -22,7 +22,7 @@ CREATE TABLE mvp.source_snapshot (
     network_name    text        NOT NULL,
     snapshot_label  text        NOT NULL,
     superseded_by   bigint          NULL REFERENCES mvp.source_snapshot (snapshot_id),
-    ingested_at     timestamptz NOT NULL,
+    ingested_at     timestamp   NOT NULL,
 
     -- Section 4.1. The four dimensions of Section 4.2 identify at most one
     -- snapshot, which is what lets a complete scope resolve to exactly one.
