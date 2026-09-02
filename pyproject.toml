@@ -13,12 +13,18 @@ description = "Evidence-First RAG Runtime: bounded, read-only answers over struc
 readme = "README.md"
 requires-python = ">=3.11"
 
-# No runtime dependency is chosen here. The PostgreSQL driver belongs to the
-# schema slice, which has the code that has to use it; picking one now would
-# be picking it blind. Everything in src/ is standard library only, and the
-# test suite runs on the standard library's unittest, so a clean checkout
-# needs no install step and no network.
-dependencies = []
+# The PostgreSQL driver, chosen by the schema slice as the package layout
+# slice deferred it. psycopg 3 is the current generation of the driver and is
+# what the loader in src/evidence_first_rag/db/ binds parameters through;
+# Section 4.4 prohibits string interpolation into SQL, and named parameter
+# binding is the driver feature that obligation rests on.
+#
+# It is the only runtime dependency. Everything outside src/evidence_first_rag/db/
+# is standard library, and the tests in tests/ need neither the driver nor a
+# database, so the agent loop's checks manifest still runs from a clean
+# checkout with no install step. The suite in tests_database/ needs both and
+# runs in CI against a service container.
+dependencies = ["psycopg[binary]>=3.2"]
 
 [project.urls]
 Repository = "https://github.com/OKJ1105/evidence-first-rag"
