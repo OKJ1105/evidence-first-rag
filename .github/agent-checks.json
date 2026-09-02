@@ -10,6 +10,14 @@
       "command": ["python3", "scripts/checks/validate_links.py"]
     },
     {
+      "name": "fixtures",
+      "command": ["python3", "scripts/checks/validate_fixtures.py"]
+    },
+    {
+      "name": "fixture-check-unit-tests",
+      "command": ["python3", "scripts/checks/test_validate_fixtures.py"]
+    },
+    {
       "name": "agent-unit-tests",
       "command": ["node", "--test", "scripts/agent/*.test.mjs"]
     }
