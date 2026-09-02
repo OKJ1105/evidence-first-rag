@@ -372,32 +372,58 @@ class TestStructuralCases(FixtureCheck):
         self.write("source_snapshot", rows)
         self.assert_fails("would pass by coincidence")
 
-    def test_leaving_only_ambiguous_snapshots_fails_fx_107(self):
-        """FX-107 needs a snapshot that resolves to one candidate and carries
-        rows. Move the unambiguous CHASSIS snapshots into the POWERTRAIN
-        ambiguous group and nothing is left to look a missing key up in, so a
-        `not_found` can no longer be distinguished from a `coverage_gap`."""
-        snapshots = self.rows("source_snapshot")
-        for row in snapshots:
-            row["network_name"] = "SAMPLE_NET_POWERTRAIN"
-            row["revision_label"] = "SAMPLE_REV_A"
-            if row["superseded_by"]:
-                row["superseded_by"]["network_name"] = "SAMPLE_NET_POWERTRAIN"
-                row["superseded_by"]["revision_label"] = "SAMPLE_REV_A"
-        # The two CHASSIS snapshots shared a snapshot_label; keep them distinct.
-        seen = set()
-        for index, row in enumerate(snapshots):
-            while tuple(row[f] for f in self.module.SNAPSHOT_REF) in seen:
-                row["snapshot_label"] += f"_{index}"
-            seen.add(tuple(row[f] for f in self.module.SNAPSHOT_REF))
-        self.write("source_snapshot", snapshots)
-        # Drop everything that referenced the old scopes; FX-107 is what should
-        # be reported, and dangling references would drown it out.
+    def test_snapshots_without_any_message_fail_fx_107(self):
+        """FX-107 needs a covered snapshot with rows for the absent key to be
+        absent from. Empty every table but the snapshots and the case can no
+        longer show that the key is what is missing rather than the data."""
         self.write("message_occurrence", [])
         self.write("signal_occurrence", [])
         self.write("signal_mapping", [])
         output = self.assert_fails("FX-107")
-        self.assertIn("not_found rather than coverage_gap", output)
+        self.assertIn("absent from an empty database", output)
+
+    def test_sibling_snapshots_alone_do_not_fail_fx_107(self):
+        """The condition the check must NOT impose. A Section 4.2 canonical
+        reference names all four scope dimensions, so a fully scoped request
+        resolves whether or not its snapshot shares a group with others.
+        Putting every snapshot into one ambiguous group therefore leaves
+        FX-107 reachable, and a check that flagged it would be stricter than
+        the contract."""
+        snapshots = self.rows("source_snapshot")
+        moved = {}
+        for index, row in enumerate(snapshots):
+            before = tuple(row[field] for field in self.module.SNAPSHOT_REF)
+            row["network_name"] = "SAMPLE_NET_POWERTRAIN"
+            row["revision_label"] = "SAMPLE_REV_A"
+            row["snapshot_label"] = f"SAMPLE_SNAP_GROUPED_{index}"
+            moved[before] = tuple(row[field] for field in self.module.SNAPSHOT_REF)
+        for row in snapshots:
+            if row["superseded_by"]:
+                key = tuple(row["superseded_by"][f] for f in self.module.SNAPSHOT_REF)
+                row["superseded_by"] = dict(zip(self.module.SNAPSHOT_REF, moved[key]))
+        self.write("source_snapshot", snapshots)
+
+        def remap(reference):
+            key = tuple(reference[field] for field in self.module.SNAPSHOT_REF)
+            reference.update(dict(zip(self.module.SNAPSHOT_REF, moved[key])))
+
+        messages = self.rows("message_occurrence")
+        for row in messages:
+            remap(row["snapshot"])
+        self.write("message_occurrence", messages)
+        signals = self.rows("signal_occurrence")
+        for row in signals:
+            remap(row["message"])
+        self.write("signal_occurrence", signals)
+        mappings = self.rows("signal_mapping")
+        for row in mappings:
+            for field in ("asserting_snapshot", "source_signal", "target_signal"):
+                remap(row[field])
+        self.write("signal_mapping", mappings)
+
+        code, output = self.run_check()
+        self.assertEqual(code, 0, output)
+        self.assertNotIn("FX-107", output)
 
     def test_adding_a_reserved_absent_value_fails(self):
         rows = self.rows("source_snapshot")

@@ -432,20 +432,23 @@ def main() -> int:
     )
 
     # FX-107 needs somewhere for the absent key to be absent from: a snapshot
-    # that resolves to exactly one candidate and carries rows. Without one, an
-    # absent key is a coverage gap rather than not_found, which is the
-    # distinction Section 5 draws between the two statuses. Asserted in its own
-    # right rather than left to follow from FX-001, so removing the last
-    # unambiguous snapshot names FX-107 instead of failing somewhere else.
-    unambiguous = {
-        key for key in snapshot_keys if len(candidates.get(key[:3], ())) == 1
-    }
+    # that exists and carries rows. Section 5 separates not_found from
+    # coverage_gap by whether the resolved snapshot is within coverage, so
+    # against an empty snapshot the case cannot show that the key is what is
+    # missing rather than the data. This mirrors the FX-106 assertion above.
+    #
+    # Deliberately not asserted: that the snapshot resolves to one candidate
+    # without help. A Section 4.2 canonical reference names all four scope
+    # dimensions, so a fully scoped request resolves whatever its siblings look
+    # like, and requiring an unambiguous group here would be stricter than the
+    # contract. Asserted in its own right rather than left to follow from
+    # FX-001, so losing the structure names FX-107 instead of failing elsewhere.
     populated = {key[:4] for key in message_keys}
     require(
-        bool(unambiguous & populated),
+        bool(populated & snapshot_keys),
         "FX-107",
-        "no snapshot both resolves unambiguously and carries a message, so a "
-        "missing lookup key cannot be not_found rather than coverage_gap",
+        "no snapshot carries a message, so a missing lookup key cannot be shown "
+        "absent from a covered snapshot rather than absent from an empty database",
     )
 
     if failures:
