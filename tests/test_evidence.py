@@ -1,0 +1,209 @@
+"""Section 7: the three evidence structures and their empty-value rules."""
+
+import unittest
+
+from evidence_first_rag import (
+    COLLATION,
+    CONTRACT_IDENTIFIER,
+    CONTRACT_VERSION,
+    EvidenceBundle,
+    Limitation,
+    LimitationKind,
+    MappingProvenance,
+    ProducingLayer,
+    ReadOnlySafeguards,
+    Route,
+    SourceTrace,
+    UNSUPPORTED_ROUTE,
+    route_field,
+    route_name,
+)
+
+from .support import closed_safeguards, executed_bundle, scope, unexecuted_bundle
+
+
+class TheBundleCitesThisContract(unittest.TestCase):
+    def test_it_defaults_to_the_accepted_identifier_and_version(self):
+        bundle = executed_bundle()
+        self.assertEqual(bundle.contract_identifier, CONTRACT_IDENTIFIER)
+        self.assertEqual(bundle.contract_version, CONTRACT_VERSION)
+
+    def test_the_constants_match_section_1(self):
+        self.assertEqual(CONTRACT_IDENTIFIER, "mvp-v0.1")
+        self.assertEqual(CONTRACT_VERSION, "0.3.0")
+
+    def test_it_records_the_section_6_collation(self):
+        self.assertEqual(executed_bundle().collation, "C")
+        self.assertEqual(COLLATION, "C")
+
+
+class TheRouteField(unittest.TestCase):
+    def test_the_three_approved_routes_are_section_4_5s(self):
+        self.assertEqual(
+            sorted(route.value for route in Route),
+            ["message_facts", "signal_facts", "signal_mapping"],
+        )
+
+    def test_section_4_6_permits_the_unsupported_literal(self):
+        bundle = unexecuted_bundle(route=UNSUPPORTED_ROUTE)
+        self.assertEqual(route_name(bundle.route), "unsupported")
+
+    def test_nothing_else_is_a_route(self):
+        for candidate in ("message_facts", "signal mapping", "", None, 3):
+            with self.subTest(candidate=candidate):
+                with self.assertRaises(ValueError):
+                    route_field(candidate)
+
+    def test_route_name_reads_both_permitted_forms(self):
+        self.assertEqual(route_name(Route.SIGNAL_MAPPING), "signal_mapping")
+        self.assertEqual(route_name(UNSUPPORTED_ROUTE), "unsupported")
+
+
+class WhenNoDatabaseWasOpened(unittest.TestCase):
+    """Section 7's empty-value rules, and Section 5's reason for them."""
+
+    def test_the_bundle_defaults_to_every_empty_value(self):
+        bundle = unexecuted_bundle()
+        self.assertEqual(bundle.template_name, "")
+        self.assertEqual(bundle.template_version, "")
+        self.assertEqual(dict(bundle.bound_parameters), {})
+        self.assertIsNone(bundle.resolved_scope)
+        self.assertEqual(bundle.row_count, 0)
+
+    def test_it_refuses_a_template_name_or_version(self):
+        for field in ("template_name", "template_version"):
+            with self.subTest(field=field):
+                with self.assertRaises(ValueError) as raised:
+                    unexecuted_bundle(**{field: "TPL_MESSAGE_FACTS_V1"})
+                self.assertIn("no database was opened", str(raised.exception))
+
+    def test_it_refuses_a_resolved_scope(self):
+        with self.assertRaises(ValueError):
+            unexecuted_bundle(resolved_scope=scope())
+
+    def test_it_refuses_the_arguments_a_rejected_proposal_carried(self):
+        # Section 7: arguments that failed revalidation were never bound, and
+        # recording them here would present a rejected proposal as a fact.
+        with self.assertRaises(ValueError) as raised:
+            unexecuted_bundle(bound_parameters={"project_code": "SAMPLE_PROJECT_ALPHA"})
+        self.assertIn("no template executed", str(raised.exception))
+
+    def test_it_refuses_a_row_count(self):
+        with self.assertRaises(ValueError):
+            unexecuted_bundle(row_count=1)
+
+
+class TheReadOnlySafeguards(unittest.TestCase):
+    def test_an_executed_bundle_records_the_runtime_role_and_transaction(self):
+        safeguards = executed_bundle().read_only_safeguards
+        self.assertTrue(safeguards.connection_opened)
+        self.assertTrue(safeguards.read_only_transaction)
+        self.assertNotEqual(safeguards.role_name, "")
+
+    def test_an_unopened_connection_claims_no_transaction_or_role(self):
+        for overrides in (
+            {"read_only_transaction": True},
+            {"role_name": "SAMPLE_RUNTIME_ROLE"},
+        ):
+            with self.subTest(overrides=overrides):
+                values = {
+                    "role_name": "",
+                    "read_only_transaction": False,
+                    "connection_opened": False,
+                }
+                values.update(overrides)
+                with self.assertRaises(ValueError):
+                    ReadOnlySafeguards(**values)
+
+    def test_the_flags_are_bools_not_truthy_values(self):
+        with self.assertRaises(ValueError):
+            ReadOnlySafeguards(
+                role_name="", read_only_transaction=0, connection_opened=0
+            )
+
+
+class TheBundleValidatesItsOwnFields(unittest.TestCase):
+    def test_row_count_is_a_non_negative_int(self):
+        for bad in (-1, 1.0, True, "1"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    executed_bundle(row_count=bad)
+
+    def test_bound_parameters_cannot_be_edited_through_the_caller(self):
+        parameters = {"message_key": "SAMPLE_MSG_A"}
+        bundle = executed_bundle(bound_parameters=parameters)
+        parameters["message_key"] = "SAMPLE_MSG_B"
+        self.assertEqual(bundle.bound_parameters["message_key"], "SAMPLE_MSG_A")
+
+    def test_bound_parameters_are_named(self):
+        with self.assertRaises(ValueError):
+            executed_bundle(bound_parameters={1: "SAMPLE_MSG_A"})
+
+    def test_the_safeguards_are_required(self):
+        with self.assertRaises(TypeError):
+            EvidenceBundle(route=Route.MESSAGE_FACTS)
+
+
+class TheSourceTrace(unittest.TestCase):
+    def test_it_defaults_to_empty_and_records_no_producing_layer(self):
+        trace = SourceTrace()
+        self.assertEqual(trace.contributing_scopes, ())
+        self.assertEqual(trace.mapping_provenance, ())
+        self.assertEqual(trace.fixture_provenance, ())
+        self.assertIsNone(trace.producing_layer)
+
+    def test_the_producing_layer_is_one_of_the_two(self):
+        self.assertEqual(
+            sorted(layer.value for layer in ProducingLayer), ["adapter", "runtime"]
+        )
+        with self.assertRaises(ValueError):
+            SourceTrace(producing_layer="adapter")
+
+    def test_mapping_provenance_identifies_all_three_scopes_separately(self):
+        provenance = MappingProvenance(
+            asserting_scope=scope(snapshot_label="SAMPLE_SNAP_ASSERTING"),
+            source_endpoint_scope=scope(),
+            target_endpoint_scope=scope(snapshot_label="SAMPLE_SNAP_TARGET"),
+        )
+        trace = SourceTrace(mapping_provenance=(provenance,))
+        self.assertEqual(len(trace.mapping_provenance), 1)
+        self.assertEqual(
+            trace.mapping_provenance[0].asserting_scope.snapshot_label,
+            "SAMPLE_SNAP_ASSERTING",
+        )
+
+    def test_a_scope_hole_cannot_reach_the_trace(self):
+        with self.assertRaises(ValueError):
+            SourceTrace(contributing_scopes=("SAMPLE_PROJECT_ALPHA",))
+
+    def test_fixture_provenance_entries_are_named(self):
+        trace = SourceTrace(fixture_provenance=("fixtures/message_occurrence.jsonl",))
+        self.assertEqual(trace.fixture_provenance[0], "fixtures/message_occurrence.jsonl")
+        with self.assertRaises(ValueError):
+            SourceTrace(fixture_provenance=("",))
+
+
+class TheLimitationEntries(unittest.TestCase):
+    def test_the_five_kinds_are_section_7s_required_entries(self):
+        self.assertEqual(
+            sorted(kind.value for kind in LimitationKind),
+            [
+                "coverage_not_established",
+                "entity_discovery_not_implemented",
+                "scope_selected_by_user",
+                "superseded_snapshot",
+                "truncated_by_limit",
+            ],
+        )
+
+    def test_an_entry_has_to_say_something(self):
+        with self.assertRaises(ValueError):
+            Limitation(kind=LimitationKind.TRUNCATED_BY_LIMIT, detail="")
+
+    def test_an_unlisted_kind_cannot_be_constructed(self):
+        with self.assertRaises(ValueError):
+            LimitationKind("probably_fine")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

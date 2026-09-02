@@ -8,7 +8,36 @@ The intended product user is an engineer who would otherwise open structured def
 
 ## Status
 
-This repository is in the contract-shaping phase. The Project Charter is frozen; runtime behavior is specified by reviewed contracts before it is implemented.
+The Project Charter is frozen and the [MVP runtime contract](docs/contracts/mvp-v0.1.md) is `Accepted`, so runtime behavior is specified by reviewed contracts before it is implemented. Implementation of that contract has started.
+
+The table below says how much of the contract executes today, section by section. It is here because a repository that describes an architecture without saying how much of it runs is a design document, and the two are hard to tell apart from the outside. Every slice that changes what runs updates this table.
+
+- **Contracted** — specified and reviewed. No code.
+- **Types only** — the shape exists and is tested. Nothing executes it yet.
+- **Implemented** — it runs, with the acceptance evidence its contract section requires.
+
+| Contract section | Surface | State |
+| --- | --- | --- |
+| 3.4 Platform | PostgreSQL 17, plain-SQL provisioning under Docker Compose | Contracted |
+| 4.1 Data model | Schema, columns, and uniqueness constraints | Contracted |
+| 4.2 Identity and scope | Canonical message and signal reference types | Types only |
+| 4.3 Database identities | Provisioning and read-only runtime roles | Contracted |
+| 4.4 Template registry | Four fixed SQL templates, safeguards, limits, timeout | Contracted |
+| 4.5 Routes | The three route names, as a closed set | Types only |
+| 4.6 Thin LLM Adapter | Adapter and deterministic revalidation | Contracted |
+| 4.7 Deterministic baseline | Exact-match control group for the Milestone 2 comparison | Contracted |
+| 4.8 Answer rendering | Fixed-template rendering over a normalized result | Contracted |
+| 4.9 Conformance runner | Checks A through E, verdicts, failure classes | Contracted |
+| 4.10 Read-only invariance | State digests and the four refusal assertions | Contracted |
+| 4.11 Fixture serialization | The registered JSON Lines fixture files | Implemented |
+| 4.11 Fixture serialization | The loader that resolves natural keys at load time | Contracted |
+| 5 Outcome coverage | The seven status families, as a closed set | Types only |
+| 6 Determinism | Ordering, collation, and no-normalization rules | Contracted |
+| 7 Evidence obligations | `evidence_bundle`, `source_trace`, `limitations` types | Types only |
+| 8.1 Required fixture cases | Structural fixture data for the registered cases | Implemented |
+| 8.1 Required fixture cases | Registered expected results per fixture | Contracted |
+
+Nothing in this repository opens a database yet.
 
 See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, architecture boundaries, success criterion, roadmap, and release conditions.
 

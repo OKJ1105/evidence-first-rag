@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evidence-first-rag"
+# The number that matters in this repository is the contract version in
+# Section 1 of docs/contracts/mvp-v0.1.md. This one exists because packaging
+# metadata requires it, and it moves when the repository releases something,
+# which it has not yet.
+version = "0.0.0"
+description = "Evidence-First RAG Runtime: bounded, read-only answers over structured engineering data."
+readme = "README.md"
+requires-python = ">=3.11"
+
+# No runtime dependency is chosen here. The PostgreSQL driver belongs to the
+# schema slice, which has the code that has to use it; picking one now would
+# be picking it blind. Everything in src/ is standard library only, and the
+# test suite runs on the standard library's unittest, so a clean checkout
+# needs no install step and no network.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/OKJ1105/evidence-first-rag"
+
+[tool.setuptools.packages.find]
+where = ["src"]
