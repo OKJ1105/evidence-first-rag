@@ -124,6 +124,83 @@ class TheRuntimeIdentityCannotWrite(unittest.TestCase):
             self.assertTrue(cursor.fetchone()[0])
 
 
+class TheProvisioningIdentityIsBounded(unittest.TestCase):
+    """Section 4.3 gives the provisioning identity `CREATE`, `INSERT` on the
+    application schema. Review finding N2 observed that the code gave it more
+    than that, and it was right; these tests pin what it actually holds, so
+    the part that cannot be narrowed is examined rather than assumed.
+
+    What was narrowed: it no longer owns the database, so `DROP DATABASE` and
+    `ALTER DATABASE` are out of reach.
+
+    What remains, and why: PostgreSQL gives the creator of a table ownership
+    of it, so an identity granted `CREATE` necessarily gains `ALTER`, `DROP`
+    and `TRUNCATE` over what it creates. Section 4.3's vocabulary has no way
+    to express "CREATE but not own". Closing that would mean the superuser
+    creating the tables and the provisioning identity only inserting -- which
+    contradicts the `CREATE` the same table grants it. The mismatch is between
+    the contract's privilege vocabulary and PostgreSQL's model, so it is the
+    repository owner's to resolve rather than something to paper over here.
+    """
+
+    def test_it_is_not_a_superuser_and_cannot_make_roles_or_databases(self):
+        with support.connect(DATABASE) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT rolsuper, rolcreaterole, rolcreatedb, rolbypassrls,"
+                " rolreplication FROM pg_roles WHERE rolname = 'mvp_provisioning'"
+            )
+            for name, held in zip(
+                ("superuser", "createrole", "createdb", "bypassrls", "replication"),
+                cursor.fetchone(),
+            ):
+                with self.subTest(attribute=name):
+                    self.assertFalse(held)
+
+    def test_it_does_not_own_the_database(self):
+        # Ownership would carry DROP DATABASE and ALTER DATABASE, neither of
+        # which Section 4.3's table lists.
+        with support.connect(DATABASE) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database"
+                " WHERE datname = current_database()"
+            )
+            self.assertNotEqual(cursor.fetchone()[0], "mvp_provisioning")
+
+    def test_it_holds_the_create_it_needs_and_the_insert_section_4_3_grants(self):
+        with support.connect(DATABASE) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT has_database_privilege('mvp_provisioning', current_database(), 'CREATE')"
+            )
+            self.assertTrue(cursor.fetchone()[0])
+            cursor.execute(
+                "SELECT has_table_privilege('mvp_provisioning', 'mvp.source_snapshot', 'INSERT')"
+            )
+            self.assertTrue(cursor.fetchone()[0])
+
+    def test_it_owns_what_it_creates_and_that_is_recorded_not_hidden(self):
+        # The residual N2 gap, asserted rather than left implicit. If a later
+        # slice narrows it, this test fails and the narrowing gets noticed.
+        with support.connect(DATABASE) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname = 'mvp'"
+            )
+            self.assertEqual(cursor.fetchone()[0], "mvp_provisioning")
+            for table in (
+                "source_snapshot",
+                "message_occurrence",
+                "signal_occurrence",
+                "signal_mapping",
+            ):
+                with self.subTest(table=table):
+                    cursor.execute(
+                        "SELECT relowner::regrole::text FROM pg_class c"
+                        " JOIN pg_namespace n ON n.oid = c.relnamespace"
+                        " WHERE n.nspname = 'mvp' AND c.relname = %s",
+                        (table,),
+                    )
+                    self.assertEqual(cursor.fetchone()[0], "mvp_provisioning")
+
+
 class TheRuntimeRoleConfiguration(unittest.TestCase):
     def test_statement_timeout_is_five_seconds(self):
         # Section 4.4. Read from the role rather than the session, because the

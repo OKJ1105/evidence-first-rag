@@ -16,12 +16,25 @@
 -- trusting this file to have asked for it.
 
 CREATE DATABASE :"database_name"
-    OWNER mvp_provisioning
     TEMPLATE template0
     ENCODING 'UTF8'
     LC_COLLATE 'C'
     LC_CTYPE 'C';
 
 REVOKE CONNECT ON DATABASE :"database_name" FROM PUBLIC;
-GRANT CONNECT ON DATABASE :"database_name" TO mvp_provisioning;
 GRANT CONNECT ON DATABASE :"database_name" TO mvp_runtime;
+
+-- Section 4.3 gives the provisioning identity CREATE and INSERT on the
+-- application schema, and nothing else. Deliberately no OWNER clause above:
+-- owning the database would carry DROP DATABASE and ALTER DATABASE with it,
+-- neither of which that table lists. The cluster superuser owns the database
+-- and the provisioning identity is granted exactly the CREATE it needs to
+-- build the schema inside it.
+--
+-- One privilege remains wider than the contract's table reads, and it is
+-- inherent rather than chosen: in PostgreSQL the creator of a table owns it,
+-- so an identity granted CREATE necessarily gains ALTER, DROP and TRUNCATE
+-- over what it creates. Section 4.3's vocabulary has no way to say "CREATE
+-- but not own". tests_database/test_roles.py pins the resulting privilege set
+-- so it is examined rather than assumed, and the gap is open as an Issue.
+GRANT CONNECT, CREATE ON DATABASE :"database_name" TO mvp_provisioning;
