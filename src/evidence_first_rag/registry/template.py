@@ -13,9 +13,15 @@ public arbitrary-SQL, arbitrary-table, or arbitrary-column interface exists.
 The last of those is a property of what the package exposes, not of this
 class alone: `Template`'s constructor accepts SQL text, so `Template` is
 deliberately left out of `registry/__init__.py`'s exports. Only `registry.py`,
-inside this package, builds one -- the four instances Section 4.4 registers --
-and `tests/test_registry_surface.py` enumerates the package's public surface
-so that exporting `Template` again has to fail a test rather than pass review.
+inside this package, builds one -- the four instances Section 4.4 registers.
+Being left out of the exports is not, by itself, enough: this module is still
+importable directly as `evidence_first_rag.registry.template`, so
+`tests/test_registry_surface.py` also scans the source tree and fails if
+anything outside this package imports `Template` from here, in addition to
+enumerating the package's public surface so that exporting `Template` from
+`__init__.py` has to fail a test rather than pass review. The one deliberate
+exception is `tests/test_registry.py`, which imports this module directly to
+exercise the registration safeguards themselves and says why at the import.
 
 Sections cited are from docs/contracts/mvp-v0.1.md at version 0.3.0.
 """
@@ -221,8 +227,12 @@ class Template:
                 )
 
         # Section 4.4's limits table assigns a row limit per template, and the
-        # limit belongs in the registered text so that a caller cannot raise it.
-        if f"LIMIT {self.row_limit}" not in self.sql.upper():
+        # limit belongs in the registered text so that a caller cannot raise
+        # it. Matched as the trailing `LIMIT <n>` clause, not as a substring:
+        # "LIMIT 2" is a substring of "LIMIT 200", so a substring scan would
+        # let a declared row_limit disagree with the SQL's actual limit.
+        limit_match = re.search(r"LIMIT\s+(\d+)\s*$", self.sql.strip(), re.IGNORECASE)
+        if limit_match is None or int(limit_match.group(1)) != self.row_limit:
             raise TemplateError(
                 f"{self.name}: SQL does not carry its declared LIMIT"
                 f" {self.row_limit} (Section 4.4)"

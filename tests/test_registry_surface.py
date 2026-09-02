@@ -113,6 +113,47 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
                 self.assertIn(registry.SCHEMA + ".", template.sql)
                 self.assertNotIn("{", template.sql)
 
+    def test_no_production_module_outside_the_registry_imports_template_directly(self):
+        # `test_template_is_not_a_public_constructor` above only proves
+        # `Template` is absent from `registry.__all__`; being left out of the
+        # exports does not stop `evidence_first_rag.registry.template` being
+        # imported directly, which would be exactly the arbitrary-SQL entry
+        # point Section 4.4 forbids. This scans the package's own source tree
+        # so that a future import of `Template` from outside this package
+        # fails here rather than merely being unreviewed.
+        #
+        # Only `src/` is scanned. `tests/test_registry.py` deliberately
+        # imports `Template` directly to exercise the registration safeguards
+        # themselves, and says why at the import; that is a reviewed test-only
+        # exception, not the production entry point this test guards against.
+        import ast
+        import pathlib
+
+        registry_dir = pathlib.Path(__file__).resolve().parent.parent / "src" / "evidence_first_rag" / "registry"
+        src_root = registry_dir.parent
+
+        def imports_template(path: pathlib.Path) -> bool:
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module.endswith("registry.template"):
+                        return True
+                    if node.module.endswith("registry") and any(
+                        alias.name == "Template" for alias in node.names
+                    ):
+                        return True
+                if isinstance(node, ast.Import):
+                    if any(alias.name.endswith("registry.template") for alias in node.names):
+                        return True
+            return False
+
+        offenders = [
+            str(path.relative_to(src_root))
+            for path in src_root.rglob("*.py")
+            if registry_dir not in path.resolve().parents and imports_template(path)
+        ]
+        self.assertEqual(offenders, [], f"imports Template directly: {offenders}")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

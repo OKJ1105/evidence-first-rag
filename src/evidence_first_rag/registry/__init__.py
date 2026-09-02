@@ -11,8 +11,12 @@ to fail a test.
 caller who could reach it could build an unreviewed query that satisfies every
 registration safeguard without ever being one of the four templates Section
 4.4 registers. The only Templates that exist are the four `registry.py`
-builds for itself; `get(name)` is the sole way anything outside this package
-reaches one.
+builds for itself; `get(name)` is the intended way anything outside this
+package reaches one. Being left out of `__all__` does not stop a direct
+`evidence_first_rag.registry.template` import, so
+`tests/test_registry_surface.py` additionally scans the source tree and fails
+if anything outside this package imports `Template` from there -- the
+enforcement this docstring's claim depends on, not just the export list.
 """
 
 from .registry import (
