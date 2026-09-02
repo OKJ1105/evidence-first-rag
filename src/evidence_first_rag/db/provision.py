@@ -35,8 +35,17 @@ DEFAULT_DATABASE = "mvp"
 PROVISIONING_ROLE = "mvp_provisioning"
 
 
-def _psql(database: str, user: str, password: str, path: pathlib.Path, variables: dict) -> None:
-    """Apply one SQL file, failing the whole run on the first error.
+def psql_command(
+    database: str, user: str, path: pathlib.Path, variables: dict
+) -> list[str]:
+    """Build the psql argv for one SQL file.
+
+    Pure, and separate from running it, so a test can assert what does and does
+    not appear here. Nothing secret may: argv is readable by any process on the
+    host through `ps` or /proc/<pid>/cmdline for as long as psql runs. The role
+    passwords travel in the environment instead, and the SQL reads them with
+    `\getenv`; only `database_name`, which is not a secret, is passed as a
+    variable.
 
     ON_ERROR_STOP is what makes "applied in lexical order" meaningful: without
     it psql reports an error and carries on, and a later file would be applied
@@ -53,7 +62,16 @@ def _psql(database: str, user: str, password: str, path: pathlib.Path, variables
     ]
     for name, value in variables.items():
         command += ["--set", f"{name}={value}"]
+    return command
 
+
+def _psql(database: str, user: str, password: str, path: pathlib.Path, variables: dict) -> None:
+    """Apply one SQL file, failing the whole run on the first error."""
+    command = psql_command(database, user, path, variables)
+
+    # PGPASSWORD and the MVP_* role passwords reach psql through the
+    # environment, which other processes cannot read, rather than through argv,
+    # which they can.
     environment = dict(os.environ, PGPASSWORD=password)
     result = subprocess.run(command, env=environment, capture_output=True, text=True)
     if result.returncode != 0:
@@ -109,8 +127,12 @@ def main(argv: list[str] | None = None) -> int:
 
     superuser = os.environ.get("PGUSER", "postgres")
     superuser_password = os.environ.get("PGPASSWORD", "")
+    # Read here so an unset variable fails immediately with a name, rather than
+    # inside psql as an empty password. They are not passed on any command
+    # line: the SQL reads them from the environment with `\getenv`, and the
+    # loader below hands the provisioning one to psycopg directly.
     provisioning_password = os.environ["MVP_PROVISIONING_PASSWORD"]
-    runtime_password = os.environ["MVP_RUNTIME_PASSWORD"]
+    os.environ["MVP_RUNTIME_PASSWORD"]
 
     # Section 4.11: parse every file before opening a transaction. A file that
     # cannot be parsed must not reach a database that is half built.
@@ -125,11 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             superuser,
             superuser_password,
             script,
-            {
-                "provisioning_password": provisioning_password,
-                "runtime_password": runtime_password,
-                "database_name": arguments.database,
-            },
+            {"database_name": arguments.database},
         )
 
     for script in _scripts(arguments.sql / "database"):

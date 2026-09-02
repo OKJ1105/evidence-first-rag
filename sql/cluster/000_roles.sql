@@ -4,13 +4,19 @@
 -- 010_database.sql, which needs the provisioning identity to own the
 -- application database.
 --
--- Passwords are supplied by the environment as psql variables, so this file
--- stays inspectable and carries no secret.
+-- Passwords are read from the environment by psql itself, so this file stays
+-- inspectable and carries no secret. `\getenv` rather than a `--set` on the
+-- command line: argv is world-readable through `ps` and /proc/<pid>/cmdline
+-- for as long as the process runs, and a developer provisioning locally would
+-- be handing a real password to every other process on the machine.
 --
 -- Idempotent by design. Section 3.4 says "reproducibility comes from
 -- re-provisioning, not from migration history", so provisioning has to be
 -- re-runnable; roles outlive any one application database and are reused by
 -- the next one rather than dropped and recreated.
+
+\getenv provisioning_password MVP_PROVISIONING_PASSWORD
+\getenv runtime_password MVP_RUNTIME_PASSWORD
 
 DO $$
 BEGIN
