@@ -8,7 +8,6 @@ from evidence_first_rag.registry import (
     REGISTERED,
     LimitMeaning,
     ParameterError,
-    Template,
     TemplateError,
     UnregisteredTemplate,
     get,
@@ -20,6 +19,13 @@ from evidence_first_rag.registry.registry import (
     TPL_SIGNAL_MAPPING_V1,
     TPL_SNAPSHOT_CANDIDATES_V1,
 )
+
+# `Template` is deliberately not part of the package's public surface (see
+# `tests/test_registry_surface.py`): its constructor accepts SQL text, and
+# exporting it would be the arbitrary-SQL interface AGENTS.md forbids. These
+# tests exercise the registration safeguards directly, so they reach into the
+# internal module rather than the public `evidence_first_rag.registry`.
+from evidence_first_rag.registry.template import Template
 
 SCOPE = ("project_code", "revision_label", "network_name", "snapshot_label")
 FULL_SCOPE = {

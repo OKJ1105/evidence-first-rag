@@ -6,6 +6,13 @@ arbitrary-table, or arbitrary-column interface; nothing exported here accepts
 SQL text, a table name, or a column name from a caller, and
 `tests/test_registry_surface.py` enumerates this list so that adding one has
 to fail a test.
+
+`Template` itself is not exported. Its constructor accepts SQL text, so a
+caller who could reach it could build an unreviewed query that satisfies every
+registration safeguard without ever being one of the four templates Section
+4.4 registers. The only Templates that exist are the four `registry.py`
+builds for itself; `get(name)` is the sole way anything outside this package
+reaches one.
 """
 
 from .registry import (
@@ -22,7 +29,6 @@ from .template import (
     FORBIDDEN_KEYWORDS,
     LimitMeaning,
     ParameterError,
-    Template,
     TemplateError,
     UnregisteredTemplate,
 )
@@ -37,7 +43,6 @@ __all__ = [
     "TPL_SIGNAL_FACTS_V1",
     "TPL_SIGNAL_MAPPING_V1",
     "TPL_SNAPSHOT_CANDIDATES_V1",
-    "Template",
     "TemplateError",
     "UnregisteredTemplate",
     "get",

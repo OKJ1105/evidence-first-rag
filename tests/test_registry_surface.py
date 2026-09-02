@@ -27,7 +27,6 @@ PUBLIC_SURFACE = {
     "TPL_SIGNAL_FACTS_V1",
     "TPL_SIGNAL_MAPPING_V1",
     "TPL_SNAPSHOT_CANDIDATES_V1",
-    "Template",
     "TemplateError",
     "UnregisteredTemplate",
     "get",
@@ -65,7 +64,12 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
                 yield f"{name}()", value
             elif inspect.isclass(value):
                 for method_name, method in inspect.getmembers(value, inspect.isfunction):
-                    if not method_name.startswith("_"):
+                    # Only dunders other than __init__ are excluded: a
+                    # constructor is exactly the kind of entry point Section
+                    # 4.4 forbids, so it has to be checked like any other
+                    # public callable rather than filtered out with the rest
+                    # of the dunders.
+                    if method_name == "__init__" or not method_name.startswith("_"):
                         yield f"{name}.{method_name}()", method
 
     def test_no_public_callable_takes_a_sql_table_or_column_parameter(self):
@@ -90,6 +94,13 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
 
         with self.assertRaises(dataclasses.FrozenInstanceError):
             registry.TPL_MESSAGE_FACTS_V1.sql = "SELECT 1"
+
+    def test_template_is_not_a_public_constructor(self):
+        # `Template.__init__` accepts SQL text, an ordering clause, and a
+        # result column list. Exporting the class would let any importer
+        # build a query the four registered templates never reviewed, so it
+        # is not part of this package's surface at all.
+        self.assertFalse(hasattr(registry, "Template"))
 
     def test_the_sql_of_every_registered_template_is_committed_text(self):
         # Charter Section 3.1: "The committed public query-template registry

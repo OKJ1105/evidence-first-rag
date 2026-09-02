@@ -10,9 +10,12 @@ Charter Section 3.1 and AGENTS.md fix the boundary this module holds:
 authoritative facts come only from registered fixed SQL templates, no
 free-form SQL is generated or executed from user text or model output, and no
 public arbitrary-SQL, arbitrary-table, or arbitrary-column interface exists.
-The last of those is a property of what this module does *not* expose, which
-is why `tests/test_registry_surface.py` enumerates the public surface: adding
-such an entry point later has to fail a test rather than pass review.
+The last of those is a property of what the package exposes, not of this
+class alone: `Template`'s constructor accepts SQL text, so `Template` is
+deliberately left out of `registry/__init__.py`'s exports. Only `registry.py`,
+inside this package, builds one -- the four instances Section 4.4 registers --
+and `tests/test_registry_surface.py` enumerates the package's public surface
+so that exporting `Template` again has to fail a test rather than pass review.
 
 Sections cited are from docs/contracts/mvp-v0.1.md at version 0.3.0.
 """
