@@ -25,7 +25,6 @@ from .references import (
     SnapshotScope,
 )
 from .result import REQUIRED_LIMITATION, Result, Row
-from .routes import UNSUPPORTED_ROUTE, Route, route_field, route_name
 from .status import OPENS_NO_CONNECTION, Status
 
 __all__ = [
@@ -42,14 +41,10 @@ __all__ = [
     "REQUIRED_LIMITATION",
     "ReadOnlySafeguards",
     "Result",
-    "Route",
     "Row",
     "SCOPE_DIMENSIONS",
     "SignalReference",
     "SnapshotScope",
     "SourceTrace",
     "Status",
-    "UNSUPPORTED_ROUTE",
-    "route_field",
-    "route_name",
 ]

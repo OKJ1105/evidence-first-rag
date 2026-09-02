@@ -12,11 +12,7 @@ from evidence_first_rag import (
     MappingProvenance,
     ProducingLayer,
     ReadOnlySafeguards,
-    Route,
     SourceTrace,
-    UNSUPPORTED_ROUTE,
-    route_field,
-    route_name,
 )
 
 from .support import executed_bundle, scope, unexecuted_bundle
@@ -38,25 +34,12 @@ class TheBundleCitesThisContract(unittest.TestCase):
 
 
 class TheRouteField(unittest.TestCase):
-    def test_the_three_approved_routes_are_section_4_5s(self):
-        self.assertEqual(
-            sorted(route.value for route in Route),
-            ["message_facts", "signal_facts", "signal_mapping"],
-        )
+    """`route` is an unconstrained non-empty string in this slice; the closed
+    Section 4.5 route set is the routes slice's decision."""
 
-    def test_section_4_6_permits_the_unsupported_literal(self):
-        bundle = unexecuted_bundle(route=UNSUPPORTED_ROUTE)
-        self.assertEqual(route_name(bundle.route), "unsupported")
-
-    def test_nothing_else_is_a_route(self):
-        for candidate in ("message_facts", "signal mapping", "", None, 3):
-            with self.subTest(candidate=candidate):
-                with self.assertRaises(ValueError):
-                    route_field(candidate)
-
-    def test_route_name_reads_both_permitted_forms(self):
-        self.assertEqual(route_name(Route.SIGNAL_MAPPING), "signal_mapping")
-        self.assertEqual(route_name(UNSUPPORTED_ROUTE), "unsupported")
+    def test_it_must_be_a_non_empty_string(self):
+        with self.assertRaises(ValueError):
+            unexecuted_bundle(route="")
 
 
 class WhenNoDatabaseWasOpened(unittest.TestCase):
@@ -141,7 +124,7 @@ class TheBundleValidatesItsOwnFields(unittest.TestCase):
 
     def test_the_safeguards_are_required(self):
         with self.assertRaises(TypeError):
-            EvidenceBundle(route=Route.MESSAGE_FACTS)
+            EvidenceBundle(route="message_facts")
 
 
 class TheSourceTrace(unittest.TestCase):

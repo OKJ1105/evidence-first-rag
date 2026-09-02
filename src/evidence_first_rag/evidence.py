@@ -20,7 +20,6 @@ from collections.abc import Mapping
 from ._validation import optional_text, required_flag, required_text, text_tuple
 from .contract import COLLATION, CONTRACT_IDENTIFIER, CONTRACT_VERSION
 from .references import SnapshotScope
-from .routes import Route, route_field
 
 
 class ProducingLayer(enum.Enum):
@@ -118,9 +117,14 @@ class EvidenceBundle:
     "explicit empty value" Section 7 permits when no database was opened: the
     empty string for the two text fields, None for the scope. Both are values
     of a field that is always present, never an absent field.
+
+    `route` is an unconstrained non-empty string in this slice. Section 4.5's
+    closed route set and Section 4.6's `unsupported` literal are the routes
+    slice's decision; this type only carries whatever value that later slice
+    validates.
     """
 
-    route: Route | str
+    route: str
     read_only_safeguards: ReadOnlySafeguards
     row_count: int = 0
     template_name: str = ""
@@ -132,7 +136,7 @@ class EvidenceBundle:
     collation: str = COLLATION
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "route", route_field(self.route))
+        required_text("route", self.route)
         if not isinstance(self.read_only_safeguards, ReadOnlySafeguards):
             raise ValueError("read_only_safeguards must be a ReadOnlySafeguards")
         # bool is an int; a row_count of True would pass a bare int check.

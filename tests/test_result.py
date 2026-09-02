@@ -8,10 +8,8 @@ from evidence_first_rag import (
     LimitationKind,
     ProducingLayer,
     Result,
-    Route,
     SourceTrace,
     Status,
-    UNSUPPORTED_ROUTE,
 )
 
 from .support import executed_bundle, scope, success_result, unexecuted_bundle
@@ -33,7 +31,7 @@ def negative_result(status, **overrides):
     values = {
         "status": status,
         "evidence_bundle": unexecuted_bundle(
-            route=UNSUPPORTED_ROUTE if status is Status.UNSUPPORTED else Route.MESSAGE_FACTS
+            route="unsupported" if status is Status.UNSUPPORTED else "message_facts"
         ),
         "source_trace": trace,
         "limitations": limitations,

@@ -10,7 +10,6 @@ from evidence_first_rag import (
     EvidenceBundle,
     ReadOnlySafeguards,
     Result,
-    Route,
     SnapshotScope,
     SourceTrace,
     Status,
@@ -46,7 +45,7 @@ def closed_safeguards():
 
 def executed_bundle(**overrides):
     values = {
-        "route": Route.MESSAGE_FACTS,
+        "route": "message_facts",
         "read_only_safeguards": opened_safeguards(),
         "row_count": 1,
         "template_name": "TPL_MESSAGE_FACTS_V1",
@@ -59,7 +58,7 @@ def executed_bundle(**overrides):
 
 
 def unexecuted_bundle(**overrides):
-    values = {"route": Route.MESSAGE_FACTS, "read_only_safeguards": closed_safeguards()}
+    values = {"route": "message_facts", "read_only_safeguards": closed_safeguards()}
     values.update(overrides)
     return EvidenceBundle(**values)
 

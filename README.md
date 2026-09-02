@@ -23,7 +23,7 @@ The table below says how much of the contract executes today, section by section
 | 4.2 Identity and scope | Canonical message and signal reference types | Types only |
 | 4.3 Database identities | Provisioning and read-only runtime roles | Contracted |
 | 4.4 Template registry | Four fixed SQL templates, safeguards, limits, timeout | Contracted |
-| 4.5 Routes | The three route names, as a closed set | Types only |
+| 4.5 Routes | The three route names, as a closed set | Contracted |
 | 4.6 Thin LLM Adapter | Adapter and deterministic revalidation | Contracted |
 | 4.7 Deterministic baseline | Exact-match control group for the Milestone 2 comparison | Contracted |
 | 4.8 Answer rendering | Fixed-template rendering over a normalized result | Contracted |
