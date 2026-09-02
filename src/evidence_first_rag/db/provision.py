@@ -29,40 +29,11 @@ import sys
 import psycopg
 
 from . import fixtures, loader
+from .commands import psql_command
 
 MAINTENANCE_DATABASE = "postgres"
 DEFAULT_DATABASE = "mvp"
 PROVISIONING_ROLE = "mvp_provisioning"
-
-
-def psql_command(
-    database: str, user: str, path: pathlib.Path, variables: dict
-) -> list[str]:
-    """Build the psql argv for one SQL file.
-
-    Pure, and separate from running it, so a test can assert what does and does
-    not appear here. Nothing secret may: argv is readable by any process on the
-    host through `ps` or /proc/<pid>/cmdline for as long as psql runs. The role
-    passwords travel in the environment instead, and the SQL reads them with
-    `\getenv`; only `database_name`, which is not a secret, is passed as a
-    variable.
-
-    ON_ERROR_STOP is what makes "applied in lexical order" meaningful: without
-    it psql reports an error and carries on, and a later file would be applied
-    to a database the earlier one failed to build.
-    """
-    command = [
-        "psql",
-        "--no-psqlrc",
-        "--quiet",
-        "--set", "ON_ERROR_STOP=1",
-        "--dbname", database,
-        "--username", user,
-        "--file", str(path),
-    ]
-    for name, value in variables.items():
-        command += ["--set", f"{name}={value}"]
-    return command
 
 
 def _psql(database: str, user: str, password: str, path: pathlib.Path, variables: dict) -> None:

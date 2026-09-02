@@ -11,17 +11,20 @@ database, which also means it runs in the agent loop's manifest rather than
 only in the CI job that needs a server.
 """
 
+import importlib
 import pathlib
+import sys
 import unittest
+from unittest import mock
 
-from evidence_first_rag.db import provision
+from evidence_first_rag.db import commands
 
 SECRET = "SAMPLE_PASSWORD_THAT_MUST_NOT_APPEAR"
 
 
 class TheCommandCarriesNoSecret(unittest.TestCase):
     def command(self, variables=None):
-        return provision.psql_command(
+        return commands.psql_command(
             "mvp",
             "mvp_provisioning",
             pathlib.Path("sql/cluster/000_roles.sql"),
@@ -79,3 +82,45 @@ class TheRolesScriptReadsItsPasswordsFromTheEnvironment(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ThisSuiteRunsWithoutTheDriver(unittest.TestCase):
+    """The repository-checks job installs neither the package nor psycopg.
+
+    It runs `unittest discover --start-directory tests`, so anything under
+    tests/ has to import with the driver absent. This is the guard for that:
+    an earlier revision of this file imported provision.py, which imports
+    psycopg at module level, and CI failed on the import rather than on
+    anything the tests assert. It passed locally only because a developer who
+    had run `pip install -e .` had psycopg present.
+
+    Blocking a module by binding its name to None in sys.modules is the
+    documented way to make `import` raise, and reproduces the CI condition
+    exactly rather than approximating it.
+    """
+
+    DRIVER_FREE = (
+        "evidence_first_rag.db.commands",
+        "evidence_first_rag.db.fixtures",
+    )
+
+    def test_the_modules_tests_import_need_no_psycopg(self):
+        for name in self.DRIVER_FREE:
+            with self.subTest(module=name):
+                with mock.patch.dict(sys.modules):
+                    for loaded in [m for m in sys.modules if m.startswith("evidence_first_rag")]:
+                        del sys.modules[loaded]
+                    sys.modules["psycopg"] = None
+                    module = importlib.import_module(name)
+                    self.assertIsNotNone(module)
+
+    def test_the_guard_itself_works(self):
+        # If blocking psycopg stopped raising, the test above would pass for
+        # the wrong reason and the next import of a driver-using module from
+        # tests/ would reach CI unnoticed.
+        with mock.patch.dict(sys.modules):
+            for loaded in [m for m in sys.modules if m.startswith("evidence_first_rag")]:
+                del sys.modules[loaded]
+            sys.modules["psycopg"] = None
+            with self.assertRaises(ImportError):
+                importlib.import_module("evidence_first_rag.db.provision")
