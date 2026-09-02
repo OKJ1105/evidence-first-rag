@@ -372,6 +372,33 @@ class TestStructuralCases(FixtureCheck):
         self.write("source_snapshot", rows)
         self.assert_fails("would pass by coincidence")
 
+    def test_leaving_only_ambiguous_snapshots_fails_fx_107(self):
+        """FX-107 needs a snapshot that resolves to one candidate and carries
+        rows. Move the unambiguous CHASSIS snapshots into the POWERTRAIN
+        ambiguous group and nothing is left to look a missing key up in, so a
+        `not_found` can no longer be distinguished from a `coverage_gap`."""
+        snapshots = self.rows("source_snapshot")
+        for row in snapshots:
+            row["network_name"] = "SAMPLE_NET_POWERTRAIN"
+            row["revision_label"] = "SAMPLE_REV_A"
+            if row["superseded_by"]:
+                row["superseded_by"]["network_name"] = "SAMPLE_NET_POWERTRAIN"
+                row["superseded_by"]["revision_label"] = "SAMPLE_REV_A"
+        # The two CHASSIS snapshots shared a snapshot_label; keep them distinct.
+        seen = set()
+        for index, row in enumerate(snapshots):
+            while tuple(row[f] for f in self.module.SNAPSHOT_REF) in seen:
+                row["snapshot_label"] += f"_{index}"
+            seen.add(tuple(row[f] for f in self.module.SNAPSHOT_REF))
+        self.write("source_snapshot", snapshots)
+        # Drop everything that referenced the old scopes; FX-107 is what should
+        # be reported, and dangling references would drown it out.
+        self.write("message_occurrence", [])
+        self.write("signal_occurrence", [])
+        self.write("signal_mapping", [])
+        output = self.assert_fails("FX-107")
+        self.assertIn("not_found rather than coverage_gap", output)
+
     def test_adding_a_reserved_absent_value_fails(self):
         rows = self.rows("source_snapshot")
         rows.append(

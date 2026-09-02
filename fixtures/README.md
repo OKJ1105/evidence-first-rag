@@ -43,7 +43,7 @@ Section 8.1 names fifteen cases. These files carry the ten that depend on data. 
 | `FX-104` | `SAMPLE_MAP_WHEEL_FL_CARRYOVER` is asserted by the superseded CHASSIS snapshot and crosses into `REV_B`. Continuity between the two `SAMPLE_SIG_WHEEL_SPEED_FL` occurrences is carried by this row, not inferred from the equal `signal_key` — which is the Section 4.2 rule the row exists to exercise. |
 | `FX-105` | The two POWERTRAIN snapshots share `(project_code, revision_label, network_name)` and differ only in `snapshot_label`, so a request that omits `snapshot_label` has two candidates and must return `ambiguous`. |
 | `FX-106` | `SAMPLE_NET_BODY` appears in no snapshot, so a request naming it is a coverage gap rather than an empty result. |
-| `FX-107` | `SAMPLE_MSG_ABSENT` and `SAMPLE_SIG_ABSENT` appear nowhere, so a lookup for either against a fully resolved snapshot is `not_found`. |
+| `FX-107` | `SAMPLE_MSG_ABSENT` and `SAMPLE_SIG_ABSENT` appear nowhere, and the CHASSIS snapshots resolve unambiguously while carrying rows. Both halves matter: without a snapshot that resolves to exactly one candidate, a missing key would be a `coverage_gap` rather than the `not_found` this case tests, which is the distinction Section 5 draws between them. |
 
 The three names above are reserved as absent. `validate_fixtures.py` fails if a later change adds one, because adding it would silently turn a negative case positive.
 

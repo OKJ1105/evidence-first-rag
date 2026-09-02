@@ -431,6 +431,23 @@ def main() -> int:
         "no network_name exists, so a coverage gap cannot be distinguished from an empty database",
     )
 
+    # FX-107 needs somewhere for the absent key to be absent from: a snapshot
+    # that resolves to exactly one candidate and carries rows. Without one, an
+    # absent key is a coverage gap rather than not_found, which is the
+    # distinction Section 5 draws between the two statuses. Asserted in its own
+    # right rather than left to follow from FX-001, so removing the last
+    # unambiguous snapshot names FX-107 instead of failing somewhere else.
+    unambiguous = {
+        key for key in snapshot_keys if len(candidates.get(key[:3], ())) == 1
+    }
+    populated = {key[:4] for key in message_keys}
+    require(
+        bool(unambiguous & populated),
+        "FX-107",
+        "no snapshot both resolves unambiguously and carries a message, so a "
+        "missing lookup key cannot be not_found rather than coverage_gap",
+    )
+
     if failures:
         print("Fixture validation failed:")
         print("\n".join(failures))
