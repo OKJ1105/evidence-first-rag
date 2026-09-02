@@ -226,6 +226,37 @@ class Template:
                     f" explicit NULLS LAST (Section 6)"
                 )
 
+        # Review finding N2, and the same class of defect as the row limit
+        # above: metadata that can silently disagree with the SQL it describes.
+        # `ordering` is what the runtime and the conformance runner reason
+        # about, so a template whose declared ordering does not match its
+        # ORDER BY would have them reasoning about a query that does not
+        # exist. Checked positionally, because Section 6 makes the order of
+        # the terms the thing that matters.
+        declared = list(self.ordering)
+        if len(expressions) != len(declared):
+            raise TemplateError(
+                f"{self.name}: declares {len(declared)} ordering term(s) but the"
+                f" SQL has {len(expressions)}"
+            )
+        for position, (column, expression) in enumerate(zip(declared, expressions)):
+            if _ordered_column(expression) != column.upper():
+                raise TemplateError(
+                    f"{self.name}: ordering term {position} is declared as"
+                    f" {column!r} but the SQL orders by '{expression.strip()}'"
+                )
+
+        # The same for the result columns. Section 4.4 records "its result
+        # column list in order", and a declared column the SELECT does not
+        # produce would be a column name nothing returns.
+        select_clause = self.sql.upper().split("FROM", 1)[0]
+        for column in self.result_columns:
+            if not re.search(rf"\b{re.escape(column.upper())}\b", select_clause):
+                raise TemplateError(
+                    f"{self.name}: result column {column!r} does not appear in"
+                    f" the SELECT list"
+                )
+
         # Section 4.4's limits table assigns a row limit per template, and the
         # limit belongs in the registered text so that a caller cannot raise
         # it. Matched as the trailing `LIMIT <n>` clause, not as a substring:
@@ -298,6 +329,25 @@ class Template:
 
         bound = {name: arguments.get(name) for name in self.allowed_parameters}
         return types.MappingProxyType(bound)
+
+
+# The decoration an ordering term may carry after its column, per Section 6.
+_ORDER_DECORATION = re.compile(
+    r"\s+(?:ASC|DESC)?\s*(?:NULLS\s+(?:FIRST|LAST))?\s*$", re.IGNORECASE
+)
+
+
+def _ordered_column(expression: str) -> str:
+    """The bare column an ORDER BY term sorts on, upper-cased.
+
+    Compared by equality rather than containment, and this is not fussiness:
+    a substring test passes for a column named `a` because "NULLS LAST"
+    contains an A. That is the same defect the row-limit check had before
+    review finding B2, found here by probing this check with a one-letter
+    column name rather than trusting it.
+    """
+    bare = _ORDER_DECORATION.sub("", expression.strip())
+    return bare.rsplit(".", 1)[-1].strip().upper()
 
 
 def _text(field: str, value: object) -> None:

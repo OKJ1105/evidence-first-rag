@@ -226,6 +226,61 @@ class TheRegistrationSafeguards(unittest.TestCase):
             valid_template(row_limit=7)
         self.assertIn("LIMIT 7", str(raised.exception))
 
+    def test_a_declared_limit_that_is_a_prefix_of_the_sql_limit_is_refused(self):
+        # Review finding B2. The check used to be substring containment, and
+        # "LIMIT 2" is a substring of "LIMIT 200", so a template could declare
+        # an overflow detector while the database returned up to 200 rows and
+        # `truncated()` reported a false limitation. The test above missed it
+        # because 7 against 5 shares no prefix; this is the pair that does.
+        with self.assertRaises(TemplateError):
+            valid_template(
+                row_limit=2,
+                sql="SELECT a FROM mvp.t WHERE a = %(a)s ORDER BY a NULLS LAST LIMIT 200",
+                limit_meaning=LimitMeaning.DETECTS_OVERFLOW,
+                declared_limitations=(),
+            )
+
+    def test_a_declared_ordering_that_disagrees_with_the_sql_is_refused(self):
+        # Review finding N2, the same class as the row limit: metadata that can
+        # silently disagree with the SQL it describes. `ordering` is what the
+        # runtime and the conformance runner reason about, so a template whose
+        # declaration does not match its ORDER BY has them reasoning about a
+        # query that does not exist.
+        with self.assertRaises(TemplateError) as raised:
+            valid_template(
+                sql="SELECT a, b FROM mvp.t WHERE a = %(a)s ORDER BY b NULLS LAST LIMIT 5",
+                result_columns=("a", "b"),
+                ordering=("a",),
+            )
+        self.assertIn("ordering term 0", str(raised.exception))
+
+    def test_a_one_letter_column_is_compared_exactly_not_by_containment(self):
+        # The case that caught a first attempt at the check above: "NULLS
+        # LAST" contains an A, so a substring test passes for a column named
+        # `a` no matter what the SQL actually orders by. Same defect the row
+        # limit had before B2; asserted so it cannot come back.
+        with self.assertRaises(TemplateError):
+            valid_template(
+                sql="SELECT a, z FROM mvp.t WHERE a = %(a)s ORDER BY z NULLS LAST LIMIT 5",
+                result_columns=("a", "z"),
+                ordering=("a",),
+            )
+
+    def test_a_declared_ordering_with_the_wrong_number_of_terms_is_refused(self):
+        with self.assertRaises(TemplateError) as raised:
+            valid_template(
+                sql="SELECT a, b FROM mvp.t WHERE a = %(a)s"
+                " ORDER BY a NULLS LAST, b NULLS LAST LIMIT 5",
+                result_columns=("a", "b"),
+                ordering=("a",),
+            )
+        self.assertIn("ordering term(s)", str(raised.exception))
+
+    def test_a_result_column_the_select_does_not_produce_is_refused(self):
+        with self.assertRaises(TemplateError) as raised:
+            valid_template(result_columns=("secret",))
+        self.assertIn("secret", str(raised.exception))
+
     def test_a_parameter_that_is_both_required_and_optional_is_refused(self):
         with self.assertRaises(TemplateError):
             valid_template(required_parameters=("a",), optional_parameters=("a",))
