@@ -25,7 +25,7 @@ from evidence_first_rag.registry.registry import (
 # exporting it would be the arbitrary-SQL interface AGENTS.md forbids. These
 # tests exercise the registration safeguards directly, so they reach into the
 # internal module rather than the public `evidence_first_rag.registry`.
-from evidence_first_rag.registry.template import Template
+from evidence_first_rag.registry.template import _SEAL, Template
 
 SCOPE = ("project_code", "revision_label", "network_name", "snapshot_label")
 FULL_SCOPE = {
@@ -40,6 +40,7 @@ def valid_template(**overrides):
     """A template that satisfies every Section 4.4 rule, for tests that break
     exactly one of them."""
     values = {
+        "seal": _SEAL,
         "name": "TPL_SAMPLE_V1",
         "version": "1",
         "sql": "SELECT a FROM mvp.t WHERE a = %(a)s ORDER BY a NULLS LAST LIMIT 5",

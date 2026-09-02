@@ -65,9 +65,24 @@ _FORBIDDEN = re.compile(
 # interpolation into SQL is prohibited." psycopg's named form is `%(name)s`.
 _PLACEHOLDER = re.compile(r"%\((?P<name>[a-z_][a-z0-9_]*)\)s")
 
-# The positional and format placeholder styles, which would make the binding
-# order-dependent and take the parameter names out of the SQL.
-_POSITIONAL = re.compile(r"%s|%\d*\$?[a-z]", re.IGNORECASE)
+# psycopg's positional placeholder forms. Only these two: `%s` and `%b`.
+# Matched after the literal `%%` escapes and the named placeholders have been
+# removed, so what is left is unambiguous.
+_POSITIONAL = re.compile(r"%[sb]", re.IGNORECASE)
+
+# A literal percent, written as `%%`. psycopg consumes the doubling, so SQL
+# that wants one percent sign writes two.
+_ESCAPED_PERCENT = re.compile(r"%%")
+
+
+# Construction is sealed with this. `Template` is absent from the package's
+# `__all__` and no module outside the registry imports it, but neither of
+# those stops `type(TPL_MESSAGE_FACTS_V1)` -- an exported instance hands out
+# its own class, and Python cannot make that unreachable. Requiring a value
+# only this module can supply turns "we did not export the constructor" into
+# "the constructor refuses you", which is the difference between a convention
+# and the boundary Charter Section 3.1 states.
+_SEAL = object()
 
 
 class LimitMeaning(enum.Enum):
@@ -111,6 +126,10 @@ class Template:
     is here too, because Section 4.4's limits table assigns one per template.
     """
 
+    # An InitVar, so it is not a field: it stays out of repr, eq and the
+    # frozen instance, and only gates construction.
+    seal: dataclasses.InitVar[object] = None
+
     name: str
     version: str
     sql: str
@@ -122,7 +141,12 @@ class Template:
     limit_meaning: LimitMeaning
     declared_limitations: tuple[LimitationKind, ...] = ()
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, seal: object) -> None:
+        if seal is not _SEAL:
+            raise TemplateError(
+                "a Template is registered in registry.py, not constructed by a"
+                " caller; Section 4.4 puts the SQL text beyond a caller's reach"
+            )
         _text("name", self.name)
         _text("version", self.version)
         _text("sql", self.sql)
@@ -188,11 +212,29 @@ class Template:
         # variable has to appear as a named placeholder. A template carrying a
         # positional one binds by position, and the parameter allowlist below
         # would then be checking names the SQL does not use.
-        without_named = _PLACEHOLDER.sub("", self.sql)
-        if _POSITIONAL.search(without_named):
+        #
+        # Stripped in this order -- literal `%%` escapes, then named
+        # placeholders -- so that what remains is unambiguously a placeholder.
+        # Review finding N3: the earlier pattern matched any `%` followed by a
+        # letter, so `LIKE '%%foo'` was refused as positional binding even
+        # though it is a correctly escaped literal percent. That is the same
+        # false-positive trap the keyword scan avoids by matching on word
+        # boundaries, and the usual repair for it is to weaken the check.
+        remainder = _PLACEHOLDER.sub("", _ESCAPED_PERCENT.sub("", self.sql))
+        if _POSITIONAL.search(remainder):
             raise TemplateError(
                 f"{self.name}: SQL uses a positional placeholder; Section 4.4"
                 f" binds every variable as a named parameter"
+            )
+        if "%" in remainder:
+            # Not a placeholder, but psycopg would try to read it as one and
+            # fail at execution. Refusing it here says what is wrong; letting
+            # it register would move the failure to a runtime nobody is
+            # watching.
+            raise TemplateError(
+                f"{self.name}: SQL contains an unescaped '%'; a literal percent"
+                f" is written '%%' so that psycopg does not read it as a"
+                f" placeholder"
             )
 
         # Every placeholder in the SQL must be declared, and every declared

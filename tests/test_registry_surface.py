@@ -58,22 +58,42 @@ class ThePublicSurfaceIsPinned(unittest.TestCase):
 
 class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
     def public_callables(self):
+        """Every callable a caller can reach from the package's exports.
+
+        Review finding O1: an earlier version inspected only functions and
+        classes, so the methods on the four exported `TPL_*` values were never
+        scanned. They are `Template` *instances*, and `inspect.isclass` is
+        False for an instance, so a `sql=` parameter added to `bind()` would
+        have passed this test. Exported instances are now scanned through
+        their type, which is where their methods live.
+        """
         for name in sorted(registry.__all__):
             value = getattr(registry, name)
             if inspect.isfunction(value):
                 yield f"{name}()", value
-            elif inspect.isclass(value):
-                for method_name, method in inspect.getmembers(value, inspect.isfunction):
-                    # Only dunders other than __init__ are excluded: a
-                    # constructor is exactly the kind of entry point Section
-                    # 4.4 forbids, so it has to be checked like any other
-                    # public callable rather than filtered out with the rest
-                    # of the dunders.
-                    if method_name == "__init__" or not method_name.startswith("_"):
-                        yield f"{name}.{method_name}()", method
+                continue
+            owner = value if inspect.isclass(value) else type(value)
+            if owner.__module__.split(".")[0] != "evidence_first_rag":
+                # A tuple, a string, an enum member defined elsewhere: nothing
+                # this package hangs methods on.
+                continue
+            for method_name, method in inspect.getmembers(owner, inspect.isfunction):
+                # Only dunders other than __init__ are excluded: a
+                # constructor is exactly the kind of entry point Section
+                # 4.4 forbids, so it has to be checked like any other
+                # public callable rather than filtered out with the rest
+                # of the dunders.
+                if method_name == "__init__" or not method_name.startswith("_"):
+                    yield f"{name}.{method_name}()", method
 
     def test_no_public_callable_takes_a_sql_table_or_column_parameter(self):
         for label, function in self.public_callables():
+            if label.endswith(".__init__()"):
+                # Sealed, and asserted as sealed by the test above. A
+                # constructor that refuses every caller is not an entry point;
+                # scanning its parameters here would report the SQL text it
+                # takes from registry.py, which is the one caller allowed to.
+                continue
             parameters = set(inspect.signature(function).parameters) - {"self", "cls"}
             offending = sorted(parameters & CALLER_SUPPLIED_SQL)
             with self.subTest(callable=label):
@@ -82,6 +102,46 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
                     [],
                     f"{label} accepts {offending} from a caller (Section 4.4)",
                 )
+
+    def test_the_constructor_refuses_a_caller_reached_through_an_exported_instance(self):
+        # Found by the scan above once it covered instance methods, and it is
+        # a real hole: `type(TPL_MESSAGE_FACTS_V1)` hands out the Template
+        # class without importing it, so neither dropping it from `__all__`
+        # nor the source scan for direct imports stops a caller building a
+        # template over any table it likes. Python cannot make `type(obj)`
+        # unreachable, so the constructor refuses instead.
+        from evidence_first_rag.evidence import LimitationKind
+        from evidence_first_rag.registry.template import TemplateError
+
+        reached = type(registry.TPL_MESSAGE_FACTS_V1)
+        with self.assertRaises(TemplateError) as raised:
+            reached(
+                name="ROGUE",
+                version="1",
+                sql="SELECT password_hash FROM mvp.users WHERE user_id = %(x)s"
+                " ORDER BY user_id NULLS LAST LIMIT 5",
+                required_parameters=("x",),
+                result_columns=("password_hash",),
+                ordering=("user_id",),
+                row_limit=5,
+                limit_meaning=registry.LimitMeaning.TRUNCATES,
+                declared_limitations=(LimitationKind.TRUNCATED_BY_LIMIT,),
+            )
+        self.assertIn("not constructed by a caller", str(raised.exception))
+
+    def test_the_scan_reaches_the_methods_on_the_exported_instances(self):
+        # The guard for the guard. O1 was invisible because nothing asserted
+        # what public_callables() actually covers; if a later refactor stopped
+        # reaching instance methods, the scan above would keep passing while
+        # covering less.
+        reached = {label for label, _ in self.public_callables()}
+        for expected in (
+            "TPL_MESSAGE_FACTS_V1.bind()",
+            "TPL_MESSAGE_FACTS_V1.truncated()",
+            "TPL_MESSAGE_FACTS_V1.rows_are_overflow()",
+        ):
+            with self.subTest(callable=expected):
+                self.assertIn(expected, reached)
 
     def test_the_registry_lookup_takes_a_name_and_nothing_else(self):
         # `get()` is the only way in. If it ever grew a second parameter, that

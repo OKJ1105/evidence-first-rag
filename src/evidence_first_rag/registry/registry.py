@@ -13,7 +13,7 @@ named once here so that a disagreement is one edit rather than a search.
 """
 
 from ..evidence import LimitationKind
-from .template import LimitMeaning, Template, UnregisteredTemplate
+from .template import _SEAL, LimitMeaning, Template, UnregisteredTemplate
 
 SCHEMA = "mvp"
 
@@ -22,6 +22,7 @@ _SCOPE = ("project_code", "revision_label", "network_name", "snapshot_label")
 
 
 TPL_SNAPSHOT_CANDIDATES_V1 = Template(
+    seal=_SEAL,
     name="TPL_SNAPSHOT_CANDIDATES_V1",
     version="1",
     # Section 4.4: "exists so that an `ambiguous` outcome can list candidate
@@ -60,6 +61,7 @@ SELECT s.project_code,
 
 
 TPL_MESSAGE_FACTS_V1 = Template(
+    seal=_SEAL,
     name="TPL_MESSAGE_FACTS_V1",
     version="1",
     sql=f"""
@@ -108,6 +110,7 @@ SELECT s.project_code,
 
 
 TPL_SIGNAL_FACTS_V1 = Template(
+    seal=_SEAL,
     name="TPL_SIGNAL_FACTS_V1",
     version="1",
     sql=f"""
@@ -154,6 +157,7 @@ SELECT s.project_code,
 
 
 TPL_SIGNAL_MAPPING_V1 = Template(
+    seal=_SEAL,
     name="TPL_SIGNAL_MAPPING_V1",
     version="1",
     # Section 4.5: "the result exposes one entry per asserting relation",
