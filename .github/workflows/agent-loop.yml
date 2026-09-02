@@ -194,6 +194,13 @@ jobs:
           CI_AGENT_BRANCH: ${{ steps.pr.outputs.ref }}
           CI_AGENT_BASE_REF: ${{ steps.pr.outputs.base }}
           CI_AGENT_RESET: ${{ needs.gate.outputs.reset }}
+          # Pinned per role, like the CLI version above: a provider-side
+          # default change must not silently alter what writes or judges
+          # this repository. The two differ because the Development
+          # Workflow requires the reviewer to use a different model from
+          # the writer.
+          CI_AGENT_WRITER_MODEL: claude-opus-5
+          CI_AGENT_REVIEWER_MODEL: claude-opus-5
           CI_AGENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: node scripts/agent/run.mjs
 

@@ -41,6 +41,33 @@ const outcomeLabels = [LABELS.ready, LABELS.needsHuman, LABELS.failed];
  */
 export const protectedPaths = ["scripts/", ".github/", ".githooks/", ".claude/"];
 
+/**
+ * The model each role runs on, pinned per role rather than shared.
+ *
+ * Two reasons the roles are separate. The Development Workflow requires the
+ * reviewer to use a different model from the writer, which one variable cannot
+ * express. And the review record has to name what reviewed it: the CLI version
+ * is pinned in the workflow precisely so the toolchain moves only by a
+ * deliberate commit, and leaving the model it drives unpinned undoes that —
+ * a provider-side default change would silently alter what judges this
+ * repository, with nothing in the history to show it.
+ *
+ * Falls back to the shared `CI_AGENT_MODEL`, then to the CLI's own default. An
+ * unset model is reported as unpinned in the published comment rather than
+ * passing silently, because unset is the failure mode worth seeing.
+ *
+ * @param {"writer"|"reviewer"} role
+ * @param {Record<string,string|undefined>} [env]
+ * @returns {string|undefined} A model identifier, or undefined to let the CLI choose.
+ */
+export function modelFor(role, env = process.env) {
+  const perRole =
+    role === "reviewer" ? env.CI_AGENT_REVIEWER_MODEL : env.CI_AGENT_WRITER_MODEL;
+  const chosen = perRole ?? env.CI_AGENT_MODEL;
+  const trimmed = typeof chosen === "string" ? chosen.trim() : "";
+  return trimmed === "" ? undefined : trimmed;
+}
+
 /** Governing documents injected into both prompts, read from the base ref. */
 export const governingDocs = [
   "AGENTS.md",
@@ -228,11 +255,27 @@ export function checkEnv(base = process.env) {
  * read from `manifestDir` (the base checkout, per BF4). `{baseRef}` in a
  * command argument is replaced with the pull request's base ref, so the
  * manifest does not hardcode a branch name.
+ *
+ * `{baseDir}` is replaced with the base checkout's path, and it completes what
+ * BF4 only half-did. Reading the manifest from base stops a branch weakening
+ * the *list* of checks, but the commands still ran out of the branch's own
+ * tree, so a check implemented as a repository script was whatever the branch
+ * said it was — a pull request could replace `validate_links.py` with
+ * `sys.exit(0)` and be judged by its own no-op. It also made a branch older
+ * than a check fail for the wrong reason: the base manifest named a script the
+ * head had never seen, and the loop reported a broken check rather than a
+ * stale branch. Naming a script through `{baseDir}` runs base's code against
+ * head's files, which is the split that was intended.
+ *
+ * Per-check and opt-in, because not every check wants it: the whitespace check
+ * is a git invocation with no script, and the unit tests must run the branch's
+ * own tests — verifying that a branch did not break the loop is the point.
  */
 export async function runChecks({
   cwd,
   manifestDir = cwd,
   baseRef = "main",
+  baseDir = manifestDir,
   manifest = loadChecksManifest(manifestDir),
   timeoutMs = 10 * 60_000,
   env = checkEnv(),
@@ -248,7 +291,9 @@ export async function runChecks({
   for (const check of manifest.checks) {
     const bound = {
       name: check.name,
-      command: check.command.map((a) => a.replaceAll("{baseRef}", baseRef)),
+      command: check.command.map((a) =>
+        a.replaceAll("{baseRef}", baseRef).replaceAll("{baseDir}", baseDir),
+      ),
     };
     const r = await runCommand(bound, { cwd, timeoutMs, env });
     results.push(r);
@@ -469,7 +514,7 @@ export async function runLoop({
           `## Independent review — round ${state.round + 1} of ${cap}`,
           "",
           `Head \`${currentHead}\` · Issue #${issueNumber} · risk \`${riskLevel}\``,
-          `Reviewer session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+          `Reviewer model: \`${raw.model}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
           parsed.summary,
           "",
@@ -546,7 +591,7 @@ export async function runLoop({
           `## Writer response — round ${state.round} of ${cap}`,
           "",
           `Head \`${currentHead}\``,
-          `Writer session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+          `Writer model: \`${raw.model}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
           summary,
           "",
@@ -692,17 +737,22 @@ async function main() {
       docs,
       reviewerOnlyDocs,
       ctx: { prNumber, runUrl, startedAt, reset },
-      agent: ({ role, prompt }) =>
-        runAgent({
+      agent: async ({ role, prompt }) => {
+        const model = modelFor(role);
+        const result = await runAgent({
           role,
           prompt,
           timeoutMs: agentTimeoutMs,
           cwd: worktree,
           settingsPath,
-          model: process.env.CI_AGENT_MODEL,
-        }),
+          model,
+        });
+        // The published record names the model, not just the session. A review
+        // whose reviewer is unidentified cannot be compared with a later one.
+        return { ...result, model: model ?? "CLI default (unpinned)" };
+      },
       checks: () =>
-        runChecks({ cwd: worktree, manifestDir: baseDir, baseRef }),
+        runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: async () =>
         (await git(["status", "--porcelain"], worktree))

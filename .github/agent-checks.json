@@ -1,25 +1,43 @@
 {
-  "//": "Checks the agent loop runs between a Writer turn and the Reviewer that follows. The loop reads this file from the BASE branch (BF4), so a branch cannot weaken the checks it is judged against; a pull request that adds checks gets them in the loop only after it merges. Commands run in the branch checkout with a credential-stripped environment; {baseRef} is replaced with the pull request's base ref. CI stays authoritative for merge.",
+  "//": "Checks the agent loop runs between a Writer turn and the Reviewer that follows. The loop reads this file from the BASE branch (BF4), so a branch cannot weaken the checks it is judged against; a pull request that adds checks gets them in the loop only after it merges. Commands run in the branch checkout with a credential-stripped environment; {baseRef} is replaced with the pull request's base ref. CI stays authoritative for merge. {baseDir} is replaced with the base checkout's path: a check implemented as a repository script names it that way so base's code runs against head's files. Checks that must run the branch's own code (the agent unit tests) deliberately do not.",
   "checks": [
     {
       "name": "whitespace",
-      "command": ["git", "diff", "--check", "origin/{baseRef}...HEAD"]
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "origin/{baseRef}...HEAD"
+      ]
     },
     {
       "name": "markdown-links",
-      "command": ["python3", "scripts/checks/validate_links.py"]
+      "command": [
+        "python3",
+        "{baseDir}/scripts/checks/validate_links.py"
+      ]
     },
     {
       "name": "fixtures",
-      "command": ["python3", "scripts/checks/validate_fixtures.py"]
+      "command": [
+        "python3",
+        "{baseDir}/scripts/checks/validate_fixtures.py"
+      ]
     },
     {
       "name": "fixture-check-unit-tests",
-      "command": ["python3", "scripts/checks/test_validate_fixtures.py"]
+      "command": [
+        "python3",
+        "{baseDir}/scripts/checks/test_validate_fixtures.py"
+      ]
     },
     {
       "name": "agent-unit-tests",
-      "command": ["node", "--test", "scripts/agent/*.test.mjs"]
+      "command": [
+        "node",
+        "--test",
+        "scripts/agent/*.test.mjs"
+      ]
     }
   ]
 }
