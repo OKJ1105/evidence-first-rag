@@ -64,8 +64,60 @@ describe("the Writer does not get the Reviewer's documents", () => {
       cap: 2,
       docs: "SHARED-DOCS",
       protectedPaths: ["scripts/"],
+      ownerDecisionPaths: ["docs/contracts/"],
     });
     expect(p).toContain("SHARED-DOCS");
     expect(p).not.toContain("BRIEF-AND-CHARTER");
+  });
+});
+
+describe("the Writer is told about both fences, with the reason for each", () => {
+  // Two lists, two reasons. A prompt that named the paths without the reason
+  // would leave the Writer to infer one, and on 2026-09-03 it inferred that a
+  // contract amendment was a review-finding fix — twice, in opposite
+  // directions. See #34.
+  const prompt = writerPrompt({
+    issueNumber: 1,
+    issueBody: "ISSUE",
+    riskLevel: "L2",
+    branch: "b",
+    findings: [],
+    checks: { summary: "ok" },
+    round: 1,
+    cap: 2,
+    docs: "DOCS",
+    protectedPaths: ["scripts/", ".github/"],
+    ownerDecisionPaths: ["docs/contracts/"],
+  }).replace(/\s+/g, " ");
+
+  it("lists the paths from both fences", () => {
+    expect(prompt).toContain("`scripts/`");
+    expect(prompt).toContain("`.github/`");
+    expect(prompt).toContain("`docs/contracts/`");
+  });
+
+  it("gives BF3 the credential reason", () => {
+    expect(prompt).toContain("privileges you do not have");
+  });
+
+  it("gives the second fence the recorded-decision reason, not the credential one", () => {
+    // The distinction the two lists exist to preserve: a contract is not
+    // executed and holds no credential, so borrowing privilege is not why it
+    // is fenced.
+    expect(prompt).toContain("recorded human");
+    expect(prompt).toContain("Section 10");
+    expect(prompt).toContain("nothing carries a credential");
+  });
+
+  it("forbids the revert direction as well as the amend direction", () => {
+    // #23 amended a contract to authorise its own branch; #32 reverted an
+    // authorised amendment because the decision was recorded where it could
+    // not see it. Naming only the first would leave the second open.
+    expect(prompt).toContain("do not revert an amendment");
+    expect(prompt).toContain("recorded outside your inputs still exists");
+  });
+
+  it("says declining is the expected outcome, not a failed turn", () => {
+    expect(prompt).toContain("not a failure of your turn");
   });
 });

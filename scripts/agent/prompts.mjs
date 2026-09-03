@@ -173,6 +173,7 @@ export function writerPrompt({
   cap,
   docs,
   protectedPaths,
+  ownerDecisionPaths,
 }) {
   return `
 You are the Writer for this repository, under the roles defined in
@@ -209,9 +210,22 @@ borrow those privileges, so the run is **aborted** if your edits touch any of:
 
 ${protectedPaths.map((p) => `- \`${p}\``).join("\n")}
 
-If a finding genuinely requires changing one of these, do not edit it. Decline
-the finding and say in your note that it needs a change to a protected path, so
-the owner can make it.
+A second fence, for a different reason. Nothing below is executed and nothing
+carries a credential. Amending an accepted contract is a **recorded human
+decision** under its Section 10, and that is not yours to make or to record.
+The run is **aborted** if your edits touch any of:
+
+${ownerDecisionPaths.map((p) => `- \`${p}\``).join("\n")}
+
+This holds in both directions, and both have happened. Do not amend a contract
+to authorise something the branch does, and do not revert an amendment the
+branch carries because you cannot find the decision behind it — a decision
+recorded outside your inputs still exists.
+
+If a finding genuinely requires changing a path under either fence, do not edit
+it. Decline the finding and say in your note which fence it falls under and what
+change the owner has to make. A finding you decline this way is not a failure of
+your turn; a finding you resolve by making a decision you do not hold is.
 
 ## How to respond
 

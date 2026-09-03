@@ -1,5 +1,14 @@
 import { describe, expect, it } from "./test-kit.mjs";
-import { LABELS, assertNothingApproved, riskLevelOf, runLoop } from "./run.mjs";
+import {
+  LABELS,
+  assertNothingApproved,
+  forbiddenEdits,
+  ownerDecisionEdits,
+  ownerDecisionPaths,
+  protectedPaths,
+  riskLevelOf,
+  runLoop,
+} from "./run.mjs";
 import { parseState, renderStatusComment } from "./state.mjs";
 
 /**
@@ -716,7 +725,11 @@ describe("BF3 - a Writer turn that edits the machinery aborts the run", () => {
         checks: passingChecks,
         commit: async () => "sha1",
         diff: async () => "d",
-        changedPaths: async () => ["docs/contracts/mvp-v0.1.md", path],
+        // Only the machinery path. `docs/contracts/` used to sit here too,
+        // which stopped mattering the moment it grew a fence of its own (#34):
+        // the run would abort either way and the test could no longer say
+        // which fence did it.
+        changedPaths: async () => ["src/evidence_first_rag/runtime/routes.py", path],
         ctx: baseCtx(),
         log: () => {},
       }),
@@ -735,6 +748,78 @@ describe("BF3 - a Writer turn that edits the machinery aborts the run", () => {
       commit: async () => "sha1",
       diff: async () => "d",
       changedPaths: async () => ["src/lib/rag/contract.ts"],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(result.round).toBe(1);
+  });
+});
+
+describe("a Writer turn that edits the contract aborts the run", () => {
+  // #34. The loop's Writer amended an accepted contract on #23 to authorise
+  // its own branch, and reverted an authorised amendment on #32 because the
+  // decision was recorded where it could not see it. Both are refused here,
+  // and the message must give the recorded-decision reason rather than BF3's
+  // credential one — a contract is never executed and holds no credential.
+  it.each([
+    ["docs/contracts/mvp-v0.1.md"],
+    ["docs/contracts/README.md"],
+  ])("refuses an edit to %s", async (path) => {
+    const gh = fakeGitHub();
+    await expect(
+      runLoop({
+        gh,
+        agent: fakeAgent({
+          reviewer: [review([blocking("one")])],
+          writer: [{ responses: [], summary: "r1" }],
+        }),
+        checks: passingChecks,
+        commit: async () => "sha1",
+        diff: async () => "d",
+        changedPaths: async () => [path],
+        ctx: baseCtx(),
+        log: () => {},
+      }),
+    ).rejects.toThrow(/recorded human decision/);
+  });
+
+  it("does not report the contract under BF3's credential wording", async () => {
+    // The reason the two fences are separate lists. Reported under BF3 this
+    // would tell a reader the contract is fenced to stop an agent borrowing
+    // the orchestrator's privileges, which is not true of a document nothing
+    // executes.
+    const gh = fakeGitHub();
+    await expect(
+      runLoop({
+        gh,
+        agent: fakeAgent({
+          reviewer: [review([blocking("one")])],
+          writer: [{ responses: [], summary: "r1" }],
+        }),
+        checks: passingChecks,
+        commit: async () => "sha1",
+        diff: async () => "d",
+        changedPaths: async () => ["docs/contracts/mvp-v0.1.md"],
+        ctx: baseCtx(),
+        log: () => {},
+      }),
+    ).rejects.toThrow(/not a review-finding fix/);
+  });
+
+  it("leaves a document outside docs/contracts/ alone", async () => {
+    // The condition this fence must NOT impose. `docs/agent-loop.md` and the
+    // workflow documents are ordinary prose a finding may legitimately need.
+    const gh = fakeGitHub();
+    const result = await runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "fixed" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => "sha1",
+      diff: async () => "d",
+      changedPaths: async () => ["docs/DEVELOPMENT_WORKFLOW.md"],
       ctx: baseCtx(),
       log: () => {},
     });
@@ -806,5 +891,64 @@ describe("BF6 - the record is not overwritten", () => {
     expect(gh._.comments.map((c) => c.body).join("\n")).toContain(
       "session_reviewer",
     );
+  });
+});
+
+describe("the two fences on a Writer turn", () => {
+  // Neither fence had a test before #34, which is how the contract came to be
+  // editable by a Writer turn at all. They are asserted separately on purpose:
+  // a later change that merged the two lists would make one abort message
+  // state the wrong reason, and a single combined test would not notice.
+
+  it("BF3 catches an edit to the machinery the orchestrator runs", () => {
+    expect(forbiddenEdits(["scripts/agent/run.mjs"])).toEqual([
+      "scripts/agent/run.mjs",
+    ]);
+    expect(forbiddenEdits([".github/workflows/agent-loop.yml"])).toEqual([
+      ".github/workflows/agent-loop.yml",
+    ]);
+  });
+
+  it("the owner-decision fence catches an edit to the contract", () => {
+    expect(ownerDecisionEdits(["docs/contracts/mvp-v0.1.md"])).toEqual([
+      "docs/contracts/mvp-v0.1.md",
+    ]);
+  });
+
+  it("neither fence catches what the other one guards", () => {
+    // The distinction the separation exists to keep. A contract is not BF3's
+    // business (nothing executes it, no credential) and the loop's machinery
+    // is not the owner-decision fence's (editing it is not an amendment).
+    expect(forbiddenEdits(["docs/contracts/mvp-v0.1.md"])).toEqual([]);
+    expect(ownerDecisionEdits(["scripts/agent/run.mjs"])).toEqual([]);
+  });
+
+  it("leaves an ordinary source or test edit alone", () => {
+    // The condition the fences must NOT impose: fixing a finding in the code
+    // under review is the Writer's whole job.
+    const ordinary = [
+      "src/evidence_first_rag/runtime/routes.py",
+      "tests/test_routes.py",
+      "README.md",
+      "fixtures/source_snapshot.jsonl",
+    ];
+    expect(forbiddenEdits(ordinary)).toEqual([]);
+    expect(ownerDecisionEdits(ordinary)).toEqual([]);
+  });
+
+  it("matches on a path prefix, not a substring", () => {
+    // `docs/contracts-notes.md` is not under `docs/contracts/`. A substring
+    // test would fence it, and the usual repair for that is to weaken the
+    // fence.
+    expect(ownerDecisionEdits(["docs/contracts-notes.md"])).toEqual([]);
+    expect(forbiddenEdits(["scriptsomething/x.mjs"])).toEqual([]);
+  });
+
+  it("names the contract fence in its own list", () => {
+    // If someone folds `docs/contracts/` into protectedPaths, this fails and
+    // says why: the abort message would then give the credential reason for a
+    // file that holds no credential.
+    expect(ownerDecisionPaths).toContain("docs/contracts/");
+    expect(protectedPaths).not.toContain("docs/contracts/");
   });
 });
