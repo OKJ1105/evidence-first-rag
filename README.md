@@ -22,7 +22,7 @@ The table below says how much of the contract executes today, section by section
 | 4.1 Data model | Schema, columns, and uniqueness constraints | Contracted |
 | 4.2 Identity and scope | Canonical message and signal reference types | Types only |
 | 4.3 Database identities | Provisioning and read-only runtime roles | Contracted |
-| 4.4 Template registry | Four fixed SQL templates, safeguards, limits, timeout | Contracted |
+| 4.4 Template registry | Four fixed SQL templates, safeguards, and limits | Implemented |
 | 4.5 Routes | The three route names, as a closed set | Contracted |
 | 4.6 Thin LLM Adapter | Adapter and deterministic revalidation | Contracted |
 | 4.7 Deterministic baseline | Exact-match control group for the Milestone 2 comparison | Contracted |
@@ -32,12 +32,13 @@ The table below says how much of the contract executes today, section by section
 | 4.11 Fixture serialization | The registered JSON Lines fixture files | Implemented |
 | 4.11 Fixture serialization | The loader that resolves natural keys at load time | Contracted |
 | 5 Outcome coverage | The seven status families, as a closed set | Types only |
-| 6 Determinism | Ordering, collation, and no-normalization rules | Contracted |
+| 6 Determinism | Registered template ordering, tiebreakers, explicit `NULLS LAST` | Implemented |
+| 6 Determinism | Collation and no-normalization rules | Contracted |
 | 7 Evidence obligations | `evidence_bundle`, `source_trace`, `limitations` types | Types only |
 | 8.1 Required fixture cases | Structural fixture data for the registered cases | Implemented |
 | 8.1 Required fixture cases | Registered expected results per fixture | Contracted |
 
-Nothing in this repository opens a database yet.
+The four registered SQL templates exist and are inspectable; nothing executes them yet. Nothing in this repository opens a database yet.
 
 See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, architecture boundaries, success criterion, roadmap, and release conditions.
 
