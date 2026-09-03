@@ -4,7 +4,7 @@
 
 **Identifier:** `mvp-v0.1`
 
-**Version:** `0.3.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted.
+**Version:** `0.4.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted. `0.4.0` resolves a contradiction between Section 4.2 and Section 5 over the `ambiguous` candidate threshold in favour of Section 4.2, and registers `FX-113` for the single-candidate case that neither reading tested.
 
 This contract combines the data, route, result, evidence, query-template-registry, runtime, and evaluation families described in [Contract Shape Framework](README.md) Section 5 into one document. Section 5 of that framework assigns responsibilities per family; it does not require one document per family.
 
@@ -136,7 +136,7 @@ Unique constraint on `(asserting_snapshot_id, source_signal_occurrence_id, targe
 - A canonical signal reference is that tuple plus `message_key` of the parent and `signal_key`.
 - No surrogate key appears in any public payload. Surrogate values may differ between provisioning runs.
 - The runtime never supplies a missing `project_code`, `revision_label`, `network_name`, or `snapshot_label`. It never selects the newest `ingested_at`, the highest `revision_label`, or the only loaded row.
-- When a request omits or under-specifies scope and more than zero candidate snapshots match, the runtime returns `ambiguous` and lists the candidate scopes.
+- When a request omits or under-specifies scope and one or more candidate snapshots match, the runtime returns `ambiguous` and lists the candidate scopes. One matching candidate is still `ambiguous`. The request is under-specified whatever the database happens to hold, and resolving it would be the selection of "the only loaded row" that the rule above forbids; a candidate count is a property of what is currently loaded, so deciding on it would make the same request answerable today and ambiguous once a second snapshot lands. Scope may be narrowed to one candidate only by an explicit user selection, which Section 7 requires to be recorded in `limitations`. Zero matching candidates is not `ambiguous`; Section 5 assigns that case to `coverage_gap` or `not_found`.
 - A `signal_mapping` row is returned only when the asserting snapshot and both endpoint snapshots resolve to exactly one snapshot each. Otherwise the request fails closed.
 - A mapping asserted by a superseded snapshot is never presented as holding in a later snapshot. `superseded_by` is exposed in `limitations` when any participating snapshot is superseded.
 - Continuity or equivalence between occurrences in different snapshots is never derived from equal `message_key` or `signal_key`.
@@ -294,7 +294,7 @@ The runner additionally asserts that the runtime identity is refused when it att
 | `not_found` | Scope resolves to exactly one snapshot and that snapshot is within approved coverage, but no row matches the lookup key. |
 | `coverage_gap` | The approved data scope does not contain, or cannot be established to contain, the coverage the request needs. Returned instead of `not_found` whenever coverage cannot be established. |
 | `unsupported` | The request cannot be represented by an approved contract at the producing layer. The trace records whether the adapter or the runtime produced it. |
-| `ambiguous` | Scope is missing or under-specified and more than one candidate snapshot matches. Candidate scopes are listed. |
+| `ambiguous` | Scope is missing or under-specified and one or more candidate snapshots match. Candidate scopes are listed. |
 | `invalid_request` | Scope or arguments are malformed, contradictory, or contain a parameter outside the route allowlist. |
 | `needs_entity_discovery` | The route is determined but no canonical reference can be formed. Terminal in v0.1; never reaches the database. |
 
@@ -352,7 +352,7 @@ Each obligation is either an automated assertion over registered inputs or a rec
 | Obligation | Acceptance evidence |
 | --- | --- |
 | Section 4.1 schema and constraints | Automated. The data-level invariant check asserts every unique constraint and reference, including the prohibition on a snapshot-level unique constraint over `signal_key`. |
-| Section 4.2 identity and scope | Automated. Fixtures `FX-101`, `FX-102`, `FX-105`, `FX-106` below, plus the invariant check. |
+| Section 4.2 identity and scope | Automated. Fixtures `FX-101`, `FX-102`, `FX-105`, `FX-106`, `FX-113` below, plus the invariant check. `FX-105` and `FX-113` are both required: they are the two-candidate and one-candidate halves of the same threshold, and either alone is satisfied by a rule the section rejects. |
 | Section 4.3 database identities | Automated. The four refusal assertions in Section 4.10. |
 | Section 4.4 registry safeguards | Automated. Negative tests for unregistered template, write-keyword registration, unknown parameter, missing required parameter, and absence of any arbitrary-SQL entry point. |
 | Section 4.4 limits and timeouts | Automated. Template-level tests assert each registered `LIMIT` value and explicit `NULLS LAST` clause; the invariance check reads the runtime role's `statement_timeout` setting; the facts-template overflow rule (limit 2 → runtime `data` failure) is asserted at unit level. |
@@ -389,6 +389,9 @@ Every fixture uses `SAMPLE_*` identifiers only. Every status family in Section 5
 | `FX-110` | Contradictory scope, for example two different `revision_label` values | `invalid_request` |
 | `FX-111` | Route determined, no canonical reference formable | `needs_entity_discovery`, terminal, no connection opened |
 | `FX-112` | Adapter emits an argument value absent from the request | Revalidation rejects; `invalid_request`; forced `fail` if it reaches SQL |
+| `FX-113` | Scope omitted, exactly one candidate snapshot matches | `ambiguous` with the single candidate scope listed |
+
+`FX-113` sits outside the `1xx` data-dependent block it belongs with because a registered fixture identifier is never renumbered. It and `FX-105` are the two halves of the Section 4.2 threshold — one candidate and two — and an implementation that satisfies one while failing the other has picked a candidate count as its rule. Read them together.
 
 `FX-104` deliberately expects `success`, not a negative status. A superseded snapshot still holds facts about itself; what is prohibited is presenting its mapping as holding in a later snapshot. The `limitations` entry carries that boundary.
 

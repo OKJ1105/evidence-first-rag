@@ -30,7 +30,7 @@ Scope values are abbreviated here; the files carry the full `SAMPLE_*` names.
 
 ## What each row is for
 
-Section 8.1 names fifteen cases. These files carry the ten that depend on data. `FX-108` through `FX-112` are properties of a request, not of the database, and are registered with the route and adapter slices.
+Section 8.1 names sixteen cases. These files carry the eleven that depend on data. `FX-108` through `FX-112` are properties of a request, not of the database, and are registered with the route and adapter slices.
 
 | Case | Structure that makes it reachable |
 | --- | --- |
@@ -44,6 +44,7 @@ Section 8.1 names fifteen cases. These files carry the ten that depend on data. 
 | `FX-105` | The two POWERTRAIN snapshots share `(project_code, revision_label, network_name)` and differ only in `snapshot_label`, so a request that omits `snapshot_label` has two candidates and must return `ambiguous`. |
 | `FX-106` | `SAMPLE_NET_BODY` appears in no snapshot, so a request naming it is a coverage gap rather than an empty result. |
 | `FX-107` | `SAMPLE_MSG_ABSENT` and `SAMPLE_SIG_ABSENT` appear nowhere, and snapshots exist that carry rows for them to be absent from. Both halves matter: against an empty snapshot the case cannot show that the key is what is missing rather than the data, which is the `not_found` and `coverage_gap` line Section 5 draws. Sibling snapshots are irrelevant here — a Section 4.2 canonical reference names all four scope dimensions, so a fully scoped request resolves regardless. |
+| `FX-113` | `ALPHA / REV_B / CHASSIS` holds exactly one snapshot and that snapshot is not superseded, so a request omitting `snapshot_label` has one candidate and must still return `ambiguous`. Un-superseded matters: a superseded snapshot also owes a Section 7 `limitations` entry, and a case that could fail for either reason would not say which rule was broken. `FX-105` is the two-candidate half of the same Section 4.2 rule; an implementation that passes one and fails the other has made the candidate count its threshold, which is the reading Section 4.2 rejects. |
 
 The three names above are reserved as absent. `validate_fixtures.py` fails if a later change adds one, because adding it would silently turn a negative case positive.
 

@@ -10,7 +10,7 @@ the registered inputs every later slice is judged against are well-formed,
 reference-complete, and still carry the structural cases the contract's
 acceptance evidence depends on.
 
-Sections cited below are from docs/contracts/mvp-v0.1.md at version 0.3.0.
+Sections cited below are from docs/contracts/mvp-v0.1.md at version 0.4.0.
 Exits 1 and lists every failure when any assertion does not hold.
 """
 
@@ -410,6 +410,25 @@ def main() -> int:
         "FX-105",
         "in every ambiguous group ingested_at order agrees with snapshot_label order, "
         "so a runtime that selects the newest snapshot would pass by coincidence",
+    )
+
+    # FX-113 is the other half of the Section 4.2 threshold. An omitted scope
+    # matching exactly one candidate is still ambiguous, so keep a group with a
+    # single snapshot_label. Keep that snapshot un-superseded as well: a
+    # superseded one would also owe a `limitations` entry under Section 7, and a
+    # case that fails for either reason cannot say which rule was broken.
+    single_candidate_groups = {
+        scope: labels for scope, labels in candidates.items() if len(labels) == 1
+    }
+    require(
+        any(
+            scope + (next(iter(labels)),) not in superseded
+            for scope, labels in single_candidate_groups.items()
+        ),
+        "FX-113",
+        "no (project_code, revision_label, network_name) has exactly one "
+        "un-superseded snapshot_label, so the single-candidate case cannot arise "
+        "and a runtime that silently resolves it would pass unnoticed",
     )
 
     present = {field: set() for field in RESERVED_ABSENT}
