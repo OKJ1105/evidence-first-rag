@@ -32,6 +32,19 @@
       ]
     },
     {
+      "name": "package-unit-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "--start-directory",
+        "tests",
+        "--top-level-directory",
+        "."
+      ]
+    },
+    {
       "name": "agent-unit-tests",
       "command": [
         "node",

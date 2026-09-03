@@ -35,6 +35,17 @@ jobs:
         # and asserts the check above notices.
         run: python3 scripts/checks/test_validate_fixtures.py
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Package unit tests
+        # The type surface of the MVP runtime contract. Standard library only,
+        # so a clean checkout needs no install step; tests/__init__.py puts
+        # src/ on the path, which is why the command is identical here and in
+        # the checks manifest, which spawns commands without a shell.
+        run: python3 -m unittest discover --start-directory tests --top-level-directory .
+
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
