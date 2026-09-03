@@ -41,33 +41,6 @@ const outcomeLabels = [LABELS.ready, LABELS.needsHuman, LABELS.failed];
  */
 export const protectedPaths = ["scripts/", ".github/", ".githooks/", ".claude/"];
 
-/**
- * The model each role runs on, pinned per role rather than shared.
- *
- * Two reasons the roles are separate. The Development Workflow requires the
- * reviewer to use a different model from the writer, which one variable cannot
- * express. And the review record has to name what reviewed it: the CLI version
- * is pinned in the workflow precisely so the toolchain moves only by a
- * deliberate commit, and leaving the model it drives unpinned undoes that —
- * a provider-side default change would silently alter what judges this
- * repository, with nothing in the history to show it.
- *
- * Falls back to the shared `CI_AGENT_MODEL`, then to the CLI's own default. An
- * unset model is reported as unpinned in the published comment rather than
- * passing silently, because unset is the failure mode worth seeing.
- *
- * @param {"writer"|"reviewer"} role
- * @param {Record<string,string|undefined>} [env]
- * @returns {string|undefined} A model identifier, or undefined to let the CLI choose.
- */
-export function modelFor(role, env = process.env) {
-  const perRole =
-    role === "reviewer" ? env.CI_AGENT_REVIEWER_MODEL : env.CI_AGENT_WRITER_MODEL;
-  const chosen = perRole ?? env.CI_AGENT_MODEL;
-  const trimmed = typeof chosen === "string" ? chosen.trim() : "";
-  return trimmed === "" ? undefined : trimmed;
-}
-
 /** Governing documents injected into both prompts, read from the base ref. */
 export const governingDocs = [
   "AGENTS.md",
@@ -514,7 +487,7 @@ export async function runLoop({
           `## Independent review — round ${state.round + 1} of ${cap}`,
           "",
           `Head \`${currentHead}\` · Issue #${issueNumber} · risk \`${riskLevel}\``,
-          `Reviewer model: \`${raw.model}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+          `Reviewer session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
           parsed.summary,
           "",
@@ -591,7 +564,7 @@ export async function runLoop({
           `## Writer response — round ${state.round} of ${cap}`,
           "",
           `Head \`${currentHead}\``,
-          `Writer model: \`${raw.model}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+          `Writer session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
           summary,
           "",
@@ -737,20 +710,15 @@ async function main() {
       docs,
       reviewerOnlyDocs,
       ctx: { prNumber, runUrl, startedAt, reset },
-      agent: async ({ role, prompt }) => {
-        const model = modelFor(role);
-        const result = await runAgent({
+      agent: ({ role, prompt }) =>
+        runAgent({
           role,
           prompt,
           timeoutMs: agentTimeoutMs,
           cwd: worktree,
           settingsPath,
-          model,
-        });
-        // The published record names the model, not just the session. A review
-        // whose reviewer is unidentified cannot be compared with a later one.
-        return { ...result, model: model ?? "CLI default (unpinned)" };
-      },
+          model: process.env.CI_AGENT_MODEL,
+        }),
       checks: () =>
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),

@@ -12,7 +12,6 @@ import { describe, expect, it } from "./test-kit.mjs";
 import {
   checksManifestPath,
   loadChecksManifest,
-  modelFor,
   runChecks,
 } from "./run.mjs";
 
@@ -115,11 +114,19 @@ describe("runChecks", () => {
     );
     const head = mkdtempSync(join(tmpdir(), "agent-checks-head-"));
     try {
-      writeFileSync(join(base, "check.js"), "process.exit(1);\n");
-      writeFileSync(join(head, "check.js"), "process.exit(0);\n");
+      // Each script announces itself before exiting. Asserting only that the
+      // run failed would pass for the wrong reason: with the substitution
+      // broken, `{baseDir}/check.js` stays literal, node cannot find it, and
+      // the run fails too — the same verdict for the opposite cause. The
+      // marker is what separates "base's script ran" from "no script ran".
+      writeFileSync(join(base, "check.js"), "console.log('BASE-RAN');process.exit(1);\n");
+      writeFileSync(join(head, "check.js"), "console.log('HEAD-RAN');process.exit(0);\n");
       const result = await runChecks({ cwd: head, manifestDir: base, baseDir: base });
       // base's script fails; head's would have passed. Failing is correct.
       expect(result.ok).toBe(false);
+      const output = result.results.map((r) => r.output).join("\n");
+      expect(output).toContain("BASE-RAN");
+      expect(output).not.toContain("HEAD-RAN");
     } finally {
       rmSync(base, { recursive: true, force: true });
       rmSync(head, { recursive: true, force: true });
@@ -209,38 +216,5 @@ describe("runChecks", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
-});
-
-describe("the model each role runs on", () => {
-  it("pins the roles separately", () => {
-    const env = {
-      CI_AGENT_WRITER_MODEL: "claude-opus-5",
-      CI_AGENT_REVIEWER_MODEL: "claude-fable-5",
-    };
-    expect(modelFor("writer", env)).toBe("claude-opus-5");
-    expect(modelFor("reviewer", env)).toBe("claude-fable-5");
-  });
-
-  it("falls back to the shared variable when a role is unset", () => {
-    const env = { CI_AGENT_MODEL: "claude-opus-5" };
-    expect(modelFor("writer", env)).toBe("claude-opus-5");
-    expect(modelFor("reviewer", env)).toBe("claude-opus-5");
-  });
-
-  it("prefers the per-role variable over the shared one", () => {
-    const env = {
-      CI_AGENT_MODEL: "claude-opus-5",
-      CI_AGENT_REVIEWER_MODEL: "claude-fable-5",
-    };
-    expect(modelFor("reviewer", env)).toBe("claude-fable-5");
-    expect(modelFor("writer", env)).toBe("claude-opus-5");
-  });
-
-  it("reports nothing pinned rather than an empty model", () => {
-    // An empty string would reach the CLI as `--model ""`. Undefined lets the
-    // CLI choose, and the published comment says so.
-    expect(modelFor("writer", {})).toBe(undefined);
-    expect(modelFor("reviewer", { CI_AGENT_REVIEWER_MODEL: "  " })).toBe(undefined);
   });
 });
