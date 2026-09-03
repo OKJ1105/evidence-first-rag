@@ -141,6 +141,8 @@ Unique constraint on `(asserting_snapshot_id, source_signal_occurrence_id, targe
 - A mapping asserted by a superseded snapshot is never presented as holding in a later snapshot. `superseded_by` is exposed in `limitations` when any participating snapshot is superseded.
 - Continuity or equivalence between occurrences in different snapshots is never derived from equal `message_key` or `signal_key`.
 
+**Recorded decision, 2026-09-03.** This section and Section 5 previously stated the `ambiguous` threshold differently — "more than zero" here, "more than one" there — and disagreed on one case: an under-specified request matching a single snapshot. The repository owner decided this section governs, so one matching candidate is `ambiguous`. Three obligations already required that reading and would otherwise have no work to do: the prohibition on selecting "the only loaded row" immediately above; Section 7's rule that scope narrows to one candidate only by an explicit user selection, which must be recorded in `limitations`; and Section 9's deferral of any policy that could resolve a scope dimension automatically, which states that until such a policy exists this section requires `ambiguous`. Section 5's wording was corrected to match, and `FX-113` registers the single-candidate case that no fixture had covered.
+
 An automated data-level check asserts every constraint in Section 4.1 and every rule in this section against the loaded database. It is part of the acceptance evidence in Section 8.
 
 ### 4.3 Database identities
