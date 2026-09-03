@@ -10,7 +10,7 @@ the registered inputs every later slice is judged against are well-formed,
 reference-complete, and still carry the structural cases the contract's
 acceptance evidence depends on.
 
-Sections cited below are from docs/contracts/mvp-v0.1.md at version 0.4.0.
+Sections cited below are from docs/contracts/mvp-v0.1.md at version 0.5.0.
 Exits 1 and lists every failure when any assertion does not hold.
 """
 
