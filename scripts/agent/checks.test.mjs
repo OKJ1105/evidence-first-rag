@@ -103,6 +103,76 @@ describe("runChecks", () => {
     }
   });
 
+  it("binds {baseDir} to the base checkout, not to the branch", async () => {
+    // The tamper case. Both trees hold a script at the same path; only base's
+    // is the real one. A check that names it through {baseDir} must run base's
+    // copy, or a branch is judged by a script it wrote itself.
+    const base = tempRepo(
+      JSON.stringify({
+        checks: [{ name: "scripted", command: ["node", "{baseDir}/check.js"] }],
+      }),
+    );
+    const head = mkdtempSync(join(tmpdir(), "agent-checks-head-"));
+    try {
+      // Each script announces itself before exiting. Asserting only that the
+      // run failed would pass for the wrong reason: with the substitution
+      // broken, `{baseDir}/check.js` stays literal, node cannot find it, and
+      // the run fails too — the same verdict for the opposite cause. The
+      // marker is what separates "base's script ran" from "no script ran".
+      writeFileSync(join(base, "check.js"), "console.log('BASE-RAN');process.exit(1);\n");
+      writeFileSync(join(head, "check.js"), "console.log('HEAD-RAN');process.exit(0);\n");
+      const result = await runChecks({ cwd: head, manifestDir: base, baseDir: base });
+      // base's script fails; head's would have passed. Failing is correct.
+      expect(result.ok).toBe(false);
+      const output = result.results.map((r) => r.output).join("\n");
+      expect(output).toContain("BASE-RAN");
+      expect(output).not.toContain("HEAD-RAN");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      rmSync(head, { recursive: true, force: true });
+    }
+  });
+
+  it("runs a {baseDir} script the branch has never seen", async () => {
+    // The stale-branch case. A branch older than a check does not have the
+    // script; naming it through {baseDir} must still run it, instead of
+    // reporting a broken check when the real fact is an out-of-date branch.
+    const base = tempRepo(
+      JSON.stringify({
+        checks: [{ name: "new-check", command: ["node", "{baseDir}/added.js"] }],
+      }),
+    );
+    const head = mkdtempSync(join(tmpdir(), "agent-checks-stale-"));
+    try {
+      writeFileSync(join(base, "added.js"), "process.exit(0);\n");
+      const result = await runChecks({ cwd: head, manifestDir: base, baseDir: base });
+      expect(result.ok).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      rmSync(head, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a command without {baseDir} running in the branch", async () => {
+    // The condition the binding must NOT impose. Checks that verify the
+    // branch's own code — the agent unit tests — still run from head.
+    const base = tempRepo(
+      JSON.stringify({
+        checks: [{ name: "branch-own", command: ["node", "own.js"] }],
+      }),
+    );
+    const head = mkdtempSync(join(tmpdir(), "agent-checks-own-"));
+    try {
+      writeFileSync(join(base, "own.js"), "process.exit(1);\n");
+      writeFileSync(join(head, "own.js"), "process.exit(0);\n");
+      const result = await runChecks({ cwd: head, manifestDir: base, baseDir: base });
+      expect(result.ok).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      rmSync(head, { recursive: true, force: true });
+    }
+  });
+
   it("binds {baseRef} in command arguments", async () => {
     const dir = tempRepo(
       JSON.stringify({
