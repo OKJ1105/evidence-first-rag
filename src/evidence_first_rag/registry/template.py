@@ -23,7 +23,7 @@ enumerating the package's public surface so that exporting `Template` from
 exception is `tests/test_registry.py`, which imports this module directly to
 exercise the registration safeguards themselves and says why at the import.
 
-Sections cited are from docs/contracts/mvp-v0.1.md at version 0.4.0.
+Sections cited are from docs/contracts/mvp-v0.1.md at version 0.5.0.
 """
 
 import dataclasses

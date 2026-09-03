@@ -26,7 +26,7 @@ class TheBundleCitesThisContract(unittest.TestCase):
 
     def test_the_constants_match_section_1(self):
         self.assertEqual(CONTRACT_IDENTIFIER, "mvp-v0.1")
-        self.assertEqual(CONTRACT_VERSION, "0.4.0")
+        self.assertEqual(CONTRACT_VERSION, "0.5.0")
 
     def test_it_records_the_section_6_collation(self):
         self.assertEqual(executed_bundle().collation, "C")
