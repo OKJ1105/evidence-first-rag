@@ -4,7 +4,9 @@
 
 **Identifier:** `mvp-v0.1`
 
-**Version:** `0.3.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted.
+**Version:** `0.5.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted. `0.4.0` resolves a contradiction between Section 4.2 and Section 5 over the `ambiguous` candidate threshold in favour of Section 4.2, and registers `FX-113` for the single-candidate case that neither reading tested. `0.5.0` stops Section 3.4 fixing the mechanism that applies the provisioning scripts, and corrects a loader clause that no permitted mechanism could satisfy.
+
+Section 3 is not in the list above. Version `0.5.0` changes an obligation in Section 3.4 that an implementation is judged against — a blocking review finding was raised against it on #23 — so it takes a version anyway, because a silent change would leave no signal. Whether the list should name Section 3 is open in [#31](https://github.com/OKJ1105/evidence-first-rag/issues/31), with the same shape of gap Section 10 has.
 
 This contract combines the data, route, result, evidence, query-template-registry, runtime, and evaluation families described in [Contract Shape Framework](README.md) Section 5 into one document. Section 5 of that framework assigns responsibilities per family; it does not require one document per family.
 
@@ -63,8 +65,12 @@ Python and PostgreSQL, consistent with [ADR-0001](../adr/0001-postgresql-runtime
 
 - **PostgreSQL 17** — pinned at the major version; any patch release satisfies the contract. PostgreSQL 17 is available on the declared Azure Database for PostgreSQL Flexible Server target, which keeps the ADR-0001 compatibility boundary a subset of the deployment target.
 - **No extensions.** v0.2.0 requires none. Adding one is a minor version change under Section 10.
-- **Provisioning is plain SQL.** Version-controlled DDL and grant scripts, applied in lexical order by the official `postgres:17` image's init mechanism under Docker Compose. No migration framework in this contract: there is exactly one schema version, and reproducibility comes from re-provisioning, not from migration history. Adopting a migration tool later is a contract change, not an implementation detail.
-- The fixture loader runs inside the same provisioning step, as the provisioning identity, before the runtime identity ever connects. Section 4.11 fixes the fixture format.
+- **Provisioning is plain SQL.** Version-controlled DDL and grant scripts, applied in lexical order against a PostgreSQL 17 instance, aborting at the first error. This contract fixes the scripts, their order, and the abort, not the mechanism that applies them: `psql`, a container image's initialisation directory, or an orchestrator each satisfy it. No migration framework in this contract: there is exactly one schema version, and reproducibility comes from re-provisioning, not from migration history. Adopting a migration tool later is a contract change, not an implementation detail.
+- The fixture loader runs in the same provisioning phase, as the provisioning identity, before the runtime identity ever connects. It is not required to run inside the mechanism that applies the SQL. A container image's initialisation directory, for instance, executes `.sh` and `.sql` files directly, so hosting a loader that is a program would take a shell wrapper rather than being what that mechanism does. Section 4.11 fixes the fixture format.
+
+**The Section 3.4 amendment and how it is recorded.** The two bullets above previously required the scripts to be applied "by the official `postgres:17` image's init mechanism under Docker Compose", and required the loader to run "inside the same provisioning step". Issue [#25](https://github.com/OKJ1105/evidence-first-rag/issues/25) states the conflict in full: Issue #12 requires the instance to be a CI service container, which cannot use that mechanism at all, because a service container starts before the repository is checked out. The loader clause was separately unimplementable under every permitted mechanism, Docker Compose included. The amendment drops the mechanism from the obligation and corrects the loader clause to name the provisioning phase rather than the applying process.
+
+Under [Contract Shape Framework](README.md) Section 6 step 4, the repository owner records the required human review of a contract change on that change's own pull request, and records approval by merging it — which is how the `Accepted 2026-09-01` status in Section 2 was itself recorded. This amendment is recorded the same way. It is binding from the merge of its pull request, not from this paragraph, and nothing here asserts a decision that the pull request's own record does not carry.
 
 ## 4. Normative requirements
 
@@ -136,10 +142,12 @@ Unique constraint on `(asserting_snapshot_id, source_signal_occurrence_id, targe
 - A canonical signal reference is that tuple plus `message_key` of the parent and `signal_key`.
 - No surrogate key appears in any public payload. Surrogate values may differ between provisioning runs.
 - The runtime never supplies a missing `project_code`, `revision_label`, `network_name`, or `snapshot_label`. It never selects the newest `ingested_at`, the highest `revision_label`, or the only loaded row.
-- When a request omits or under-specifies scope and more than zero candidate snapshots match, the runtime returns `ambiguous` and lists the candidate scopes.
+- When a request omits or under-specifies scope and one or more candidate snapshots match, the runtime returns `ambiguous` and lists the candidate scopes. One matching candidate is still `ambiguous`. The request is under-specified whatever the database happens to hold, and resolving it would be the selection of "the only loaded row" that the rule above forbids; a candidate count is a property of what is currently loaded, so deciding on it would make the same request answerable today and ambiguous once a second snapshot lands. Scope may be narrowed to one candidate only by an explicit user selection, which Section 7 requires to be recorded in `limitations`. Zero matching candidates is not `ambiguous`; Section 5 assigns that case to `coverage_gap`.
 - A `signal_mapping` row is returned only when the asserting snapshot and both endpoint snapshots resolve to exactly one snapshot each. Otherwise the request fails closed.
 - A mapping asserted by a superseded snapshot is never presented as holding in a later snapshot. `superseded_by` is exposed in `limitations` when any participating snapshot is superseded.
 - Continuity or equivalence between occurrences in different snapshots is never derived from equal `message_key` or `signal_key`.
+
+**Recorded decision, 2026-09-03.** This section and Section 5 previously stated the `ambiguous` threshold differently — "more than zero" here, "more than one" there — and disagreed on one case: an under-specified request matching a single snapshot. The repository owner decided this section governs, so one matching candidate is `ambiguous`. Three obligations already required that reading and would otherwise have no work to do: the prohibition on selecting "the only loaded row" immediately above; Section 7's rule that scope narrows to one candidate only by an explicit user selection, which must be recorded in `limitations`; and Section 9's deferral of any policy that could resolve a scope dimension automatically, which states that until such a policy exists this section requires `ambiguous`. Section 5's wording was corrected to match, and `FX-113` registers the single-candidate case that no fixture had covered.
 
 An automated data-level check asserts every constraint in Section 4.1 and every rule in this section against the loaded database. It is part of the acceptance evidence in Section 8.
 
@@ -294,7 +302,7 @@ The runner additionally asserts that the runtime identity is refused when it att
 | `not_found` | Scope resolves to exactly one snapshot and that snapshot is within approved coverage, but no row matches the lookup key. |
 | `coverage_gap` | The approved data scope does not contain, or cannot be established to contain, the coverage the request needs. Returned instead of `not_found` whenever coverage cannot be established. |
 | `unsupported` | The request cannot be represented by an approved contract at the producing layer. The trace records whether the adapter or the runtime produced it. |
-| `ambiguous` | Scope is missing or under-specified and more than one candidate snapshot matches. Candidate scopes are listed. |
+| `ambiguous` | Scope is missing or under-specified and one or more candidate snapshots match. Candidate scopes are listed. |
 | `invalid_request` | Scope or arguments are malformed, contradictory, or contain a parameter outside the route allowlist. |
 | `needs_entity_discovery` | The route is determined but no canonical reference can be formed. Terminal in v0.1; never reaches the database. |
 
@@ -352,7 +360,7 @@ Each obligation is either an automated assertion over registered inputs or a rec
 | Obligation | Acceptance evidence |
 | --- | --- |
 | Section 4.1 schema and constraints | Automated. The data-level invariant check asserts every unique constraint and reference, including the prohibition on a snapshot-level unique constraint over `signal_key`. |
-| Section 4.2 identity and scope | Automated. Fixtures `FX-101`, `FX-102`, `FX-105`, `FX-106` below, plus the invariant check. |
+| Section 4.2 identity and scope | Automated. Fixtures `FX-101`, `FX-102`, `FX-105`, `FX-106`, `FX-113` below, plus the invariant check. `FX-105` and `FX-113` are both required: they are the two-candidate and one-candidate halves of the same threshold, and either alone is satisfied by a rule the section rejects. |
 | Section 4.3 database identities | Automated. The four refusal assertions in Section 4.10. |
 | Section 4.4 registry safeguards | Automated. Negative tests for unregistered template, write-keyword registration, unknown parameter, missing required parameter, and absence of any arbitrary-SQL entry point. |
 | Section 4.4 limits and timeouts | Automated. Template-level tests assert each registered `LIMIT` value and explicit `NULLS LAST` clause; the invariance check reads the runtime role's `statement_timeout` setting; the facts-template overflow rule (limit 2 → runtime `data` failure) is asserted at unit level. |
@@ -389,6 +397,9 @@ Every fixture uses `SAMPLE_*` identifiers only. Every status family in Section 5
 | `FX-110` | Contradictory scope, for example two different `revision_label` values | `invalid_request` |
 | `FX-111` | Route determined, no canonical reference formable | `needs_entity_discovery`, terminal, no connection opened |
 | `FX-112` | Adapter emits an argument value absent from the request | Revalidation rejects; `invalid_request`; forced `fail` if it reaches SQL |
+| `FX-113` | Scope omitted, exactly one candidate snapshot matches | `ambiguous` with the single candidate scope listed |
+
+`FX-113` sits outside the `1xx` data-dependent block it belongs with because a registered fixture identifier is never renumbered. It and `FX-105` are the two halves of the Section 4.2 threshold — one candidate and two — and an implementation that satisfies one while failing the other has picked a candidate count as its rule. Read them together.
 
 `FX-104` deliberately expects `success`, not a negative status. A superseded snapshot still holds facts about itself; what is prohibited is presenting its mapping as holding in a later snapshot. The `limitations` entry carries that boundary.
 
@@ -422,7 +433,7 @@ This deferral does not weaken any obligation, and Section 10 forbids using it to
 | Vector search and any semantic candidate retrieval | Milestone 3 evaluation contract. Not adopted without a lexical baseline and a pre-registered acceptance metric. |
 | Numeric thresholds for the Section 8 adapter-versus-baseline comparison | Open. Owned by this contract; must be filled, as a minor version change, before the evaluation run that judges the adapter. |
 | The curated request set backing Section 4.7 | Open. Owned by this contract; authored alongside the Section 8.1 fixtures, before the Milestone 2 comparison. |
-| The exact Docker Compose service definition (image digest, ports, volumes) | Implementation detail of the first provisioning slice, bounded by Section 3.4. Not a contract decision unless it changes an obligation. |
+| The mechanism that applies the provisioning scripts, and its configuration | Implementation detail of the provisioning slice, bounded by Section 3.4. Not a contract decision unless it changes the scripts, their lexical order, or the abort at the first error. |
 
 Version 0.1.0 also listed the PostgreSQL version and extensions, the provisioning mechanism, collation, normalization, null ordering, fixture serialization, key generation, row limits, and timeouts here. Version 0.2.0 fills them in Sections 3.4, 4.4, 4.11, and 6. The two rows that remain open above are evaluation-stage values: registering them now, before any fixture or curated request exists, would be guessing — Charter Section 9 requires thresholds to be registered before the run they judge, not before the contract is accepted.
 

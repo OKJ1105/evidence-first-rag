@@ -372,6 +372,44 @@ class TestStructuralCases(FixtureCheck):
         self.write("source_snapshot", rows)
         self.assert_fails("would pass by coincidence")
 
+    def test_giving_the_single_candidate_group_a_second_label_fails_fx_113(self):
+        """FX-113 is the other half of the Section 4.2 threshold: one candidate
+        is still ambiguous. It needs a scope whose omitted snapshot_label has
+        exactly one match, so a second label under the only un-superseded such
+        scope removes the case."""
+        rows = self.rows("source_snapshot")
+        rows.append(
+            {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_B",
+                "network_name": "SAMPLE_NET_CHASSIS",
+                "snapshot_label": "SAMPLE_SNAP_REVISED",
+                "superseded_by": None,
+                "ingested_at": "2026-04-01T00:00:00Z",
+            }
+        )
+        self.write("source_snapshot", rows)
+        self.assert_fails("FX-113")
+
+    def test_superseding_the_single_candidate_snapshot_fails_fx_113(self):
+        """The un-superseded half of the same guard. A superseded snapshot also
+        owes a Section 7 `limitations` entry, so a single-candidate case built
+        on one could fail for either reason and would not say which."""
+        rows = self.rows("source_snapshot")
+        for row in rows:
+            if (
+                row["revision_label"] == "SAMPLE_REV_B"
+                and row["network_name"] == "SAMPLE_NET_CHASSIS"
+            ):
+                row["superseded_by"] = {
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                }
+        self.write("source_snapshot", rows)
+        self.assert_fails("FX-113")
+
     def test_snapshots_without_any_message_fail_fx_107(self):
         """FX-107 needs a covered snapshot with rows for the absent key to be
         absent from. Empty every table but the snapshots and the case can no
@@ -401,6 +439,20 @@ class TestStructuralCases(FixtureCheck):
             if row["superseded_by"]:
                 key = tuple(row["superseded_by"][f] for f in self.module.SNAPSHOT_REF)
                 row["superseded_by"] = dict(zip(self.module.SNAPSHOT_REF, moved[key]))
+        # Every snapshot that carries rows is now a sibling, which is the premise
+        # this test needs. That leaves no single-candidate scope, so FX-113 would
+        # fail for a reason unrelated to FX-107. One snapshot in a group of its
+        # own restores it without disturbing the premise.
+        snapshots.append(
+            {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_B",
+                "network_name": "SAMPLE_NET_CHASSIS",
+                "snapshot_label": "SAMPLE_SNAP_BASE",
+                "superseded_by": None,
+                "ingested_at": "2026-03-01T00:00:00Z",
+            }
+        )
         self.write("source_snapshot", snapshots)
 
         def remap(reference):
