@@ -8,7 +8,19 @@ import { deniedTools } from "./claude.mjs";
 // died three seconds in on a 403 reading the Issue (#80). These assertions are
 // the connection.
 
-const workflow = readFileSync(".github/workflows/agent-loop.yml", "utf8");
+// Normalized to LF. A CRLF checkout is a property of the machine reading
+// the file, not of the workflow, and letting it reach the line patterns
+// below made every assertion here fail on Windows while passing in CI —
+// a check that fails only on the maintainer's platform teaches people to
+// ignore it.
+const workflow = normalize(
+  readFileSync(".github/workflows/agent-loop.yml", "utf8"),
+);
+
+/** Strip carriage returns so the line patterns below see LF either way. */
+export function normalize(text) {
+  return text.replaceAll("\r\n", "\n");
+}
 
 /** The `permissions:` block of one job, as raw lines. */
 function permissionsOf(job) {
@@ -99,5 +111,15 @@ describe("the two tool denylists agree", () => {
     for (const tool of deniedTools) {
       expect(pinned).toContain(tool);
     }
+  });
+});
+
+describe("CRLF tolerance", () => {
+  it("normalizes a CRLF checkout before matching", () => {
+    // Fed CRLF directly, the line patterns above match nothing. This asserts
+    // the normalizer rather than the checkout, so the guard survives on a
+    // machine that happens to check out LF.
+    const crlf = "\n    permissions:\r\n      contents: read\r\n";
+    expect(normalize(crlf)).toBe("\n    permissions:\n      contents: read\n");
   });
 });

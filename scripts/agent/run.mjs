@@ -228,11 +228,27 @@ export function checkEnv(base = process.env) {
  * read from `manifestDir` (the base checkout, per BF4). `{baseRef}` in a
  * command argument is replaced with the pull request's base ref, so the
  * manifest does not hardcode a branch name.
+ *
+ * `{baseDir}` is replaced with the base checkout's path, and it completes what
+ * BF4 only half-did. Reading the manifest from base stops a branch weakening
+ * the *list* of checks, but the commands still ran out of the branch's own
+ * tree, so a check implemented as a repository script was whatever the branch
+ * said it was — a pull request could replace `validate_links.py` with
+ * `sys.exit(0)` and be judged by its own no-op. It also made a branch older
+ * than a check fail for the wrong reason: the base manifest named a script the
+ * head had never seen, and the loop reported a broken check rather than a
+ * stale branch. Naming a script through `{baseDir}` runs base's code against
+ * head's files, which is the split that was intended.
+ *
+ * Per-check and opt-in, because not every check wants it: the whitespace check
+ * is a git invocation with no script, and the unit tests must run the branch's
+ * own tests — verifying that a branch did not break the loop is the point.
  */
 export async function runChecks({
   cwd,
   manifestDir = cwd,
   baseRef = "main",
+  baseDir = manifestDir,
   manifest = loadChecksManifest(manifestDir),
   timeoutMs = 10 * 60_000,
   env = checkEnv(),
@@ -248,7 +264,9 @@ export async function runChecks({
   for (const check of manifest.checks) {
     const bound = {
       name: check.name,
-      command: check.command.map((a) => a.replaceAll("{baseRef}", baseRef)),
+      command: check.command.map((a) =>
+        a.replaceAll("{baseRef}", baseRef).replaceAll("{baseDir}", baseDir),
+      ),
     };
     const r = await runCommand(bound, { cwd, timeoutMs, env });
     results.push(r);
@@ -702,7 +720,7 @@ async function main() {
           model: process.env.CI_AGENT_MODEL,
         }),
       checks: () =>
-        runChecks({ cwd: worktree, manifestDir: baseDir, baseRef }),
+        runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: async () =>
         (await git(["status", "--porcelain"], worktree))
