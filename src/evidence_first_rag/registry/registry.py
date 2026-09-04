@@ -87,10 +87,18 @@ SELECT s.project_code,
 # their result column lists, so this is a registration choice rather than a
 # contract change. The surrogate `superseded_by` value itself is never returned:
 # Section 4.2 keeps surrogate keys out of every public payload.
+#
+# That change is why these three carry `version="2"` while the candidate
+# template stays at "1". The rule: a registered template's SQL text never
+# changes under a version it has already carried. Section 7 puts the version
+# in every evidence bundle so that a reader can find the exact SQL that
+# produced a result, and the name alone (`..._V1`) identifies the template,
+# not its text. The name is the contract's identifier and does not move; the
+# version is the revision of the text and does.
 TPL_MESSAGE_FACTS_V1 = Template(
     seal=_SEAL,
     name="TPL_MESSAGE_FACTS_V1",
-    version="1",
+    version="2",
     sql=f"""
 SELECT s.project_code,
        s.revision_label,
@@ -145,7 +153,7 @@ SELECT s.project_code,
 TPL_SIGNAL_FACTS_V1 = Template(
     seal=_SEAL,
     name="TPL_SIGNAL_FACTS_V1",
-    version="1",
+    version="2",
     sql=f"""
 SELECT s.project_code,
        s.revision_label,
@@ -198,7 +206,7 @@ SELECT s.project_code,
 TPL_SIGNAL_MAPPING_V1 = Template(
     seal=_SEAL,
     name="TPL_SIGNAL_MAPPING_V1",
-    version="1",
+    version="2",
     # Section 4.5: "the result exposes one entry per asserting relation",
     # because Charter Section 3.6 requires the asserting artifact's scope to
     # travel with each relation. That is why the asserting snapshot and both

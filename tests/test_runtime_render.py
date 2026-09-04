@@ -84,14 +84,13 @@ def one_of_each_status():
         Status.UNSUPPORTED: answered("message_fact", MESSAGE, {}),
         Status.INVALID_REQUEST: answered("message_facts", {"nonsense": "x"}, {}),
         Status.NEEDS_ENTITY_DISCOVERY: answered("message_facts", BASE, {}),
-        # Not an eighth status: a `success` that also carries three of the
-        # `limitations` kinds, so the renderer is exercised on entries too.
+        # Not an eighth status: a `success` that also carries a `limitations`
+        # entry, so the renderer is exercised on entries too.
         "success with limitations": answered(
             "signal_mapping",
             {**CHASSIS, "message_key": "SAMPLE_MSG_ENGINE_STATUS", "signal_key": "SAMPLE_SIG_ENGINE_SPEED"},
             {SIGNAL_MAPPING: (superseded,)},
             scope=CHASSIS,
-            scope_selected_by_user=True,
         ),
     }
 

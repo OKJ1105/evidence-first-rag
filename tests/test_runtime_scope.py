@@ -192,25 +192,26 @@ class AScopeThatCannotResolveIsAFault(unittest.TestCase):
         self.assertEqual(raised.exception.conformance_class, "data")
 
 
-class AnExplicitUserSelectionIsRecorded(unittest.TestCase):
-    """Section 4.2: "Scope may be narrowed to one candidate only by an explicit
-    user selection, which Section 7 requires to be recorded in `limitations`."
+class NoRequestCanClaimAUserSelection(unittest.TestCase):
+    """Section 7's `scope_selected_by_user` entry has no producer in this slice.
+
+    Removed on review: `Request` is what untrusted adapter output becomes
+    (Section 4.6), so a flag on it would let the adapter claim a user chose a
+    scope when none did, and the runtime would record the claim as provenance.
+    This test pins the absence so that the flag does not quietly return
+    without the trusted path that would have to vouch for it.
     """
 
-    def test_the_entry_names_the_scope_that_was_selected(self):
-        _, result = answer(
-            MESSAGE,
-            {CANDIDATES: (candidate_row(),), MESSAGE_FACTS: (message_row(),)},
-            scope_selected_by_user=True,
-        )
-        entry = next(
-            limitation
-            for limitation in result.limitations
-            if limitation.kind is LimitationKind.SCOPE_SELECTED_BY_USER
-        )
-        self.assertIn("SAMPLE_SNAP_BASE", entry.detail)
+    def test_the_request_type_carries_no_selection_flag(self):
+        import dataclasses
 
-    def test_a_request_that_claims_no_selection_records_none(self):
+        from evidence_first_rag.runtime import Request
+
+        self.assertNotIn(
+            "scope_selected_by_user", {f.name for f in dataclasses.fields(Request)}
+        )
+
+    def test_a_fully_scoped_request_records_no_selection(self):
         _, result = answer(
             MESSAGE, {CANDIDATES: (candidate_row(),), MESSAGE_FACTS: (message_row(),)}
         )

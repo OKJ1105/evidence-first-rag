@@ -36,9 +36,14 @@ class PsycopgDatabase:
     """Opens a read-only session per request, as the runtime identity.
 
     One connection per request rather than a pool, and it is closed on the way
-    out: the scope-resolution query and the route's own query run in the same
-    read-only transaction, so a snapshot cannot appear between them and make
-    the evidence describe two different databases.
+    out. The scope-resolution query and the route's own query run in one
+    read-only transaction at REPEATABLE READ, so both see the same database
+    state: under PostgreSQL's default READ COMMITTED, a snapshot committed
+    between the two statements would be visible to the second and not the
+    first, and the evidence would then describe two databases. Not a threat
+    the fixtures exercise -- the runtime identity cannot write, and
+    provisioning loads once -- but the claim "one result, one state" is cheap
+    to make true and expensive to make false later.
     """
 
     connection_parameters: Mapping[str, object]
@@ -53,6 +58,7 @@ class PsycopgDatabase:
             # session opens is already read-only. Section 4.3 wants the
             # transaction read-only, not the queries inspected.
             connection.read_only = True
+            connection.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
             yield PsycopgSession(connection=connection)
         finally:
             # A read-only transaction has nothing to commit, and rolling back

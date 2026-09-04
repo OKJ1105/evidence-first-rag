@@ -155,21 +155,6 @@ class AMalformedRequestIsInvalid(unittest.TestCase):
         )
         self.assertIs(result.status, Status.INVALID_REQUEST)
 
-    def test_a_claimed_user_selection_over_an_incomplete_scope(self):
-        # Section 4.2 permits an explicit user selection to narrow scope. A
-        # request claiming one while still omitting a dimension would earn a
-        # Section 7 `limitations` entry for a narrowing that did not happen.
-        incomplete = {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}
-        result = self.refusal(
-            route="message_facts", arguments=incomplete, scope_selected_by_user=True
-        )
-        self.assertIs(result.status, Status.INVALID_REQUEST)
-
-    def test_a_selection_flag_that_is_not_a_bool(self):
-        result = self.refusal(
-            route="message_facts", arguments=MESSAGE, scope_selected_by_user=1
-        )
-        self.assertIs(result.status, Status.INVALID_REQUEST)
 
 
 class AMissingLookupKeyNeedsEntityDiscovery(unittest.TestCase):

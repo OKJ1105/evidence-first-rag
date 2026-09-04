@@ -73,7 +73,9 @@ class ARowMakesItASuccess(unittest.TestCase):
         _, result = answer("message_facts", MESSAGE, {MESSAGE_FACTS: (message_row(),)})
         bundle = result.evidence_bundle
         self.assertEqual(bundle.template_name, MESSAGE_FACTS)
-        self.assertEqual(bundle.template_version, "1")
+        # "2": the SQL text changed when the supersession columns were added,
+        # and a version a template has already carried never names new text.
+        self.assertEqual(bundle.template_version, "2")
         self.assertEqual(bundle.resolved_scope, SnapshotScope(**BASE))
         self.assertEqual(bundle.row_count, 1)
 

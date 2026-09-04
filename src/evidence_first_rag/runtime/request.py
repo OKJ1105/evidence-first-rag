@@ -66,19 +66,20 @@ class Refusal(Exception):
 class Request:
     """What the runtime is asked to do. Untrusted until `validate` says so.
 
-    `scope_selected_by_user` is Section 4.2's one permitted way to narrow an
-    under-specified scope: "Scope may be narrowed to one candidate only by an
-    explicit user selection, which Section 7 requires to be recorded in
-    `limitations`." The flag is the caller's assertion that the complete scope
-    in `arguments` came from such a selection; the runtime cannot verify it
-    after the fact, and records it rather than inferring it. Without a way to
-    say this, Section 7's third required `limitations` entry has no path to
-    exist.
+    Deliberately absent: any way for the caller to say the scope came from an
+    explicit user selection. Section 4.2 permits scope to be narrowed that way
+    and Section 7 requires it recorded in `limitations`, so an earlier draft
+    carried a `scope_selected_by_user` flag here. It was removed because this
+    is the type adapter output becomes, and Section 4.6 makes adapter output
+    untrusted: a flag on it would let the adapter assert that a user chose a
+    scope when no user did, and the runtime would record that assertion as
+    provenance. The entry stays unreachable until a slice that actually
+    presents candidates and receives the choice exists, and can vouch for it
+    through a path the adapter cannot reach.
     """
 
     route: object
     arguments: object = dataclasses.field(default_factory=dict)
-    scope_selected_by_user: object = False
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -87,7 +88,6 @@ class ValidatedRequest:
 
     route: Route
     arguments: Mapping[str, str]
-    scope_selected_by_user: bool
 
     @property
     def template_name(self) -> str:
@@ -182,26 +182,6 @@ def validate(request: Request) -> ValidatedRequest:
         )
     values = {name: _value(name, arguments[name]) for name in arguments}
 
-    selected = request.scope_selected_by_user
-    if not isinstance(selected, bool):
-        raise Refusal(
-            Status.INVALID_REQUEST,
-            f"scope_selected_by_user must be a bool, not"
-            f" {type(selected).__name__}",
-        )
-    complete = all(name in values for name in SCOPE_DIMENSIONS)
-    if selected and not complete:
-        # Section 4.2 permits an explicit user selection to narrow scope to
-        # one candidate. A request that claims the selection while still
-        # omitting a dimension contradicts itself, and answering it would
-        # record a `limitations` entry for a narrowing that did not happen.
-        raise Refusal(
-            Status.INVALID_REQUEST,
-            "scope_selected_by_user claims an explicit selection, but the"
-            f" scope omits {sorted(set(SCOPE_DIMENSIONS) - set(values))}"
-            f" (Section 4.2)",
-        )
-
     missing = [name for name in required_lookup_keys(route) if name not in values]
     if missing:
         raise Refusal(
@@ -210,11 +190,7 @@ def validate(request: Request) -> ValidatedRequest:
             f" no canonical reference can be formed (Sections 4.2 and 5)",
         )
 
-    return ValidatedRequest(
-        route=route,
-        arguments=types.MappingProxyType(values),
-        scope_selected_by_user=selected,
-    )
+    return ValidatedRequest(route=route, arguments=types.MappingProxyType(values))
 
 
 def _arguments(value: object) -> Mapping[str, object]:

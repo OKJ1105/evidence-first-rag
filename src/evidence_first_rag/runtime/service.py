@@ -27,7 +27,6 @@ from ..evidence import (
     Limitation,
     LimitationKind,
     MappingProvenance,
-    ProducingLayer,
     ReadOnlySafeguards,
     SourceTrace,
 )
@@ -36,7 +35,6 @@ from ..registry import get
 from ..result import Result, Row
 from ..routes import UNSUPPORTED_ROUTE, Route
 from ..status import Status
-from .execution import Execution
 from .faults import DataFault
 from .request import CANDIDATES_TEMPLATE, Refusal, Request, ValidatedRequest, validate
 from .scope import Candidates, candidates, resolved
@@ -127,8 +125,6 @@ class Runtime:
                     f" not in this result (Section 4.4).",
                 )
             )
-        limitations.extend(_user_selection(request, scope))
-
         return Result(
             status=Status.SUCCESS if run.rows else Status.NOT_FOUND,
             evidence_bundle=EvidenceBundle(
@@ -359,21 +355,6 @@ def _superseded(participants) -> tuple[Limitation, ...]:
             f" (Section 4.2).",
         )
         for participant in seen.values()
-    )
-
-
-def _user_selection(
-    request: ValidatedRequest, scope: SnapshotScope
-) -> tuple[Limitation, ...]:
-    """Section 7's entry for a scope narrowed by an explicit user selection."""
-    if not request.scope_selected_by_user:
-        return ()
-    return (
-        Limitation(
-            kind=LimitationKind.SCOPE_SELECTED_BY_USER,
-            detail=f"scope was narrowed to {_text(scope)} by an explicit user"
-            f" selection, not by the runtime (Sections 4.2 and 7).",
-        ),
     )
 
 
