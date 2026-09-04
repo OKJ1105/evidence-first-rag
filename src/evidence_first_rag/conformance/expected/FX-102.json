@@ -1,0 +1,69 @@
+{
+  "status": "success",
+  "rows": [
+    {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_BASE",
+      "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+      "signal_key": "SAMPLE_SIG_TEMPERATURE",
+      "unit_label": "SAMPLE_UNIT_DEGC",
+      "scale_factor": "0.5",
+      "scale_offset": "-50",
+      "bit_width": 8,
+      "bit_offset": 0,
+      "superseded_by_project_code": null,
+      "superseded_by_revision_label": null,
+      "superseded_by_network_name": null,
+      "superseded_by_snapshot_label": null
+    }
+  ],
+  "evidence_bundle": {
+    "contract_identifier": "mvp-v0.1",
+    "contract_version": "0.5.0",
+    "route": "signal_facts",
+    "template_name": "TPL_SIGNAL_FACTS_V1",
+    "template_version": "2",
+    "bound_parameters": {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_BASE",
+      "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+      "signal_key": "SAMPLE_SIG_TEMPERATURE"
+    },
+    "row_count": 1,
+    "resolved_scope": {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_BASE"
+    },
+    "collation": "C",
+    "read_only_safeguards": {
+      "role_name": "mvp_runtime",
+      "read_only_transaction": true,
+      "connection_opened": true
+    }
+  },
+  "source_trace": {
+    "contributing_scopes": [
+      {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE"
+      }
+    ],
+    "mapping_provenance": [],
+    "producing_layer": null,
+    "fixture_provenance": [
+      "fixtures/source_snapshot.jsonl",
+      "fixtures/message_occurrence.jsonl",
+      "fixtures/signal_occurrence.jsonl",
+      "fixtures/signal_mapping.jsonl"
+    ]
+  },
+  "limitations": []
+}

@@ -1,0 +1,158 @@
+{
+  "status": "success",
+  "rows": [
+    {
+      "asserting_project_code": "SAMPLE_PROJECT_ALPHA",
+      "asserting_revision_label": "SAMPLE_REV_A",
+      "asserting_network_name": "SAMPLE_NET_POWERTRAIN",
+      "asserting_snapshot_label": "SAMPLE_SNAP_BASE",
+      "source_project_code": "SAMPLE_PROJECT_ALPHA",
+      "source_revision_label": "SAMPLE_REV_A",
+      "source_network_name": "SAMPLE_NET_POWERTRAIN",
+      "source_snapshot_label": "SAMPLE_SNAP_BASE",
+      "source_message_key": "SAMPLE_MSG_ENGINE_STATUS",
+      "source_signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+      "target_project_code": "SAMPLE_PROJECT_ALPHA",
+      "target_revision_label": "SAMPLE_REV_A",
+      "target_network_name": "SAMPLE_NET_POWERTRAIN",
+      "target_snapshot_label": "SAMPLE_SNAP_BASE",
+      "target_message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+      "target_signal_key": "SAMPLE_SIG_FAULT_CODE",
+      "mapping_key": "SAMPLE_MAP_SPEED_TO_FAULT",
+      "transform_kind": "SAMPLE_TRANSFORM_DIRECT",
+      "asserting_superseded_by_project_code": null,
+      "asserting_superseded_by_revision_label": null,
+      "asserting_superseded_by_network_name": null,
+      "asserting_superseded_by_snapshot_label": null,
+      "source_superseded_by_project_code": null,
+      "source_superseded_by_revision_label": null,
+      "source_superseded_by_network_name": null,
+      "source_superseded_by_snapshot_label": null,
+      "target_superseded_by_project_code": null,
+      "target_superseded_by_revision_label": null,
+      "target_superseded_by_network_name": null,
+      "target_superseded_by_snapshot_label": null
+    },
+    {
+      "asserting_project_code": "SAMPLE_PROJECT_ALPHA",
+      "asserting_revision_label": "SAMPLE_REV_A",
+      "asserting_network_name": "SAMPLE_NET_POWERTRAIN",
+      "asserting_snapshot_label": "SAMPLE_SNAP_BASE",
+      "source_project_code": "SAMPLE_PROJECT_ALPHA",
+      "source_revision_label": "SAMPLE_REV_A",
+      "source_network_name": "SAMPLE_NET_POWERTRAIN",
+      "source_snapshot_label": "SAMPLE_SNAP_BASE",
+      "source_message_key": "SAMPLE_MSG_ENGINE_STATUS",
+      "source_signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+      "target_project_code": "SAMPLE_PROJECT_ALPHA",
+      "target_revision_label": "SAMPLE_REV_A",
+      "target_network_name": "SAMPLE_NET_POWERTRAIN",
+      "target_snapshot_label": "SAMPLE_SNAP_BASE",
+      "target_message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+      "target_signal_key": "SAMPLE_SIG_GEAR_POSITION",
+      "mapping_key": "SAMPLE_MAP_SPEED_TO_GEAR",
+      "transform_kind": "SAMPLE_TRANSFORM_LINEAR",
+      "asserting_superseded_by_project_code": null,
+      "asserting_superseded_by_revision_label": null,
+      "asserting_superseded_by_network_name": null,
+      "asserting_superseded_by_snapshot_label": null,
+      "source_superseded_by_project_code": null,
+      "source_superseded_by_revision_label": null,
+      "source_superseded_by_network_name": null,
+      "source_superseded_by_snapshot_label": null,
+      "target_superseded_by_project_code": null,
+      "target_superseded_by_revision_label": null,
+      "target_superseded_by_network_name": null,
+      "target_superseded_by_snapshot_label": null
+    }
+  ],
+  "evidence_bundle": {
+    "contract_identifier": "mvp-v0.1",
+    "contract_version": "0.5.0",
+    "route": "signal_mapping",
+    "template_name": "TPL_SIGNAL_MAPPING_V1",
+    "template_version": "2",
+    "bound_parameters": {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_BASE",
+      "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+      "signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+      "mapping_key": null
+    },
+    "row_count": 2,
+    "resolved_scope": {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_BASE"
+    },
+    "collation": "C",
+    "read_only_safeguards": {
+      "role_name": "mvp_runtime",
+      "read_only_transaction": true,
+      "connection_opened": true
+    }
+  },
+  "source_trace": {
+    "contributing_scopes": [
+      {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE"
+      }
+    ],
+    "mapping_provenance": [
+      {
+        "asserting_scope": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "source_endpoint_scope": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "target_endpoint_scope": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      },
+      {
+        "asserting_scope": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "source_endpoint_scope": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "target_endpoint_scope": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      }
+    ],
+    "producing_layer": null,
+    "fixture_provenance": [
+      "fixtures/source_snapshot.jsonl",
+      "fixtures/message_occurrence.jsonl",
+      "fixtures/signal_occurrence.jsonl",
+      "fixtures/signal_mapping.jsonl"
+    ]
+  },
+  "limitations": []
+}

@@ -1,0 +1,66 @@
+{
+  "status": "success",
+  "rows": [
+    {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_REVISED",
+      "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+      "transmit_mode": "SAMPLE_MODE_CYCLIC",
+      "transmit_period_ms": 20,
+      "payload_byte_length": 8,
+      "frame_identifier": 256,
+      "superseded_by_project_code": null,
+      "superseded_by_revision_label": null,
+      "superseded_by_network_name": null,
+      "superseded_by_snapshot_label": null
+    }
+  ],
+  "evidence_bundle": {
+    "contract_identifier": "mvp-v0.1",
+    "contract_version": "0.5.0",
+    "route": "message_facts",
+    "template_name": "TPL_MESSAGE_FACTS_V1",
+    "template_version": "2",
+    "bound_parameters": {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_REVISED",
+      "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+    },
+    "row_count": 1,
+    "resolved_scope": {
+      "project_code": "SAMPLE_PROJECT_ALPHA",
+      "revision_label": "SAMPLE_REV_A",
+      "network_name": "SAMPLE_NET_POWERTRAIN",
+      "snapshot_label": "SAMPLE_SNAP_REVISED"
+    },
+    "collation": "C",
+    "read_only_safeguards": {
+      "role_name": "mvp_runtime",
+      "read_only_transaction": true,
+      "connection_opened": true
+    }
+  },
+  "source_trace": {
+    "contributing_scopes": [
+      {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_REVISED"
+      }
+    ],
+    "mapping_provenance": [],
+    "producing_layer": null,
+    "fixture_provenance": [
+      "fixtures/source_snapshot.jsonl",
+      "fixtures/message_occurrence.jsonl",
+      "fixtures/signal_occurrence.jsonl",
+      "fixtures/signal_mapping.jsonl"
+    ]
+  },
+  "limitations": []
+}
