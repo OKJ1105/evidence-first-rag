@@ -41,6 +41,30 @@ const outcomeLabels = [LABELS.ready, LABELS.needsHuman, LABELS.failed];
  */
 export const protectedPaths = ["scripts/", ".github/", ".githooks/", ".claude/"];
 
+/**
+ * Paths whose changes require a recorded human decision.
+ *
+ * A second fence, and deliberately not part of `protectedPaths`. BF3 is about
+ * credentials: those files are executed by the orchestrator with a token the
+ * agents do not hold, so editing them is a way to borrow privilege. A contract
+ * is never executed and carries no credential. It is refused because the change
+ * needs an authority a Writer does not have — Section 10 of the contract makes
+ * an amendment to an `Accepted` document a recorded human decision.
+ *
+ * Keeping the two lists apart keeps both abort messages true. Merged, a reader
+ * asking why the contract is fenced would get the credential answer, and
+ * relaxing BF3 on credential grounds would quietly relax this as well.
+ *
+ * The rule is by path rather than by judgement because a contract finding does
+ * not carry its own answer. A code finding is resolvable from the artifacts; a
+ * finding like "Section 3.4 and Issue #12 cannot both hold" is resolvable only
+ * by choosing between legitimate alternatives. Both reach a Writer as "blocking
+ * finding, fix it", and it cannot tell them apart from the inside — on
+ * 2026-09-03 it picked "amend the contract" on #23 and "revert the amendment"
+ * on #32, opposite directions, neither its to decide. See #34.
+ */
+export const ownerDecisionPaths = ["docs/contracts/"];
+
 /** Governing documents injected into both prompts, read from the base ref. */
 export const governingDocs = [
   "AGENTS.md",
@@ -157,13 +181,27 @@ export function linkedIssueNumber(prBody) {
   return Number(m[1]);
 }
 
-/** Paths in `changed` that a Writer turn was not allowed to touch. */
-export function forbiddenEdits(changed) {
-  return changed.filter((p) =>
-    protectedPaths.some((prefix) =>
-      prefix.endsWith("/") ? p.startsWith(prefix) : p === prefix,
-    ),
+/** Whether `path` falls under any prefix in `fence`. */
+function under(path, fence) {
+  return fence.some((prefix) =>
+    prefix.endsWith("/") ? path.startsWith(prefix) : path === prefix,
   );
+}
+
+/** Paths in `changed` that a Writer turn was not allowed to touch (BF3). */
+export function forbiddenEdits(changed) {
+  return changed.filter((p) => under(p, protectedPaths));
+}
+
+/**
+ * Paths in `changed` whose change requires a recorded human decision.
+ *
+ * Separate from `forbiddenEdits` so each abort states its own reason. A caller
+ * that reported both under BF3's credential wording would be telling a reader
+ * something untrue about why the contract is fenced.
+ */
+export function ownerDecisionEdits(changed) {
+  return changed.filter((p) => under(p, ownerDecisionPaths));
 }
 
 /** Run one manifest check, capturing enough output to be useful in a prompt. */
@@ -515,17 +553,32 @@ export async function runLoop({
           cap,
           docs,
           protectedPaths,
+          ownerDecisionPaths,
         }),
       });
 
       // BF3: refuse a Writer turn that edited the machinery the orchestrator
       // runs with privileges the Writer does not have.
-      const forbidden = forbiddenEdits(await changedPaths());
+      const changedNow = await changedPaths();
+      const forbidden = forbiddenEdits(changedNow);
       if (forbidden.length > 0) {
         throw new Error(
           `The Writer edited protected paths: ${forbidden.join(", ")}. ` +
             "Those are run by the orchestrator with credentials the agents do not hold, " +
             "so the run is aborted rather than executing them.",
+        );
+      }
+      // A separate fence with a separate reason: nothing here is executed and
+      // nothing carries a credential. The edit is refused because amending an
+      // `Accepted` contract is a recorded human decision under its Section 10,
+      // which is not a Writer's to make. Reporting it under the message above
+      // would state the wrong reason.
+      const needsOwner = ownerDecisionEdits(changedNow);
+      if (needsOwner.length > 0) {
+        throw new Error(
+          `The Writer edited paths that require a recorded human decision: ${needsOwner.join(", ")}. ` +
+            "Amending an accepted contract is the repository owner's decision, not a review-finding fix, " +
+            "so the run is aborted rather than publishing a conclusion built on one.",
         );
       }
 
