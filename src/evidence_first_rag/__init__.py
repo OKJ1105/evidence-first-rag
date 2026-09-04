@@ -1,9 +1,11 @@
 """Evidence-First RAG Runtime: the type surface of contract `mvp-v0.1`.
 
-This package holds types and constants only. It opens no database, registers
-no SQL template, routes no request, and renders no answer; each of those is a
-later slice with its own Issue. What it fixes is the shape those slices are
-written against, so that they agree by construction instead of informally.
+This module is the shape every slice is written against: the reference,
+evidence, result, status, and route types, and the constants that name the
+contract. The subpackages hold what executes -- `registry` the four fixed SQL
+templates of Section 4.4, `runtime` the three routes and their outcomes, `db`
+the provisioning path -- and none of them is imported from here, so importing
+the type surface pulls in no driver and opens no connection.
 
 Every type cites the Section of docs/contracts/mvp-v0.1.md it implements.
 """
@@ -25,6 +27,7 @@ from .references import (
     SnapshotScope,
 )
 from .result import REQUIRED_LIMITATION, Result, Row
+from .routes import UNSUPPORTED_ROUTE, Route
 from .status import OPENS_NO_CONNECTION, Status
 
 __all__ = [
@@ -41,10 +44,12 @@ __all__ = [
     "REQUIRED_LIMITATION",
     "ReadOnlySafeguards",
     "Result",
+    "Route",
     "Row",
     "SCOPE_DIMENSIONS",
     "SignalReference",
     "SnapshotScope",
     "SourceTrace",
     "Status",
+    "UNSUPPORTED_ROUTE",
 ]

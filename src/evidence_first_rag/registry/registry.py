@@ -21,6 +21,19 @@ SCHEMA = "mvp"
 _SCOPE = ("project_code", "revision_label", "network_name", "snapshot_label")
 
 
+def _superseded_by(prefix: str = "") -> tuple[str, ...]:
+    """The column names carrying the superseding snapshot's scope.
+
+    Built from `_SCOPE` rather than written out, so that a fifth scope
+    dimension could not be added to Section 4.2 and silently leave the
+    supersession columns describing four of five.
+    """
+    return tuple(f"{prefix}superseded_by_{dimension}" for dimension in _SCOPE)
+
+
+_SUPERSEDED_BY = _superseded_by()
+
+
 TPL_SNAPSHOT_CANDIDATES_V1 = Template(
     seal=_SEAL,
     name="TPL_SNAPSHOT_CANDIDATES_V1",
@@ -60,10 +73,32 @@ SELECT s.project_code,
 )
 
 
+# Section 7 requires a `limitations` entry "when any participating snapshot has
+# a non-null `superseded_by`", and Section 4.2 requires `superseded_by` itself to
+# be exposed there. Neither is reachable unless a registered template returns it:
+# the runtime executes nothing outside this registry (Section 4.4), and
+# `TPL_SNAPSHOT_CANDIDATES_V1` may not carry it because Section 4.4 fixes that
+# template as returning "scope columns only".
+#
+# So the three fact and mapping templates dereference `superseded_by` into the
+# superseding snapshot's four scope dimensions, as `*_superseded_by_*` columns
+# that are null when the participating snapshot is current. Section 4.4 fixes
+# each template's allowed parameters, ordering, and row limit; it does not fix
+# their result column lists, so this is a registration choice rather than a
+# contract change. The surrogate `superseded_by` value itself is never returned:
+# Section 4.2 keeps surrogate keys out of every public payload.
+#
+# That change is why these three carry `version="2"` while the candidate
+# template stays at "1". The rule: a registered template's SQL text never
+# changes under a version it has already carried. Section 7 puts the version
+# in every evidence bundle so that a reader can find the exact SQL that
+# produced a result, and the name alone (`..._V1`) identifies the template,
+# not its text. The name is the contract's identifier and does not move; the
+# version is the revision of the text and does.
 TPL_MESSAGE_FACTS_V1 = Template(
     seal=_SEAL,
     name="TPL_MESSAGE_FACTS_V1",
-    version="1",
+    version="2",
     sql=f"""
 SELECT s.project_code,
        s.revision_label,
@@ -73,9 +108,14 @@ SELECT s.project_code,
        m.transmit_mode,
        m.transmit_period_ms,
        m.payload_byte_length,
-       m.frame_identifier
+       m.frame_identifier,
+       u.project_code   AS superseded_by_project_code,
+       u.revision_label AS superseded_by_revision_label,
+       u.network_name   AS superseded_by_network_name,
+       u.snapshot_label AS superseded_by_snapshot_label
   FROM {SCHEMA}.message_occurrence AS m
   JOIN {SCHEMA}.source_snapshot AS s ON s.snapshot_id = m.snapshot_id
+  LEFT JOIN {SCHEMA}.source_snapshot AS u ON u.snapshot_id = s.superseded_by
  WHERE s.project_code   = %(project_code)s
    AND s.revision_label = %(revision_label)s
    AND s.network_name   = %(network_name)s
@@ -93,7 +133,8 @@ SELECT s.project_code,
         "transmit_period_ms",
         "payload_byte_length",
         "frame_identifier",
-    ),
+    )
+    + _SUPERSEDED_BY,
     # Section 4.4 declares the ordering as `message_key`. Section 6 requires
     # every ordering to be total, and the surrogate key is the tiebreaker it
     # names for the case where the declared columns tie -- which here means
@@ -112,7 +153,7 @@ SELECT s.project_code,
 TPL_SIGNAL_FACTS_V1 = Template(
     seal=_SEAL,
     name="TPL_SIGNAL_FACTS_V1",
-    version="1",
+    version="2",
     sql=f"""
 SELECT s.project_code,
        s.revision_label,
@@ -124,10 +165,15 @@ SELECT s.project_code,
        g.scale_factor,
        g.scale_offset,
        g.bit_width,
-       g.bit_offset
+       g.bit_offset,
+       u.project_code   AS superseded_by_project_code,
+       u.revision_label AS superseded_by_revision_label,
+       u.network_name   AS superseded_by_network_name,
+       u.snapshot_label AS superseded_by_snapshot_label
   FROM {SCHEMA}.signal_occurrence AS g
   JOIN {SCHEMA}.message_occurrence AS m ON m.message_occurrence_id = g.message_occurrence_id
   JOIN {SCHEMA}.source_snapshot AS s ON s.snapshot_id = m.snapshot_id
+  LEFT JOIN {SCHEMA}.source_snapshot AS u ON u.snapshot_id = s.superseded_by
  WHERE s.project_code   = %(project_code)s
    AND s.revision_label = %(revision_label)s
    AND s.network_name   = %(network_name)s
@@ -149,7 +195,8 @@ SELECT s.project_code,
         "scale_offset",
         "bit_width",
         "bit_offset",
-    ),
+    )
+    + _SUPERSEDED_BY,
     ordering=("message_key", "signal_key", "signal_occurrence_id"),
     row_limit=2,
     limit_meaning=LimitMeaning.DETECTS_OVERFLOW,
@@ -159,7 +206,7 @@ SELECT s.project_code,
 TPL_SIGNAL_MAPPING_V1 = Template(
     seal=_SEAL,
     name="TPL_SIGNAL_MAPPING_V1",
-    version="1",
+    version="2",
     # Section 4.5: "the result exposes one entry per asserting relation",
     # because Charter Section 3.6 requires the asserting artifact's scope to
     # travel with each relation. That is why the asserting snapshot and both
@@ -183,7 +230,19 @@ SELECT a.project_code    AS asserting_project_code,
        tm.message_key    AS target_message_key,
        tg.signal_key     AS target_signal_key,
        x.mapping_key,
-       x.transform_kind
+       x.transform_kind,
+       au.project_code   AS asserting_superseded_by_project_code,
+       au.revision_label AS asserting_superseded_by_revision_label,
+       au.network_name   AS asserting_superseded_by_network_name,
+       au.snapshot_label AS asserting_superseded_by_snapshot_label,
+       su.project_code   AS source_superseded_by_project_code,
+       su.revision_label AS source_superseded_by_revision_label,
+       su.network_name   AS source_superseded_by_network_name,
+       su.snapshot_label AS source_superseded_by_snapshot_label,
+       tu.project_code   AS target_superseded_by_project_code,
+       tu.revision_label AS target_superseded_by_revision_label,
+       tu.network_name   AS target_superseded_by_network_name,
+       tu.snapshot_label AS target_superseded_by_snapshot_label
   FROM {SCHEMA}.signal_mapping AS x
   JOIN {SCHEMA}.source_snapshot AS a ON a.snapshot_id = x.asserting_snapshot_id
   JOIN {SCHEMA}.signal_occurrence AS sg ON sg.signal_occurrence_id = x.source_signal_occurrence_id
@@ -192,6 +251,9 @@ SELECT a.project_code    AS asserting_project_code,
   JOIN {SCHEMA}.signal_occurrence AS tg ON tg.signal_occurrence_id = x.target_signal_occurrence_id
   JOIN {SCHEMA}.message_occurrence AS tm ON tm.message_occurrence_id = tg.message_occurrence_id
   JOIN {SCHEMA}.source_snapshot AS ts ON ts.snapshot_id = tm.snapshot_id
+  LEFT JOIN {SCHEMA}.source_snapshot AS au ON au.snapshot_id = a.superseded_by
+  LEFT JOIN {SCHEMA}.source_snapshot AS su ON su.snapshot_id = ss.superseded_by
+  LEFT JOIN {SCHEMA}.source_snapshot AS tu ON tu.snapshot_id = ts.superseded_by
  WHERE ss.project_code   = %(project_code)s
    AND ss.revision_label = %(revision_label)s
    AND ss.network_name   = %(network_name)s
@@ -224,7 +286,10 @@ SELECT a.project_code    AS asserting_project_code,
         "target_signal_key",
         "mapping_key",
         "transform_kind",
-    ),
+    )
+    + _superseded_by("asserting_")
+    + _superseded_by("source_")
+    + _superseded_by("target_"),
     # Section 4.4 declares the ordering as `mapping_key`, `signal_mapping_id`.
     # The surrogate is named by the contract itself here: two mappings may
     # share a key within one asserting snapshot, so the declared column ties.
