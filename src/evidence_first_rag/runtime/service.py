@@ -161,11 +161,11 @@ class Runtime:
         key. Conflating the two is the defect this branch exists to prevent,
         and it is why the candidate query runs even for a complete scope.
         """
-        named = {
-            name: value
-            for name, value in request.arguments.items()
-            if name in SCOPE_DIMENSIONS
-        }
+        named = ", ".join(
+            f"{name}={request.arguments[name]}"
+            for name in SCOPE_DIMENSIONS
+            if name in request.arguments
+        )
         return self._opened_without_facts(
             request,
             safeguards,

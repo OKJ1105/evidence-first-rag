@@ -21,6 +21,7 @@ from evidence_first_rag.runtime.render import (
     COLUMN_LABELS,
     FRAGMENTS,
     OPENING,
+    SUPERSESSION_MARKER,
     Answer,
     Prose,
     Value,
@@ -181,6 +182,44 @@ class TheRenderedValuesKeepTheirStoredForm(unittest.TestCase):
         )
         self.assertIn("transmit_period_ms: null", render(result))
 
+    def test_a_current_snapshot_adds_no_supersession_noise(self):
+        # Review finding N3. A routine success carries four supersession
+        # columns that are null, and rendering them would pad every answer
+        # with absence. They are omitted only when empty.
+        text = render(
+            answered("message_facts", MESSAGE, {MESSAGE_FACTS: (message_row(),)})
+        )
+        self.assertNotIn("superseded_by", text)
+        self.assertIn("frame_identifier: 256", text)
+
+    def test_a_supersession_that_carries_a_value_is_still_rendered(self):
+        text = render(
+            answered(
+                "message_facts",
+                {**CHASSIS, "message_key": "SAMPLE_MSG_ENGINE_STATUS"},
+                {MESSAGE_FACTS: (message_row(CHASSIS, superseded_by=CHASSIS_B),)},
+                scope=CHASSIS,
+            )
+        )
+        self.assertIn("superseded_by_revision_label: SAMPLE_REV_B", text)
+
+    def test_the_marker_matches_every_registered_supersession_column(self):
+        # Matched rather than listed, so this is the test that the match is
+        # the right one: a column the registry builds and the marker misses
+        # would be rendered as null noise again.
+        from evidence_first_rag.registry import REGISTERED
+
+        built = {
+            column
+            for template in REGISTERED
+            for column in template.result_columns
+            if column.endswith(("_project_code", "_revision_label", "_network_name", "_snapshot_label"))
+            and "superseded" in column
+        }
+        self.assertEqual(len(built), 16)
+        for column in built:
+            self.assertIn(SUPERSESSION_MARKER, column)
+
     def test_a_candidate_list_renders_every_candidate(self):
         result = one_of_each_status()[Status.AMBIGUOUS]
         text = render(result)
@@ -189,7 +228,18 @@ class TheRenderedValuesKeepTheirStoredForm(unittest.TestCase):
 
     def test_a_negative_outcome_still_renders_its_limitations(self):
         result = one_of_each_status()[Status.COVERAGE_GAP]
-        self.assertIn(LimitationKind.COVERAGE_NOT_ESTABLISHED.value, render(result))
+        text = render(result)
+        self.assertIn(LimitationKind.COVERAGE_NOT_ESTABLISHED.value, text)
+        # A `limitations` detail is user-facing prose, so it carries the scope
+        # it names in the contract's own vocabulary rather than as a repr of
+        # whatever structure the runtime happened to hold it in.
+        self.assertIn("network_name=SAMPLE_NET_POWERTRAIN", text)
+        self.assertNotIn("{'", text)
+
+    def test_the_prose_carries_no_doubled_separator(self):
+        for label, result in one_of_each_status().items():
+            with self.subTest(status=getattr(label, "value", label)):
+                self.assertNotIn("  ", render(result))
 
 
 if __name__ == "__main__":

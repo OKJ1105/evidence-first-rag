@@ -37,7 +37,7 @@ FRAGMENTS = {
     "label_separator": ": ",
     "null": "null",
     "row_marker": "- ",
-    "limitation": "Limitation ",
+    "limitation": "Limitation",
     "limitation_open": " (",
     "limitation_close": "): ",
     "line": "\n",
@@ -81,6 +81,12 @@ OPENING = {
 COLUMN_LABELS = frozenset(
     column for template in REGISTERED for column in template.result_columns
 )
+
+# The marker every dereferenced-supersession column carries. Matched rather
+# than listed, because the registry builds these names per participant prefix
+# and a listing here would go stale the moment a template gained a fourth
+# participant.
+SUPERSESSION_MARKER = "superseded_by_"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -226,9 +232,20 @@ def _row(row):
     phrase about absence. Section 6 keeps numeric values at their stored
     precision, which is why `str` is applied to the stored value rather than
     to a formatted one: `0.10` stays `0.10`.
+
+    The one exception is a supersession column with nothing in it. Those
+    columns are not facts about the message, the signal, or the mapping; they
+    exist so that the runtime can build Section 7's superseded-snapshot entry,
+    and when a participating snapshot is current they carry nothing to say.
+    Rendering four `superseded_by_...: null` pairs on every routine answer
+    would pad the prose with absence, and the `limitations` list already
+    names the snapshot whenever there is something to name. A supersession
+    column that does carry a value is rendered like any other.
     """
     first = True
     for column, value in row.items():
+        if value is None and SUPERSESSION_MARKER in column:
+            continue
         if not first:
             yield Prose(FRAGMENTS["field_separator"])
         first = False
