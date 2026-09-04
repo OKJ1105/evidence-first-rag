@@ -44,25 +44,61 @@ class TheCommittedFilesAreWhatTheToolProduces(unittest.TestCase):
 
 
 class TheExpectedSideNeverSeesTheRuntime(unittest.TestCase):
-    def test_authoring_imports_nothing_from_the_runtime_that_produces_results(self):
-        """`authoring.py` may reach the registry for a template's allowlist --
-        Section 4.4 fixes it and it is an input, not an output -- but never
-        the runtime's result path. An expectation built from `service.py`
-        would make `A1` compare the runtime with itself.
+    # The only names `authoring.py` may take from the runtime package: static
+    # contract metadata, not anything that computes a result. Review finding
+    # N1 on #38 -- the earlier version of this test scanned for three module
+    # names, so the docstring's blanket "imports nothing from the runtime"
+    # was not the claim the test checked.
+    ALLOWED_RUNTIME_NAMES = {"CANDIDATES_TEMPLATE", "ROUTE_TEMPLATE"}
+
+    def test_authoring_imports_nothing_from_the_runtime_that_produces_a_result(self):
+        """An expectation built from `service.py` would make `A1` compare the
+        runtime with itself, so the import graph is where that is prevented.
         """
         tree = ast.parse(pathlib.Path(authoring.__file__).read_text())
         forbidden = []
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
-                if any(part in node.module for part in ("service", "render", "normalize")):
-                    forbidden.append(node.module)
+                # Relative imports inside the package resolve by level; a
+                # `from ..runtime.x import y` has module "runtime.x".
+                if node.module.split(".")[0] == "runtime":
+                    forbidden += [
+                        f"{node.module}.{alias.name}"
+                        for alias in node.names
+                        if alias.name not in self.ALLOWED_RUNTIME_NAMES
+                    ]
             if isinstance(node, ast.Import):
                 forbidden += [
-                    alias.name
-                    for alias in node.names
-                    if "service" in alias.name or "render" in alias.name
+                    alias.name for alias in node.names if "runtime" in alias.name
                 ]
         self.assertEqual(forbidden, [])
+
+    def test_the_allowlist_is_metadata_and_not_a_result(self):
+        # The other half of N1: an allowlist nobody reads would let anything
+        # through. These two are Section 4.5's route-to-template map and the
+        # name of Section 4.4's candidate template -- strings the contract
+        # fixes, containing no row, status, or evidence.
+        from evidence_first_rag.runtime.request import CANDIDATES_TEMPLATE, ROUTE_TEMPLATE
+
+        self.assertIsInstance(CANDIDATES_TEMPLATE, str)
+        self.assertEqual(
+            sorted(ROUTE_TEMPLATE.values()),
+            ["TPL_MESSAGE_FACTS_V1", "TPL_SIGNAL_FACTS_V1", "TPL_SIGNAL_MAPPING_V1"],
+        )
+
+    def test_the_broadened_scan_would_catch_a_result_producing_import(self):
+        # Probed, because a scan that matches nothing passes quietly.
+        tree = ast.parse("from ..runtime.service import Runtime\n")
+        found = [
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.split(".")[0] == "runtime"
+            for alias in node.names
+            if alias.name not in self.ALLOWED_RUNTIME_NAMES
+        ]
+        self.assertEqual(found, ["Runtime"])
 
     def test_it_does_not_import_the_conformance_runner(self):
         source = pathlib.Path(authoring.__file__).read_text()

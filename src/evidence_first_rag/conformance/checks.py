@@ -47,6 +47,10 @@ FACTUAL_TEMPLATES = frozenset(
 # registered name freely (Issue #28).
 REGISTERED_SQL = frozenset(template.sql for template in REGISTERED_TEMPLATES)
 
+# Section 4.4: "The runtime identity runs with `statement_timeout = 5s`, set
+# at the role level by provisioning."
+STATEMENT_TIMEOUT = "5s"
+
 # The parameter names `tests/test_registry_surface.py` treats as a caller
 # handing over SQL, a table, or a column. Same list, because `B1`'s second
 # half is the same claim that test pins.
@@ -276,7 +280,7 @@ def b4(before: dict, after: dict) -> CheckResult:
     )
 
 
-def c1(failures: list[str]) -> CheckResult:
+def c1(failures: list[str], *, statement_timeout: str | None = None) -> CheckResult:
     """`C1` Every Section 4.1 constraint and every Section 4.2 rule holds.
 
     Charter Section 9 requires an automated data-level check of the Section
@@ -284,7 +288,24 @@ def c1(failures: list[str]) -> CheckResult:
     `db/invariants.py`, which the provisioning slice wrote and which runs as
     the provisioning identity because probing enforcement needs INSERT; this
     records its result in the artifact, which is what Section 4.9 adds.
+
+    `statement_timeout` is the value the runtime's own session reported, and
+    it is checked here rather than under a new identifier because Section 4.9
+    registers exactly `A1`, `B1`-`B4`, `C1`, `D1` and `E1`; inventing a `B5`
+    would be adding a registered check the contract does not have.
+
+    It is a second assertion, not a duplicate. `db/invariants.py` reads
+    `pg_roles.rolconfig` and so asserts what provisioning *set* on the role;
+    this asserts what the runtime's session actually *got*. A per-session
+    override would satisfy the first and not the second, and Section 4.4 fixes
+    the value the runtime runs with, not the value someone configured.
     """
+    failures = list(failures)
+    if statement_timeout is not None and statement_timeout != STATEMENT_TIMEOUT:
+        failures.append(
+            f"Section 4.4: the runtime session reports statement_timeout"
+            f" {statement_timeout!r}, expected {STATEMENT_TIMEOUT!r}"
+        )
     if failures:
         return CheckResult(
             identifier="C1",

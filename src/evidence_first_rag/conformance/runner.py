@@ -144,7 +144,7 @@ def run(open_runtime_database, *, probe_connection, invariant_failures) -> Artif
             checks.b2(outcomes),
             checks.b3(recorded_refusals),
             checks.b4(before, after),
-            checks.c1(invariant_failures),
+            checks.c1(invariant_failures, statement_timeout=timeout),
         ),
         fixtures=tuple(fixtures),
     )

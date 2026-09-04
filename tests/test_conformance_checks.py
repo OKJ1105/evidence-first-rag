@@ -137,6 +137,25 @@ class B4AndC1AndD1(unittest.TestCase):
         self.assertFalse(broken.passed)
         self.assertEqual(broken.failure_class, "data")
 
+    def test_c1_also_asserts_the_session_statement_timeout(self):
+        # Review finding N2 on #38. `db/invariants.py` reads the role's
+        # configured value; this is what the runtime's session actually got,
+        # which a per-session override could make differ. Section 4.4 fixes
+        # the value the runtime runs with.
+        self.assertTrue(checks.c1([], statement_timeout="5s").passed)
+        drifted = checks.c1([], statement_timeout="30s")
+        self.assertFalse(drifted.passed)
+        self.assertEqual(drifted.failure_class, "data")
+        self.assertIn("statement_timeout", drifted.detail)
+
+    def test_c1_leaves_the_callers_failure_list_alone(self):
+        # It appends its own finding, so it must not append into the list it
+        # was handed -- two runs sharing one invariant result would otherwise
+        # accumulate duplicates and make `D1` fail.
+        failures = []
+        checks.c1(failures, statement_timeout="30s")
+        self.assertEqual(failures, [])
+
     def test_d1_fails_on_any_difference_and_names_where(self):
         first = {"verdict": "pass", "fixtures": [{"identifier": "FX-001"}]}
         self.assertTrue(checks.d1(first, dict(first)).passed)

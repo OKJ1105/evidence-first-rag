@@ -10,8 +10,18 @@ So the expected side is built here, from the registered fixture files and the
 contract Sections that fix each field. `cases.py` says which fixture row each
 case asks for; this module reads that row's stored values out of
 `fixtures/*.jsonl` and assembles the Section 5 and Section 7 structure around
-it. Nothing here imports the runtime, and
-`tests/test_conformance_expected.py` fails if it ever does.
+it.
+
+**What it may and may not import, precisely.** Nothing that computes a result:
+not `service`, not `render`, not `normalize`. It does read two pieces of static
+contract metadata from `runtime.request` -- Section 4.5's route-to-template map
+and the name of the candidate template -- and one template's allowlist from the
+registry. Those are things the contract fixes, the same class of input as the
+fixture files, and copying them here would create a second list to drift
+rather than an independence the comparison needs.
+`tests/test_conformance_expected.py` enforces exactly that line: any import
+from `runtime` outside a named allowlist fails, so the docstring's claim and
+the test's claim are the same claim.
 
 **The prose is deliberately a second copy.** The two `limitations` details
 below restate the sentences `runtime/service.py` composes rather than
