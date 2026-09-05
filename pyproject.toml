@@ -26,6 +26,17 @@ requires-python = ">=3.11"
 # runs in CI against a service container.
 dependencies = ["psycopg[binary]>=3.2"]
 
+# The adapter's SDK, and deliberately an extra rather than a dependency.
+# Charter Section 3.1 puts the model outside the path that produces facts, and
+# contract Section 4.6 confines it to proposing a route: the runtime, the
+# registry, the provisioning path and the conformance runner all execute
+# without it, and `pip install evidence-first-rag` gives you a system that
+# answers questions with no model SDK present at all. Installing the extra is
+# how someone opts into the Milestone 2 comparison, which is the only thing
+# that calls a model.
+[project.optional-dependencies]
+adapter = ["anthropic>=1.4"]
+
 [project.urls]
 Repository = "https://github.com/OKJ1105/evidence-first-rag"
 
