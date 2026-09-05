@@ -190,6 +190,24 @@ class NoInventedValueSurvives(unittest.TestCase):
             text,
         )
 
+    def test_a_dotted_or_hyphenated_prefix_of_a_real_identifier_is_not_an_extraction(self):
+        # Same FX-112 gap as the underscore case above, reached via the other
+        # identifier-continuation characters Section 4.11 permits: `.` and
+        # `-`. A boundary check that only recognizes `[A-Za-z0-9_]` as
+        # continuation characters would wrongly let `.` or `-` satisfy the
+        # word-boundary lookaround and accept the truncated value.
+        text = (
+            "facts for SAMPLE-MSG-ENGINE.STATUS-EXTENDED"
+            f" in {SCOPE_TEXT}"
+        )
+        refusal_from(
+            Proposal(
+                route="message_facts",
+                arguments=ARGUMENTS | {"message_key": "SAMPLE-MSG-ENGINE.STATUS"},
+            ),
+            text,
+        )
+
     def test_an_empty_argument_value_is_not_an_extraction(self):
         refusal_from(
             Proposal(route="message_facts", arguments=ARGUMENTS | {"message_key": ""})

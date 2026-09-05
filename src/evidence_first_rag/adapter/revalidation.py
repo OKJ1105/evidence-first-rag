@@ -104,11 +104,16 @@ def _is_verbatim_token(value: str, request_text: str) -> bool:
     of a real identifier in the request text (e.g. `SAMPLE_MSG_ENGINE_STATUS`
     inside `SAMPLE_MSG_ENGINE_STATUS_EXTENDED`) pass as if it had been
     explicitly stated, and lets an empty value pass trivially. Word-boundary
-    anchoring on both sides requires the value to stand on its own.
+    anchoring on both sides requires the value to stand on its own. The
+    boundary class covers the full Section 4.11 identifier alphabet
+    (`A-Za-z0-9_.-`), not just `_`, so a hallucinated value separated from a
+    longer real identifier only by `.` or `-` (e.g.
+    `SAMPLE-MSG-ENGINE.STATUS` inside `SAMPLE-MSG-ENGINE.STATUS-EXTENDED`)
+    is rejected the same way.
     """
     if value == "":
         return False
-    pattern = rf"(?<![A-Za-z0-9_]){re.escape(value)}(?![A-Za-z0-9_])"
+    pattern = rf"(?<![A-Za-z0-9_.\-]){re.escape(value)}(?![A-Za-z0-9_.\-])"
     return re.search(pattern, request_text) is not None
 
 
