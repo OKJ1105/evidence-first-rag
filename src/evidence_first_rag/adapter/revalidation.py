@@ -21,7 +21,13 @@ hallucinated identifier and a database lookup that would return real facts
 about the wrong thing -- the failure mode the whole contract exists to
 prevent, because its output is indistinguishable from a correct answer.
 
-Verbatim means byte-exact substring. A request saying `sample_msg_engine_status`
+Verbatim means byte-exact whole-token containment, not substring containment:
+the value must appear in the request text as its own token, not merely as a
+run of characters inside a longer one. A proposal that names a different real
+identifier which happens to contain the hallucinated value as a prefix or
+suffix (`SAMPLE_MSG_ENGINE_STATUS` inside `SAMPLE_MSG_ENGINE_STATUS_EXTENDED`)
+must not pass on containment alone -- that is the same FX-112 hallucination
+class, reached a different way. A request saying `sample_msg_engine_status`
 and a proposal saying `SAMPLE_MSG_ENGINE_STATUS` is a rewrite, and Charter
 Section 9's Milestone 2 gate requires that "explicit canonical entity
 references are preserved rather than rewritten". Section 6 already fixes
@@ -30,6 +36,7 @@ rule here keeps one comparison semantics rather than two.
 """
 
 import dataclasses
+import re
 import types
 from collections.abc import Mapping
 
@@ -79,7 +86,7 @@ def _values_come_from_the_request(arguments: Mapping[str, str], request_text: st
             f" without it no argument value can be checked against what was asked",
         )
     invented = sorted(
-        name for name, value in arguments.items() if value not in request_text
+        name for name, value in arguments.items() if not _is_verbatim_token(value, request_text)
     )
     if invented:
         raise Refusal(
@@ -88,6 +95,21 @@ def _values_come_from_the_request(arguments: Mapping[str, str], request_text: st
             f" request text; Section 4.6 lets the adapter extract only values"
             f" explicitly present in the request",
         )
+
+
+def _is_verbatim_token(value: str, request_text: str) -> bool:
+    """Whole-token containment, not substring containment.
+
+    Raw `in` lets a hallucinated value that happens to be a prefix or suffix
+    of a real identifier in the request text (e.g. `SAMPLE_MSG_ENGINE_STATUS`
+    inside `SAMPLE_MSG_ENGINE_STATUS_EXTENDED`) pass as if it had been
+    explicitly stated, and lets an empty value pass trivially. Word-boundary
+    anchoring on both sides requires the value to stand on its own.
+    """
+    if value == "":
+        return False
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(value)}(?![A-Za-z0-9_])"
+    return re.search(pattern, request_text) is not None
 
 
 def refused(refusal: Refusal, proposal: Proposal, *, fixture_provenance=()) -> Result:

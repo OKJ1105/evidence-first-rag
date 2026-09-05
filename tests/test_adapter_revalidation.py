@@ -174,6 +174,27 @@ class NoInventedValueSurvives(unittest.TestCase):
         # The other half: the check must not be so strict that nothing passes.
         revalidate(Proposal(route="message_facts", arguments=ARGUMENTS), REQUEST)
 
+    def test_a_prefix_of_a_real_identifier_is_not_an_extraction(self):
+        # A hallucinated value that happens to be a substring of a different,
+        # real identifier in the request text must not pass on containment
+        # alone -- that is the substring-vs-whole-token gap FX-112 exists to
+        # close.
+        text = (
+            f"facts for SAMPLE_MSG_ENGINE_STATUS_EXTENDED in {SCOPE_TEXT}"
+        )
+        refusal_from(
+            Proposal(
+                route="message_facts",
+                arguments=ARGUMENTS | {"message_key": "SAMPLE_MSG_ENGINE_STATUS"},
+            ),
+            text,
+        )
+
+    def test_an_empty_argument_value_is_not_an_extraction(self):
+        refusal_from(
+            Proposal(route="message_facts", arguments=ARGUMENTS | {"message_key": ""})
+        )
+
     def test_request_text_that_is_not_a_string_is_refused(self):
         for text in (None, 42, ["a"]):
             with self.subTest(text=text):
