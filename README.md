@@ -28,8 +28,10 @@ The table below says how much of the contract executes today, section by section
 | 4.4 Template registry | The runtime role's five-second statement timeout | Implemented |
 | 4.5 Routes | The three route names, as a closed set | Implemented |
 | 4.5 Routes | Request validation, dispatch, and one entry per asserting relation | Implemented |
-| 4.6 Thin LLM Adapter | Adapter and deterministic revalidation | Contracted |
-| 4.7 Deterministic baseline | Exact-match control group for the Milestone 2 comparison | Contracted |
+| 4.6 Thin LLM Adapter | Deterministic revalidation of adapter output | Implemented |
+| 4.6 Thin LLM Adapter | The pinned model call and its recorded decoding configuration | Implemented |
+| 4.7 Deterministic baseline | Exact-match resolver over a curated table | Implemented |
+| 4.7 Deterministic baseline | The comparison harness and its pre-registration gate | Implemented |
 | 4.8 Answer rendering | Fixed-template rendering over a normalized result | Implemented |
 | 4.9 Conformance runner | Checks A through E, verdicts, failure classes | Implemented |
 | 4.9 Conformance runner | One JSON artifact per run, and the `D1` comparison rule | Implemented |
@@ -45,8 +47,13 @@ The table below says how much of the contract executes today, section by section
 | 7 Evidence obligations | All three assembled on every outcome, negatives included | Implemented |
 | 8.1 Required fixture cases | Structural fixture data for the registered cases | Implemented |
 | 8.1 Required fixture cases | Registered expected results per fixture | Implemented |
+| 8 Milestone 2 comparison | The curated request set and the adoption thresholds | Contracted |
 
-The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges every registered fixture against a committed expected result and writes one artifact carrying its verdict. What remains contracted is the layer above: the adapter that turns free text into a candidate route, and the deterministic baseline it is compared against. Provisioning, the data-level invariant check, the runtime's fixture cases, and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
+The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges all sixteen registered fixture cases against a committed expected result and writes one artifact carrying its verdict. Provisioning, the data-level invariant check and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
+
+The adapter is built and its refusals are registered as fixture cases, but **no comparison has been run**. Two things gate it and both are the repository owner's: an API credential, and the adoption thresholds plus the curated request set that contract Section 9 leaves open. Charter Section 9 requires a numeric threshold to be registered before the run it judges, so the harness refuses to produce a verdict without thresholds, and refuses again when the thresholds carry a registration timestamp that is not earlier than the run. Adopting the adapter remains a recorded human decision at the Milestone 2 gate.
+
+The model SDK is an optional extra (`pip install evidence-first-rag[adapter]`). Charter Section 3.1 keeps the model outside the path that produces facts, so a plain install answers questions with no model library present at all.
 
 The expected results the runner compares against are built from `fixtures/` by `src/evidence_first_rag/conformance/authoring.py`, not captured from the runtime. CI asserts the committed files are exactly what that tool produces, so the comparison is between two independently built documents rather than between the runtime and a recording of itself.
 

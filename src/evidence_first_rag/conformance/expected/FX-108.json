@@ -1,0 +1,32 @@
+{
+  "status": "unsupported",
+  "rows": [],
+  "evidence_bundle": {
+    "contract_identifier": "mvp-v0.1",
+    "contract_version": "0.5.0",
+    "route": "rebuild_the_index",
+    "template_name": "",
+    "template_version": "",
+    "bound_parameters": {},
+    "row_count": 0,
+    "resolved_scope": null,
+    "collation": "C",
+    "read_only_safeguards": {
+      "role_name": "",
+      "read_only_transaction": false,
+      "connection_opened": false
+    }
+  },
+  "source_trace": {
+    "contributing_scopes": [],
+    "mapping_provenance": [],
+    "producing_layer": "runtime",
+    "fixture_provenance": [
+      "fixtures/source_snapshot.jsonl",
+      "fixtures/message_occurrence.jsonl",
+      "fixtures/signal_occurrence.jsonl",
+      "fixtures/signal_mapping.jsonl"
+    ]
+  },
+  "limitations": []
+}

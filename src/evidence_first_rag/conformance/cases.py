@@ -7,9 +7,13 @@ here is the request, and `expected/` holds the output it is judged against.
 
 `structural_case` is Section 8.1's own wording for the row, copied rather than
 paraphrased, so that a reader comparing this table with the contract's is
-comparing the same sentence. `FX-108` to `FX-112` are absent: Section 8.1
-registers them as properties of a request or of the adapter, and Issue #14
-placed them with the slices that produce them.
+comparing the same sentence. `FX-108` to `FX-112` are the adapter-level half. Section 8.1 registers them
+as properties of a request rather than of the database, so each carries the
+request text and the proposal the adapter made over it, and each is
+deliberately wrong in exactly one way -- a case that could fail for two
+reasons would not say which rule was broken. Every value they name that is
+*not* the registered defect appears in their request text, so the only rule
+each one breaks is its own.
 """
 
 import dataclasses
@@ -29,18 +33,40 @@ _POWERTRAIN_REVISED = _POWERTRAIN_BASE | {"snapshot_label": "SAMPLE_SNAP_REVISED
 _CHASSIS_A = _POWERTRAIN_BASE | {"network_name": "SAMPLE_NET_CHASSIS"}
 _CHASSIS_B = _CHASSIS_A | {"revision_label": "SAMPLE_REV_B"}
 
+# The request text the adapter-level cases are proposals over. Synthetic, and
+# it names every value those cases legitimately extract, so that a refusal is
+# never incidentally caused by Section 4.6's "values must be in the request"
+# rule when the case is registered for a different reason.
+_ASKING_FOR_MESSAGE_FACTS = (
+    "facts for SAMPLE_MSG_ENGINE_STATUS in SAMPLE_PROJECT_ALPHA SAMPLE_REV_A"
+    " SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE"
+)
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Case:
-    """One registered fixture: an identifier and the request it stands for."""
+    """One registered fixture: an identifier and the request it stands for.
+
+    `request_text` is what makes a case adapter-level. When it is absent the
+    case is a request the runtime is handed directly, and `route` and
+    `arguments` are that request. When it is present the case is a *proposal*
+    the adapter made over that text, and `route` and `arguments` are what the
+    adapter proposed -- so the case runs through Section 4.6's revalidation
+    first, which is the only place `FX-112` can be observed at all.
+    """
 
     identifier: str
     structural_case: str
     route: str
     arguments: Mapping[str, str]
+    request_text: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "arguments", types.MappingProxyType(dict(self.arguments)))
+
+    @property
+    def is_a_proposal(self) -> bool:
+        return self.request_text is not None
 
 
 def _without(mapping, *names):
@@ -142,6 +168,65 @@ REGISTERED = (
         structural_case="Lookup key absent from a fully resolved, covered snapshot",
         route="message_facts",
         arguments=_POWERTRAIN_BASE | {"message_key": "SAMPLE_MSG_ABSENT"},
+    ),
+    # --- The adapter-level half of Section 8.1. -------------------------
+    #
+    # One synthetic request text, reused where the defect allows it, so that
+    # what differs between these cases is the proposal and not the sentence.
+    Case(
+        identifier="FX-108",
+        structural_case="Request outside the three approved routes",
+        route="rebuild_the_index",
+        arguments={},
+        request_text=_ASKING_FOR_MESSAGE_FACTS,
+    ),
+    Case(
+        identifier="FX-109",
+        structural_case="Parameter outside the route allowlist",
+        # `signal_key` is not on `message_facts`. It appears in the request
+        # text, so the allowlist is the only rule this case breaks.
+        route="message_facts",
+        arguments=_POWERTRAIN_BASE
+        | {
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+        },
+        request_text=f"{_ASKING_FOR_MESSAGE_FACTS} and SAMPLE_SIG_ENGINE_SPEED",
+    ),
+    Case(
+        identifier="FX-110",
+        structural_case=(
+            "Contradictory scope, for example two different `revision_label` values"
+        ),
+        route="message_facts",
+        arguments=_POWERTRAIN_BASE
+        | {
+            "revision_label": ["SAMPLE_REV_A", "SAMPLE_REV_B"],
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+        },
+        request_text=f"{_ASKING_FOR_MESSAGE_FACTS} or SAMPLE_REV_B",
+    ),
+    Case(
+        identifier="FX-111",
+        structural_case="Route determined, no canonical reference formable",
+        # The route is decided and the scope is complete; the lookup key the
+        # reference needs was never in the request, so none can be formed.
+        route="message_facts",
+        arguments=dict(_POWERTRAIN_BASE),
+        request_text=(
+            "what messages are in SAMPLE_PROJECT_ALPHA SAMPLE_REV_A"
+            " SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE"
+        ),
+    ),
+    Case(
+        identifier="FX-112",
+        structural_case="Adapter emits an argument value absent from the request",
+        # Everything here is well formed: the route exists, the names are
+        # allowed, the scope is complete. The message key is one the request
+        # never contained, which is the whole of the defect.
+        route="message_facts",
+        arguments=_POWERTRAIN_BASE | {"message_key": "SAMPLE_MSG_INVENTED"},
+        request_text=_ASKING_FOR_MESSAGE_FACTS,
     ),
     Case(
         identifier="FX-113",
