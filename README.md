@@ -31,8 +31,9 @@ The table below says how much of the contract executes today, section by section
 | 4.6 Thin LLM Adapter | Adapter and deterministic revalidation | Contracted |
 | 4.7 Deterministic baseline | Exact-match control group for the Milestone 2 comparison | Contracted |
 | 4.8 Answer rendering | Fixed-template rendering over a normalized result | Implemented |
-| 4.9 Conformance runner | Checks A through E, verdicts, failure classes | Contracted |
-| 4.10 Read-only invariance | State digests and the four refusal assertions | Contracted |
+| 4.9 Conformance runner | Checks A through E, verdicts, failure classes | Implemented |
+| 4.9 Conformance runner | One JSON artifact per run, and the `D1` comparison rule | Implemented |
+| 4.10 Read-only invariance | State digests and the four refusal assertions | Implemented |
 | 4.11 Fixture serialization | The registered JSON Lines fixture files | Implemented |
 | 4.11 Fixture serialization | The loader that resolves natural keys at load time | Implemented |
 | 5 Outcome coverage | The seven status families, as a closed set | Types only |
@@ -43,9 +44,11 @@ The table below says how much of the contract executes today, section by section
 | 7 Evidence obligations | `evidence_bundle`, `source_trace`, `limitations` types | Types only |
 | 7 Evidence obligations | All three assembled on every outcome, negatives included | Implemented |
 | 8.1 Required fixture cases | Structural fixture data for the registered cases | Implemented |
-| 8.1 Required fixture cases | Registered expected results per fixture | Contracted |
+| 8.1 Required fixture cases | Registered expected results per fixture | Implemented |
 
-The four registered SQL templates are inspectable and the three routes now execute them, read-only, as the runtime identity. What remains contracted is the layer above the runtime and the layer that judges it: the adapter that turns free text into a candidate route, the deterministic baseline it is compared against, the conformance runner, and the read-only invariance digest. Provisioning, the data-level invariant check, and the runtime's own fixture cases all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
+The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges every registered fixture against a committed expected result and writes one artifact carrying its verdict. What remains contracted is the layer above: the adapter that turns free text into a candidate route, and the deterministic baseline it is compared against. Provisioning, the data-level invariant check, the runtime's fixture cases, and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
+
+The expected results the runner compares against are built from `fixtures/` by `src/evidence_first_rag/conformance/authoring.py`, not captured from the runtime. CI asserts the committed files are exactly what that tool produces, so the comparison is between two independently built documents rather than between the runtime and a recording of itself.
 
 See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, architecture boundaries, success criterion, roadmap, and release conditions.
 
