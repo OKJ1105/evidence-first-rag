@@ -210,20 +210,7 @@ def _accepted(proposal: Proposal, request_text: str) -> bool:
 
 def _correct(proposal: Proposal, case: EvaluationCase) -> bool:
     if not case.resolves():
-        # The case registers no route. A proposal that names none of the
-        # three is correct outright. One that does name a route is also
-        # correct if revalidation refuses it with the status the case
-        # registers: Section 8.3 counts that as the registered outcome
-        # reached a different way, rather than scoring a miss an adapter that
-        # surfaced the same contradiction the deterministic layer would have
-        # refused on anyway.
-        if proposal.route not in _ROUTE_NAMES:
-            return True
-        try:
-            revalidate(proposal, case.text)
-        except Refusal as refusal:
-            return refusal.status.value == case.expected_status
-        return False
+        return proposal.route not in _ROUTE_NAMES
     if proposal.route != case.expected_route:
         return False
     return dict(proposal.arguments) == dict(case.expected_arguments)
