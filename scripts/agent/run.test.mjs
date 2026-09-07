@@ -8,7 +8,6 @@ import {
   parseStatusPaths,
   git,
   changedPathsOf,
-  pushHead,
   protectedPaths,
   riskLevelOf,
   runLoop,
@@ -1027,26 +1026,31 @@ describe("parsing the paths a Writer turn changed", () => {
   it("git() trims by default and leaves the bytes alone with raw: true", async () => {
     const out = " M .github/workflows/ci.yml\0";
     const spawnFn = () => childWith(out);
-    expect(await git(["status"], ".", { spawnFn })).toBe(out.trim());
-    expect(await git(["status"], ".", { raw: true, spawnFn })).toBe(out);
+    expect(await git(["status"], ".", undefined, { spawnFn })).toBe(out.trim());
+    expect(await git(["status"], ".", undefined, { raw: true, spawnFn })).toBe(out);
   });
 
   it("git() rejects with stderr on a nonzero exit", async () => {
     const spawnFn = () => childWith("", 128, "fatal: not a git repository");
-    await expect(git(["status"], ".", { spawnFn })).rejects.toThrow("not a git repository");
+    await expect(git(["status"], ".", undefined, { spawnFn })).rejects.toThrow("not a git repository");
   });
 
   it("changedPathsOf asks for -z, raw, and hands the parser the leading space", async () => {
     // The composition the round-3 review asked to see tested. Drop either
     // half -- the -z, or raw: true -- and the first path is mangled.
     const seen = [];
-    const gitFn = async (args, cwd, opts) => {
-      seen.push({ args, cwd, opts });
+    const gitFn = async (args, cwd, env, opts) => {
+      seen.push({ args, cwd, env, opts });
       return " M .github/workflows/ci.yml\0?? docs/contracts/mvp.md\0";
     };
     const paths = await changedPathsOf(gitFn, "/wt");
     expect(seen).toEqual([
-      { args: ["status", "--porcelain", "-z"], cwd: "/wt", opts: { raw: true } },
+      {
+        args: ["status", "--porcelain", "-z"],
+        cwd: "/wt",
+        env: undefined,
+        opts: { raw: true },
+      },
     ]);
     expect(paths).toEqual([".github/workflows/ci.yml", "docs/contracts/mvp.md"]);
     expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
@@ -1057,41 +1061,10 @@ describe("parsing the paths a Writer turn changed", () => {
     const out = " M .github/workflows/ci.yml\0";
     const spawnFn = () => childWith(out);
     const paths = await changedPathsOf(
-      (args, cwd, opts) => git(args, cwd, { ...opts, spawnFn }),
+      (args, cwd, env, opts) => git(args, cwd, env, { ...opts, spawnFn }),
       ".",
     );
     expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
-  });
-
-  it("pushHead routes the token through env, and the old positional shape lost it", async () => {
-    // The round-1 review of #49: git() now takes one options object, and the
-    // push call was still passing an env-shaped bag positionally. Assert the
-    // token reaches the spawned process, and show the shape that dropped it.
-    const seen = [];
-    const spawnFn = (_cmd, args, options) => {
-      seen.push({ args, env: options.env });
-      return childWith("");
-    };
-    const wrap = (args, cwd, opts) => git(args, cwd, { ...opts, spawnFn });
-
-    await pushHead(wrap, {
-      worktree: "/wt",
-      owner: "o",
-      repo: "r",
-      branch: "b",
-      token: "tok-secret",
-    });
-    expect(seen.length).toBe(1);
-    expect(seen[0].env.GH_PUSH_TOKEN).toBe("tok-secret");
-    expect(seen[0].args.some((a) => a.includes("tok-secret"))).toBe(false);
-    expect(seen[0].args).toContain("HEAD:b");
-    expect(seen[0].args).toContain("https://github.com/o/r");
-
-    // What the fixed signature does with the OLD call shape: the bag is read
-    // as options, `env` is undefined, and the token is gone.
-    seen.length = 0;
-    await git(["push"], "/wt", { ...process.env, GH_PUSH_TOKEN: "tok-secret", spawnFn });
-    expect(seen[0].env.GH_PUSH_TOKEN).toBe(undefined);
   });
 
   it("keeps the leading status space, which a trimmed stdout would eat", () => {
@@ -1113,11 +1086,16 @@ describe("parsing the paths a Writer turn changed", () => {
     expect(forbiddenEdits(parseStatusPaths(raw.trim()))).toEqual([]);
   });
 
-  it("keeps a path containing a newline in one piece", () => {
+  it("keeps a path containing a newline in one piece, and the fence counts it", () => {
     // The other reason `-z` matters: splitting on "\n" would cut this in two
-    // and the fence would compare against two halves of a name.
+    // and the fence would compare against two halves of a name. The Issue's
+    // acceptance evidence asks that ownerDecisionEdits counts such a path,
+    // so it is asserted on a fenced one, not only parsed.
     expect(parseStatusPaths("?? scripts/we\nird.mjs\0")).toEqual([
       "scripts/we\nird.mjs",
     ]);
+    const fenced = parseStatusPaths("?? docs/contracts/we\nird.md\0");
+    expect(fenced).toEqual(["docs/contracts/we\nird.md"]);
+    expect(ownerDecisionEdits(fenced)).toEqual(["docs/contracts/we\nird.md"]);
   });
 });

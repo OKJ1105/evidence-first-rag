@@ -727,6 +727,10 @@ export async function runLoop({
 /**
  * Run git and resolve its stdout, trimmed.
  *
+ * `env` stays positional: the push in `main()` passes one, and the round-1
+ * review of #49 at `a69f7e0` was right that rewriting this signature to an
+ * options object was discretionary, broke that call, and then needed its own
+ * fix -- none of which #47 asked for. The additions ride in a fourth bag.
  * `raw: true` resolves the bytes untouched, and `git status --porcelain -z`
  * is why the option exists. A worktree-only modification is reported as
  * ` M path\0` -- a LEADING SPACE. Trimming the whole stdout eats that space
@@ -735,7 +739,7 @@ export async function runLoop({
  * which `under()` no longer matches. That is the same fence bypass the `-z`
  * change closed, reached through whitespace instead of quoting.
  */
-export function git(args, cwd, { raw = false, env, spawnFn = spawn } = {}) {
+export function git(args, cwd, env, { raw = false, spawnFn = spawn } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawnFn("git", args, {
       cwd,
@@ -763,34 +767,7 @@ export function git(args, cwd, { raw = false, env, spawnFn = spawn } = {}) {
  */
 export async function changedPathsOf(gitFn, worktree) {
   return parseStatusPaths(
-    await gitFn(["status", "--porcelain", "-z"], worktree, { raw: true }),
-  );
-}
-
-/**
- * Push the worktree's HEAD to the pull request branch.
- *
- * BF3: the credential travels in the environment of this one command and is
- * never written into .git/config, where the agents' Read could reach it.
- *
- * Exported so the credential's route is a tested unit. `git()` takes its
- * options as one object, and the round-1 review of #49 found this call still
- * handing it an env-shaped bag positionally. Destructured as options that bag
- * has no `env` key, the spawn falls back to `process.env`, and the token never
- * reaches the helper -- so the first real fix-round push fails auth and the
- * run dies. The test asserts the token arrives under `env` and nowhere else.
- */
-export function pushHead(gitFn, { worktree, owner, repo, branch, token }) {
-  return gitFn(
-    [
-      "-c",
-      "credential.helper=!f() { echo username=x-access-token; echo password=$GH_PUSH_TOKEN; }; f",
-      "push",
-      `https://github.com/${owner}/${repo}`,
-      `HEAD:${branch}`,
-    ],
-    worktree,
-    { env: { ...process.env, GH_PUSH_TOKEN: token } },
+    await gitFn(["status", "--porcelain", "-z"], worktree, undefined, { raw: true }),
   );
 }
 
@@ -878,13 +855,20 @@ async function main() {
           ],
           worktree,
         );
-        await pushHead(git, {
+        // BF3: the push credential is passed through the environment of this
+        // one command, never written into .git/config where the agents' Read
+        // could reach it.
+        await git(
+          [
+            "-c",
+            "credential.helper=!f() { echo username=x-access-token; echo password=$GH_PUSH_TOKEN; }; f",
+            "push",
+            `https://github.com/${owner}/${repo}`,
+            `HEAD:${branch}`,
+          ],
           worktree,
-          owner,
-          repo,
-          branch,
-          token: process.env.GITHUB_TOKEN,
-        });
+          { ...process.env, GH_PUSH_TOKEN: process.env.GITHUB_TOKEN },
+        );
         return git(["rev-parse", "HEAD"], worktree);
       },
     });
