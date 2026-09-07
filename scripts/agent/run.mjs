@@ -767,6 +767,33 @@ export async function changedPathsOf(gitFn, worktree) {
   );
 }
 
+/**
+ * Push the worktree's HEAD to the pull request branch.
+ *
+ * BF3: the credential travels in the environment of this one command and is
+ * never written into .git/config, where the agents' Read could reach it.
+ *
+ * Exported so the credential's route is a tested unit. `git()` takes its
+ * options as one object, and the round-1 review of #49 found this call still
+ * handing it an env-shaped bag positionally. Destructured as options that bag
+ * has no `env` key, the spawn falls back to `process.env`, and the token never
+ * reaches the helper -- so the first real fix-round push fails auth and the
+ * run dies. The test asserts the token arrives under `env` and nowhere else.
+ */
+export function pushHead(gitFn, { worktree, owner, repo, branch, token }) {
+  return gitFn(
+    [
+      "-c",
+      "credential.helper=!f() { echo username=x-access-token; echo password=$GH_PUSH_TOKEN; }; f",
+      "push",
+      `https://github.com/${owner}/${repo}`,
+      `HEAD:${branch}`,
+    ],
+    worktree,
+    { env: { ...process.env, GH_PUSH_TOKEN: token } },
+  );
+}
+
 /* c8 ignore start - wiring, exercised by the workflow rather than by tests */
 
 async function main() {
@@ -851,20 +878,13 @@ async function main() {
           ],
           worktree,
         );
-        // BF3: the push credential is passed through the environment of this
-        // one command, never written into .git/config where the agents' Read
-        // could reach it.
-        await git(
-          [
-            "-c",
-            "credential.helper=!f() { echo username=x-access-token; echo password=$GH_PUSH_TOKEN; }; f",
-            "push",
-            `https://github.com/${owner}/${repo}`,
-            `HEAD:${branch}`,
-          ],
+        await pushHead(git, {
           worktree,
-          { ...process.env, GH_PUSH_TOKEN: process.env.GITHUB_TOKEN },
-        );
+          owner,
+          repo,
+          branch,
+          token: process.env.GITHUB_TOKEN,
+        });
         return git(["rev-parse", "HEAD"], worktree);
       },
     });

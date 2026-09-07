@@ -8,6 +8,7 @@ import {
   parseStatusPaths,
   git,
   changedPathsOf,
+  pushHead,
   protectedPaths,
   riskLevelOf,
   runLoop,
@@ -1060,6 +1061,37 @@ describe("parsing the paths a Writer turn changed", () => {
       ".",
     );
     expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
+  });
+
+  it("pushHead routes the token through env, and the old positional shape lost it", async () => {
+    // The round-1 review of #49: git() now takes one options object, and the
+    // push call was still passing an env-shaped bag positionally. Assert the
+    // token reaches the spawned process, and show the shape that dropped it.
+    const seen = [];
+    const spawnFn = (_cmd, args, options) => {
+      seen.push({ args, env: options.env });
+      return childWith("");
+    };
+    const wrap = (args, cwd, opts) => git(args, cwd, { ...opts, spawnFn });
+
+    await pushHead(wrap, {
+      worktree: "/wt",
+      owner: "o",
+      repo: "r",
+      branch: "b",
+      token: "tok-secret",
+    });
+    expect(seen.length).toBe(1);
+    expect(seen[0].env.GH_PUSH_TOKEN).toBe("tok-secret");
+    expect(seen[0].args.some((a) => a.includes("tok-secret"))).toBe(false);
+    expect(seen[0].args).toContain("HEAD:b");
+    expect(seen[0].args).toContain("https://github.com/o/r");
+
+    // What the fixed signature does with the OLD call shape: the bag is read
+    // as options, `env` is undefined, and the token is gone.
+    seen.length = 0;
+    await git(["push"], "/wt", { ...process.env, GH_PUSH_TOKEN: "tok-secret", spawnFn });
+    expect(seen[0].env.GH_PUSH_TOKEN).toBe(undefined);
   });
 
   it("keeps the leading status space, which a trimmed stdout would eat", () => {
