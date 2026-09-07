@@ -4,7 +4,7 @@
 
 **Identifier:** `mvp-v0.1`
 
-**Version:** `0.5.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted. `0.4.0` resolves a contradiction between Section 4.2 and Section 5 over the `ambiguous` candidate threshold in favour of Section 4.2, and registers `FX-113` for the single-candidate case that neither reading tested. `0.5.0` stops Section 3.4 fixing the mechanism that applies the provisioning scripts, and corrects a loader clause that no permitted mechanism could satisfy.
+**Version:** `0.6.0` — the identifier names the document; the version tracks its obligations. `0.1.0` proposed the contract. `0.2.0` filled the platform, determinism, fixture-serialization, and limit decisions that `0.1.0` listed as open in Section 9. `0.3.0` fixes the value of `bound_parameters` for the outcomes that open no connection (Section 7) and records which reading of Charter Section 9 the Section 4.7 baseline implements. `0.3.0` is the version at which this contract was accepted. `0.4.0` resolves a contradiction between Section 4.2 and Section 5 over the `ambiguous` candidate threshold in favour of Section 4.2, and registers `FX-113` for the single-candidate case that neither reading tested. `0.5.0` stops Section 3.4 fixing the mechanism that applies the provisioning scripts, and corrects a loader clause that no permitted mechanism could satisfy. `0.6.0` fills the two rows Section 9 left open — the numeric adoption thresholds and the curated request set — by registering the Milestone 2 evaluation set, its scoring definitions, and the thresholds in Section 8.3, and pins the adapter's fixed instructions and vocabulary payload by digest in Section 4.6.
 
 Section 3 is not in the list above. Version `0.5.0` changes an obligation in Section 3.4 that an implementation is judged against — a blocking review finding was raised against it on #23 — so it takes a version anyway, because a silent change would leave no signal. Whether the list should name Section 3 is open in [#31](https://github.com/OKJ1105/evidence-first-rag/issues/31), with the same shape of gap Section 10 has.
 
@@ -214,6 +214,7 @@ The shape of a `signal_mapping` response follows from an evidence obligation rat
 The adapter converts a natural-language request into a candidate `{route, arguments}` object. It is the only component that sees free text.
 
 - Model: `claude-opus-5`, pinned. The decoding configuration is recorded with the evaluation run. Changing either reopens the Milestone 2 comparison in Section 8.
+- The fixed instructions and the vocabulary payload given to the adapter are recorded by digest with the evaluation run; a change to either reopens the comparison in the same way. The payload is derived from Sections 4.4 and 4.5 rather than written out, so adding a route or an allowed parameter changes the digest and reopens the comparison. That is intended: an adapter given a different vocabulary is a different adapter, and a result measured on the old one no longer describes it.
 - Output: a schema-constrained structured object whose `route` is one of the three names in Section 4.5 or the literal `unsupported`, and whose `arguments` contain only the parameter names that route allows.
 - The adapter receives the user request and the route, argument, and scope-vocabulary metadata required to fill the schema. It receives no database rows, no fixture contents, and no evidence bundle, per Charter Section 3.3.
 - The adapter may extract only values explicitly present in the request. It must not invent a `project_code`, `revision_label`, `network_name`, `snapshot_label`, `message_key`, or `signal_key`.
@@ -422,6 +423,69 @@ Where each obligation is discharged:
 
 This deferral does not weaken any obligation, and Section 10 forbids using it to. No implementation pull request may cite this section as a reason to omit the evidence its own slice owes.
 
+### 8.3 Milestone 2 evaluation set and adoption thresholds, registered 2026-09-07T09:32:37Z
+
+This section fills the two rows Section 9 left open at `0.5.0`. [Project Charter](../PROJECT_CHARTER.md) Section 9 requires a numeric adoption threshold to be registered before the run it judges, and states that reporting a metric without a pre-registered pass condition does not satisfy a gate. This section is that registration. `registered_at` is the instant the repository owner recorded the decision on [#52](https://github.com/OKJ1105/evidence-first-rag/issues/52); a run whose `started_at` is not strictly later than it is not judged by these thresholds.
+
+#### Thresholds
+
+Over the set this section defines, and by the definitions this section fixes, the adapter is adoptable only if all three hold:
+
+| Quantity | Condition |
+| --- | --- |
+| `task_coverage` | ≥ `0.90` |
+| `false_resolution` | ≤ `0.00` |
+| weakened negative outcomes | none |
+
+`registered_at`: `2026-09-07T09:32:37Z`. `contract_version`: `0.6.0`.
+
+`false_resolution` is zero rather than small because Charter Section 3.3 forbids the adapter to silently resolve an ambiguous entity, and a false resolution is that failure reaching the database and returning true facts about the wrong thing — an outcome a reader cannot distinguish from a correct answer. The Section 4.7 baseline scores zero on this quantity by construction, so any positive bar would adopt an adapter that is worse than its own control group on the axis the Charter is about.
+
+`task_coverage` at `0.90` is a judgement and not a derivation. It is a usefulness bar: a miss is a refusal, and a refusal is safe. `0.90` admits at most four misses over this set, which is the point at which the adapter is the primary path rather than a frequent fallback to naming canonical references by hand.
+
+#### Definitions
+
+These are part of the registration. A later change to how a metric is computed is a change to the bar, and takes a version.
+
+- **accepted** — Section 4.6 revalidation does not refuse the proposal.
+- **correct**, for a case that registers a route — the proposal's route equals the registered route and its argument mapping equals the registered arguments.
+- **correct**, for a case that registers no route — the proposal names none of the three Section 4.5 routes, **or** revalidation refuses it with the status the case registers.
+- `task_coverage` — correct cases divided by `N`, counted over every case including those that register no route. Answering "no route applies" to a request that has none is a correct resolution, and a metric that ignored those would reward guessing.
+- `false_resolution` — cases that are accepted and not correct, divided by `N`. A proposal revalidation refused never became a lookup, so it is a miss and not a false resolution.
+- **weakened** — a case registering a non-`success` status observed as `success`. Assessed case by case, never as an aggregate: one request that turned a refusal into a fact is a failure however good the averages look.
+
+The second half of the no-route rule is why the run must execute against a database, and why `judge` refuses a run that did not. It also admits a refusal reached for a different reason that carries the same status — an invented value on a case registered for a contradictory scope, for example. Both refusals carry `invalid_request`, the outcome is safe either way, and accepting that is the cost of not making the harness read refusal reasons.
+
+The Section 4.7 baseline is measured by these same definitions over this same set and recorded alongside the adapter. It sets no bar; it is the control group Charter Section 9 requires the comparison to have.
+
+#### Composition
+
+`N = 48`, in the four families Charter Section 9 names for the Milestone 2 evaluation cases, built from the Section 8.1 structural cases.
+
+| Family | Charter name | Count | Each case registers |
+| --- | --- | --- | --- |
+| `P` | executable | 33 | one of the eleven data-dependent Section 8.1 cases (`FX-001`–`FX-003`, `FX-101`–`FX-107`, `FX-113`) in three phrasings: one canonical phrasing, which is also the Section 4.7 curated entry, and two paraphrases that are not in the curated table |
+| `D` | missing-entity | 4 | a route and a complete scope, with the lookup key that route requires absent from the text; expected status `needs_entity_discovery` |
+| `X` | invalid | 5 | two different values for one scope dimension present in the text; no route; expected status `invalid_request` |
+| `U` | unsupported | 6 | an operation none of the three routes performs — export, compare, diff, list-everything, similarity, or any write — naming valid identifiers; no route; expected status `unsupported` |
+
+`FX-108`, `FX-109` and `FX-112` are not families here. They register a defective proposal rather than a request, and this comparison measures requests.
+
+#### Authoring rules
+
+1. Every identifier is `SAMPLE_*` and is either loaded by the Section 4.11 fixture files or one of the names those files reserve as absent.
+2. Every registered argument value appears in its case's text as a verbatim whole token in the Section 4.6 sense.
+3. Every `D`, `X` and `U` case carries a complete, loaded scope, so that the only rule it breaks is its own.
+4. No two texts are equal after the Section 4.7 normalization, and a paraphrase differs from its canonical phrasing by more than whitespace.
+5. The curated table contains exactly the eleven canonical phrasings and nothing else.
+6. The set is authored without running the adapter over it.
+7. All request texts are English. A set in another language measures a different capability and is a different registration; adding one is a patch version change that re-registers `registered_at`, before the run it judges.
+8. Adding, removing, or editing a case after registration is a patch version change that re-registers `registered_at`. The denominator is part of the registration.
+
+#### What this section does not decide
+
+Adoption. The Section 8 row for Section 4.6 remains a recorded human decision, taken after the run, in the Milestone 2 acceptance record. A judgement that these thresholds were cleared is an input to that decision and not a substitute for it.
+
 ## 9. Deferred decisions
 
 | Decision | Owner |
@@ -431,11 +495,11 @@ This deferral does not weaken any obligation, and Section 10 forbids using it to
 | TSV export and any renderer beyond Section 4.8 template rendering | Milestone 4 contract |
 | Azure App Service and PostgreSQL Flexible Server deployment, identity, networking, sizing | Milestone 5 contract |
 | Vector search and any semantic candidate retrieval | Milestone 3 evaluation contract. Not adopted without a lexical baseline and a pre-registered acceptance metric. |
-| Numeric thresholds for the Section 8 adapter-versus-baseline comparison | Open. Owned by this contract; must be filled, as a minor version change, before the evaluation run that judges the adapter. |
-| The curated request set backing Section 4.7 | Open. Owned by this contract; authored alongside the Section 8.1 fixtures, before the Milestone 2 comparison. |
+| Numeric thresholds for the Section 8 adapter-versus-baseline comparison | Filled in Section 8.3 at `0.6.0`, registered 2026-09-07T09:32:37Z. |
+| The curated request set backing Section 4.7 | Filled in Section 8.3 at `0.6.0`: the eleven canonical `P` phrasings, and nothing else. |
 | The mechanism that applies the provisioning scripts, and its configuration | Implementation detail of the provisioning slice, bounded by Section 3.4. Not a contract decision unless it changes the scripts, their lexical order, or the abort at the first error. |
 
-Version 0.1.0 also listed the PostgreSQL version and extensions, the provisioning mechanism, collation, normalization, null ordering, fixture serialization, key generation, row limits, and timeouts here. Version 0.2.0 fills them in Sections 3.4, 4.4, 4.11, and 6. The two rows that remain open above are evaluation-stage values: registering them now, before any fixture or curated request exists, would be guessing — Charter Section 9 requires thresholds to be registered before the run they judge, not before the contract is accepted.
+Version 0.1.0 also listed the PostgreSQL version and extensions, the provisioning mechanism, collation, normalization, null ordering, fixture serialization, key generation, row limits, and timeouts here. Version 0.2.0 fills them in Sections 3.4, 4.4, 4.11, and 6. The two evaluation-stage rows stayed open until `0.6.0` deliberately: registering them at acceptance, before any fixture or curated request existed, would have been guessing — Charter Section 9 requires thresholds to be registered before the run they judge, not before the contract is accepted. Section 8.3 registers them before any comparison has run, which is the order that rule fixes. No row in this table is open.
 
 ## 10. Change control
 

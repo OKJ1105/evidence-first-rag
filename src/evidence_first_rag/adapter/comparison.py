@@ -210,8 +210,6 @@ def _accepted(proposal: Proposal, request_text: str) -> bool:
 
 def _correct(proposal: Proposal, case: EvaluationCase) -> bool:
     if not case.resolves():
-        # The case registers no route, so the only correct answer is a
-        # proposal that does not name one of the three either.
         return proposal.route not in _ROUTE_NAMES
     if proposal.route != case.expected_route:
         return False
