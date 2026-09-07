@@ -5,6 +5,7 @@ import {
   forbiddenEdits,
   ownerDecisionEdits,
   ownerDecisionPaths,
+  parseStatusPaths,
   protectedPaths,
   riskLevelOf,
   runLoop,
@@ -950,5 +951,54 @@ describe("the two fences on a Writer turn", () => {
     // file that holds no credential.
     expect(ownerDecisionPaths).toContain("docs/contracts/");
     expect(protectedPaths).not.toContain("docs/contracts/");
+  });
+});
+
+describe("parsing the paths a Writer turn changed", () => {
+  // Every other test in this file stubs `changedPaths`, so until an external
+  // review probed it the parsing itself had never been run by a test -- which
+  // is how a fence that missed quoted paths survived three slices.
+  it("returns a plain path without its status prefix", () => {
+    expect(parseStatusPaths("?? src/a.py\0 M docs/b.md\0")).toEqual([
+      "src/a.py",
+      "docs/b.md",
+    ]);
+  });
+
+  it("still sees a path that porcelain mode would have quoted", () => {
+    // The finding. Without `-z`, git renders these as
+    // `"docs/contracts/mvp v2.md"`, and the leading quote makes
+    // startsWith("docs/contracts/") false, so the fence waved them through.
+    const paths = parseStatusPaths(
+      "?? docs/contracts/mvp.md\0?? docs/contracts/mvp v2.md\0?? docs/contracts/\u5951\u7d04.md\0",
+    );
+    expect(paths).toEqual([
+      "docs/contracts/mvp.md",
+      "docs/contracts/mvp v2.md",
+      "docs/contracts/\u5951\u7d04.md",
+    ]);
+    expect(ownerDecisionEdits(paths).length).toBe(3);
+  });
+
+  it("returns both halves of a rename", () => {
+    // A rename out of a fenced directory is as much an edit of it as a rename
+    // in, and the source path is a separate NUL-terminated field.
+    const paths = parseStatusPaths("R  src/new.py\0docs/contracts/old.md\0");
+    expect(paths).toEqual(["src/new.py", "docs/contracts/old.md"]);
+    expect(ownerDecisionEdits(paths)).toEqual(["docs/contracts/old.md"]);
+  });
+
+  it("treats empty output as no paths", () => {
+    for (const empty of ["", "\0", null, undefined]) {
+      expect(parseStatusPaths(empty)).toEqual([]);
+    }
+  });
+
+  it("keeps a path containing a newline in one piece", () => {
+    // The other reason `-z` matters: splitting on "\n" would cut this in two
+    // and the fence would compare against two halves of a name.
+    expect(parseStatusPaths("?? scripts/we\nird.mjs\0")).toEqual([
+      "scripts/we\nird.mjs",
+    ]);
   });
 });

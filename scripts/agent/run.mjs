@@ -189,6 +189,39 @@ function under(path, fence) {
 }
 
 /** Paths in `changed` that a Writer turn was not allowed to touch (BF3). */
+/**
+ * The paths in `git status --porcelain -z` output.
+ *
+ * `-z` is the whole point. Without it git quotes any path containing a space,
+ * a tab, or a non-ASCII byte (`core.quotePath` is on by default), and a
+ * quoted string does not match `startsWith("docs/contracts/")` -- so BF3 and
+ * BF7 waved through a *new* file whose name happened to need quoting. An
+ * external review demonstrated it: three of four paths under
+ * `docs/contracts/` slipped the fence. `-z` emits raw bytes with NUL
+ * separators and no quoting at all, which removes the class rather than
+ * matching more patterns.
+ *
+ * A rename or copy entry carries two paths: the destination in the entry
+ * itself, then the source as its own NUL-terminated field. Both are returned.
+ * A rename *out of* a fenced directory is as much an edit of that directory
+ * as a rename into one, and taking only the destination would miss it.
+ */
+export function parseStatusPaths(output) {
+  const fields = String(output ?? "").split("\0");
+  const paths = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    if (field === "") continue;
+    // `XY<space>PATH`: two status characters, a separator, then raw bytes.
+    paths.push(field.slice(3));
+    if (field[0] === "R" || field[0] === "C") {
+      index += 1;
+      if (fields[index]) paths.push(fields[index]);
+    }
+  }
+  return paths.filter(Boolean);
+}
+
 export function forbiddenEdits(changed) {
   return changed.filter((p) => under(p, protectedPaths));
 }
@@ -776,10 +809,7 @@ async function main() {
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: async () =>
-        (await git(["status", "--porcelain"], worktree))
-          .split("\n")
-          .map((l) => l.slice(3).trim())
-          .filter(Boolean),
+        parseStatusPaths(await git(["status", "--porcelain", "-z"], worktree)),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;
