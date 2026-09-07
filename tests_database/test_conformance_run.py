@@ -23,6 +23,7 @@ from evidence_first_rag.conformance.recording import RecordingDatabase, recordin
 from evidence_first_rag.db import invariants
 from evidence_first_rag.registry import TPL_MESSAGE_FACTS_V1
 from evidence_first_rag.runtime.connection import PsycopgDatabase
+from evidence_first_rag.runtime.faults import Fault
 
 from . import support
 
@@ -283,7 +284,16 @@ class B1AgainstTheSealBypass(unittest.TestCase):
         self.assertEqual(rogue.name, "TPL_MESSAGE_FACTS_V1")
         self.assertNotEqual(rogue.sql, TPL_MESSAGE_FACTS_V1.sql)
 
-    def test_b1_catches_a_forged_template_executed_through_the_runtime(self):
+    def test_the_session_port_now_refuses_the_forgery_outright(self):
+        """The defence moved from detection to prevention.
+
+        When this class was written the forgery *ran*: `PsycopgSession.execute`
+        type-checked nothing, so any object with `.name`, `.sql` and `.bind`
+        reached the driver, and `B1` catching it afterwards was the whole
+        guarantee. An external review found that hole, and the port now
+        requires identity with the registered object -- so this forgery no
+        longer executes at all, even though it takes a registered name.
+        """
         try:
             rogue = self.forge()
         except Exception as refused:  # noqa: BLE001
@@ -292,14 +302,27 @@ class B1AgainstTheSealBypass(unittest.TestCase):
         statements = []
         database = RecordingDatabase(open_runtime_database(recording_cursor(statements)))
         with database.session() as session:
-            run = session.execute(rogue, {"project_code": "SAMPLE_PROJECT_ALPHA"})
+            with self.assertRaises(Fault) as raised:
+                session.execute(rogue, {"project_code": "SAMPLE_PROJECT_ALPHA"})
+        self.assertIn("not the registered template", str(raised.exception))
+        # Nothing reached the database, so there is nothing for `B1` to find.
+        self.assertEqual(statements, [])
 
-        # The forgery ran: it reached the database and returned rows, which is
-        # what makes this a real test rather than a story about one.
-        self.assertTrue(run.rows)
-        self.assertIn(self.ROGUE_SQL, statements)
+    def test_b1_still_catches_the_statement_if_it_reaches_the_driver(self):
+        """Prevention and detection are separate claims, so both are asserted.
 
-        result = checks.b1(statements, database.executions, 1)
+        The port refuses the forgery today. `B1` is what holds if some future
+        path reaches `cursor.execute` without passing that check -- which is
+        exactly the assumption the review showed to be false last time, so it
+        is not one to rest on again. Here the statement is handed to `B1`
+        directly, as the driver would have recorded it.
+        """
+        try:
+            rogue = self.forge()
+        except Exception as refused:  # noqa: BLE001
+            self.skipTest(f"the seal now refuses the #28 path: {refused}")
+
+        result = checks.b1([rogue.sql], [], 1)
         self.assertFalse(result.passed)
         self.assertEqual(result.failure_class, "runtime")
         self.assertIn("without matching a registered template text", result.detail)

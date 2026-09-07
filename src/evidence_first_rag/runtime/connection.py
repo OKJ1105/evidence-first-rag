@@ -27,6 +27,7 @@ from collections.abc import Mapping
 import psycopg
 from psycopg.rows import dict_row
 
+from ..registry import UnregisteredTemplate, get
 from .execution import Execution
 from .faults import Fault
 
@@ -93,9 +94,26 @@ class PsycopgSession:
 
         Binding goes through `template.bind`, which is where Section 4.4's
         allowlist, its required-parameter refusal, and its prohibition on the
-        runtime supplying a null scope dimension live. There is no path here
-        that reaches `cursor.execute` with anything but `template.sql`.
+        runtime supplying a null scope dimension live.
+
+        **`template` is checked for identity against the registry first**, and
+        that check is the difference between this method carrying a query and
+        not. An external review demonstrated the hole it closes: nothing here
+        constrained the argument's type, so any object exposing `.name`,
+        `.sql` and `.bind` reached `cursor.execute` -- a plain
+        `SimpleNamespace` carrying `DELETE FROM mvp.source_snapshot` was run
+        through this method and arrived at the driver intact. The read-only
+        role would have refused that particular statement, but an arbitrary
+        `SELECT` over any table, with no `LIMIT` and no `ORDER BY`, was fully
+        available, which is precisely the "arbitrary-table, arbitrary-column
+        interface" Charter Section 3.1 forbids.
+
+        Identity, not a type check: `isinstance(template, Template)` would
+        pass a forged instance, and Issue #28 established that one can be
+        built with no import at all. `get(name) is template` passes only for
+        the four objects `registry.py` constructed for itself.
         """
+        self._must_be_registered(template)
         bound = template.bind(arguments)
         try:
             with self.connection.cursor() as cursor:
@@ -112,3 +130,29 @@ class PsycopgSession:
                 f" this an operational fault and not a status"
             ) from cancelled
         return Execution(rows=rows, bound_parameters=bound)
+
+    @staticmethod
+    def _must_be_registered(template) -> None:
+        """Refuse anything that is not one of the four registered objects.
+
+        Raised as a `Fault` rather than returned as a status: Section 5's
+        seven families are claims about a request, and a caller reaching this
+        boundary with an unregistered template is a defect in the runtime, not
+        an answer to give somebody.
+        """
+        try:
+            registered = get(getattr(template, "name", None))
+        except UnregisteredTemplate as unknown:
+            raise Fault(
+                f"the session was handed {type(template).__name__} naming"
+                f" {getattr(template, 'name', None)!r}, which the registry does"
+                f" not hold; Section 4.4 refuses execution for any template"
+                f" name not in the registry"
+            ) from unknown
+        if template is not registered:
+            raise Fault(
+                f"the session was handed an object claiming to be"
+                f" {registered.name}, but it is not the registered template of"
+                f" that name; Section 4.4 makes the committed SQL the only text"
+                f" this boundary may run"
+            )
