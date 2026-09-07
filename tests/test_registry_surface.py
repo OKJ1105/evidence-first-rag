@@ -182,10 +182,40 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
         # so that a future import of `Template` from outside this package
         # fails here rather than merely being unreviewed.
         #
+        # `Template` is not the only name worth reaching this way. `_SEAL` is
+        # the value that gates the constructor (see the comment beside it in
+        # `template.py`), so `from evidence_first_rag.registry.template import
+        # _SEAL` reopens exactly the hole the seal exists to close, without
+        # ever naming `Template`. The scan below does not key on that one
+        # name: any import resolving to the `template` submodule from outside
+        # this package -- by its dotted path, by importing the submodule
+        # itself out of the package, or by its class name -- is flagged
+        # regardless of which name is pulled out of it.
+        #
+        # Review finding B1: an import-statement scan is not the whole
+        # reachability surface. `registry/registry.py` itself writes `from
+        # .template import _SEAL, ..., Template, ...`, and Python's import
+        # machinery attaches every name a module imports as a plain attribute
+        # of that module, and attaches an imported submodule as a plain
+        # attribute of its parent package -- both as a side effect of the
+        # import statement, not anything this package's code decides. So
+        # `_SEAL` and `Template` are reachable by ordinary attribute access
+        # (`registry.template._SEAL`, `registry.registry.Template`, and any
+        # further indirection through a variable holding either module) from
+        # nothing more than the intended `from evidence_first_rag import
+        # registry`, without any import statement anywhere naming `template`,
+        # `_SEAL`, or `Template`. No import-statement scan can see that. So
+        # the walk below also flags any attribute access literally named
+        # `_SEAL` or `Template`, regardless of what expression it is accessed
+        # on: tracing every alias back to the import that produced it would
+        # only invite the next indirection, where matching the attribute name
+        # itself does not care how the object holding it was reached.
+        #
         # Only `src/` is scanned. `tests/test_registry.py` deliberately
-        # imports `Template` directly to exercise the registration safeguards
-        # themselves, and says why at the import; that is a reviewed test-only
-        # exception, not the production entry point this test guards against.
+        # imports `Template` and `_SEAL` directly to exercise the registration
+        # safeguards themselves, and says why at the import; that is a
+        # reviewed test-only exception, not the production entry point this
+        # test guards against.
         import ast
         import pathlib
 
@@ -197,14 +227,20 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module:
                     if node.module.endswith("registry.template"):
+                        # Any name at all -- `Template`, `_SEAL`, or anything
+                        # else this module defines -- reaches it this way.
                         return True
                     if node.module.endswith("registry") and any(
-                        alias.name == "Template" for alias in node.names
+                        alias.name in ("Template", "template") for alias in node.names
                     ):
                         return True
                 if isinstance(node, ast.Import):
                     if any(alias.name.endswith("registry.template") for alias in node.names):
                         return True
+                if isinstance(node, ast.Attribute) and node.attr in ("_SEAL", "Template"):
+                    # Reached through package-attribute propagation rather
+                    # than an import statement -- see the comment above.
+                    return True
             return False
 
         offenders = [
@@ -212,7 +248,7 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
             for path in src_root.rglob("*.py")
             if registry_dir not in path.resolve().parents and imports_template(path)
         ]
-        self.assertEqual(offenders, [], f"imports Template directly: {offenders}")
+        self.assertEqual(offenders, [], f"imports registry.template directly: {offenders}")
 
 
 if __name__ == "__main__":
