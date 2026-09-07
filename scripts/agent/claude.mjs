@@ -247,34 +247,87 @@ function truncate(s, limit = 1500) {
 }
 
 /**
- * Pull the first top-level JSON object out of an agent's reply.
+ * Pull the agent's JSON verdict out of its reply.
  *
  * Models wrap JSON in prose or a fence even when told not to. Extracting is
  * tolerant; validating what was extracted is not - that is `findings.mjs`.
+ *
+ * **The reply usually contains other fences.** A Reviewer quotes the code it
+ * is reviewing, and a review of a code change nearly always does. The
+ * previous implementation took the FIRST fence in the reply, whatever its
+ * language, and parsed that: a quoted snippet with no brace threw "returned
+ * no JSON object", one with an unbalanced brace threw "JSON object is not
+ * closed", and one with a balanced brace was returned as if it were the
+ * verdict. Issues #39 and #48 are the first two; the third is worse, because
+ * nothing raises. So every fence is considered, `json` and unlabelled ones
+ * first, the unfenced reply last - and a candidate only counts if it parses.
  */
 export function extractJson(text) {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-  const candidate = fenced ? fenced[1] : text;
-  const start = candidate.indexOf("{");
-  if (start === -1) throw new AgentError("The agent returned no JSON object.");
+  const reply = String(text ?? "");
+  const fences = [...reply.matchAll(/```([^\n`]*)\n?([\s\S]*?)```/g)].map(
+    (m) => ({ info: m[1].trim().toLowerCase(), body: m[2] }),
+  );
 
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < candidate.length; i += 1) {
-    const ch = candidate[i];
-    if (escaped) {
-      escaped = false;
-    } else if (ch === "\\") {
-      escaped = true;
-    } else if (ch === '"') {
-      inString = !inString;
-    } else if (!inString && ch === "{") {
-      depth += 1;
-    } else if (!inString && ch === "}") {
-      depth -= 1;
-      if (depth === 0) return candidate.slice(start, i + 1);
+  // A `json` fence is the agent doing what it was asked. An unlabelled one is
+  // the next most likely. Anything else is quoted material that may happen to
+  // parse, so it goes behind the unfenced reply rather than ahead of it.
+  const preferred = fences.filter((f) => f.info === "json" || f.info === "");
+  const others = fences.filter((f) => f.info !== "json" && f.info !== "");
+  const candidates = [
+    ...preferred.map((f) => f.body),
+    reply,
+    ...others.map((f) => f.body),
+  ];
+
+  for (const candidate of candidates) {
+    const found = firstParseableObject(candidate);
+    if (found !== null) return found;
+  }
+
+  throw new AgentError(
+    `The agent's reply carries no parseable JSON object` +
+      ` (${fences.length} fenced block(s) scanned).` +
+      `\nreply: ${truncate(reply)}`,
+  );
+}
+
+/**
+ * The first balanced `{...}` in `text` that `JSON.parse` accepts, or null.
+ *
+ * Balance alone is not enough. `{ return b; }` is balanced and is not JSON;
+ * returning it handed the loop a "verdict" the Reviewer never wrote. Parsing
+ * is the check, and scanning past a rejected candidate is what lets a reply
+ * that mentions `{` in prose still yield its real object.
+ */
+function firstParseableObject(text) {
+  const source = String(text ?? "");
+  for (let start = source.indexOf("{"); start !== -1; start = source.indexOf("{", start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < source.length; i += 1) {
+      const ch = source[i];
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = !inString;
+      } else if (!inString && ch === "{") {
+        depth += 1;
+      } else if (!inString && ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const slice = source.slice(start, i + 1);
+          try {
+            JSON.parse(slice);
+            return slice;
+          } catch {
+            break; // Balanced but not JSON. Try the next opening brace.
+          }
+        }
+      }
     }
   }
-  throw new AgentError("The agent's JSON object is not closed.");
+  return null;
 }

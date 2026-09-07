@@ -51,6 +51,59 @@ describe("extractJson", () => {
   it("throws on an unclosed object rather than guessing", () => {
     expect(() => extractJson('{"a":1')).toThrow(AgentError);
   });
+
+  // A Reviewer quotes the code it is reviewing. Taking the first fence in the
+  // reply -- whatever its language -- is what killed the loop on #39 and, twice
+  // on one unchanged head, on #48. Each row below is one of those replies.
+  it("skips a quoted fence that carries no brace", () => {
+    const reply = '```python\nraise TypeError\n```\n\n```json\n{"ok":1}\n```';
+    expect(extractJson(reply)).toBe('{"ok":1}');
+  });
+
+  it("skips a quoted fence whose braces do not balance", () => {
+    // This reply produced "The agent's JSON object is not closed." on #48.
+    const reply = '```js\nif (a) { return b;\n```\n\n```json\n{"ok":1}\n```';
+    expect(extractJson(reply)).toBe('{"ok":1}');
+  });
+
+  it("skips a quoted fence that is balanced but is not JSON", () => {
+    // The dangerous one: the old parser returned "{ return b; }" and raised
+    // nothing, so the Reviewer's actual verdict was discarded in silence.
+    const reply = '```js\nif (a) { return b; }\n```\n\n```json\n{"ok":1}\n```';
+    expect(extractJson(reply)).toBe('{"ok":1}');
+  });
+
+  it("finds the verdict behind several quoted fences", () => {
+    const reply = [
+      "```diff",
+      "-old",
+      "```",
+      "```yaml",
+      "on: {push}",
+      "```",
+      "```json",
+      '{"summary":"ok","findings":[]}',
+      "```",
+    ].join("\n");
+    expect(extractJson(reply)).toBe('{"summary":"ok","findings":[]}');
+  });
+
+  it("prefers a json fence over an object mentioned earlier in prose", () => {
+    const reply = 'I considered {"draft":true} first.\n```json\n{"final":true}\n```';
+    expect(extractJson(reply)).toBe('{"final":true}');
+  });
+
+  it("says what it scanned when nothing parses", () => {
+    let message = "";
+    try {
+      extractJson("```js\nif (a) { return b; }\n```");
+    } catch (error) {
+      message = error.message;
+    }
+    // Two runs died on #48 with a message that named neither. This one does.
+    expect(message.includes("1 fenced block(s) scanned")).toBe(true);
+    expect(message.includes("return b")).toBe(true);
+  });
 });
 
 // The loop's second live run failed with "The reviewer exited 1: (no stderr)"
