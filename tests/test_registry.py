@@ -324,6 +324,17 @@ class TheLimitsAndTheirMeanings(unittest.TestCase):
                 # An overflow is a fault, not a truncated result.
                 self.assertFalse(template.truncated(2))
 
+    def test_a_negative_row_count_is_refused_by_both_checks(self):
+        # N1: `rows_are_overflow` already refused a negative count;
+        # `truncated` returned False for the same input instead of raising.
+        # A corrupted row count should fail the same way through both paths.
+        for template in REGISTERED:
+            with self.subTest(template=template.name):
+                with self.assertRaises(ValueError):
+                    template.rows_are_overflow(-1)
+                with self.assertRaises(ValueError):
+                    template.truncated(-1)
+
     def test_a_facts_template_declares_no_truncation_limitation(self):
         for template in (TPL_MESSAGE_FACTS_V1, TPL_SIGNAL_FACTS_V1):
             with self.subTest(template=template.name):

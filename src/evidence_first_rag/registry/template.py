@@ -17,11 +17,12 @@ inside this package, builds one -- the four instances Section 4.4 registers.
 Being left out of the exports is not, by itself, enough: this module is still
 importable directly as `evidence_first_rag.registry.template`, so
 `tests/test_registry_surface.py` also scans the source tree and fails if
-anything outside this package imports `Template` from here, in addition to
-enumerating the package's public surface so that exporting `Template` from
-`__init__.py` has to fail a test rather than pass review. The one deliberate
-exception is `tests/test_registry.py`, which imports this module directly to
-exercise the registration safeguards themselves and says why at the import.
+anything outside this package imports `Template` or the `_SEAL` sentinel from
+here, in addition to enumerating the package's public surface so that
+exporting `Template` from `__init__.py` has to fail a test rather than pass
+review. The one deliberate exception is `tests/test_registry.py`, which
+imports this module directly to exercise the registration safeguards
+themselves and says why at the import.
 
 Sections cited are from docs/contracts/mvp-v0.1.md at version 0.5.0.
 """
@@ -82,6 +83,19 @@ _ESCAPED_PERCENT = re.compile(r"%%")
 # only this module can supply turns "we did not export the constructor" into
 # "the constructor refuses you", which is the difference between a convention
 # and the boundary Charter Section 3.1 states.
+#
+# This seal stops only the no-import path: a caller who never names this
+# module at all, and reaches `Template` by calling `type()` on an exported
+# instance. It does nothing against the other half -- a caller who imports
+# this sentinel directly, `from evidence_first_rag.registry.template import
+# _SEAL` -- because whoever holds the value satisfies the check it guards.
+# That half is `tests/test_registry_surface.py`'s job: it scans the source
+# tree and fails if anything outside this package imports `Template` or
+# `_SEAL` from here. Neither guard is a runtime-proof barrier -- this is
+# Python, and a committer editing this file directly can always change what
+# it does -- but the seal plus the scan together are a boundary CI enforces,
+# not a convention a caller happens to follow. Do not read `_SEAL` alone as
+# more than half of that.
 _SEAL = object()
 
 
@@ -282,10 +296,19 @@ class Template:
                 f" SQL has {len(expressions)}"
             )
         for position, (column, expression) in enumerate(zip(declared, expressions)):
-            if _ordered_column(expression) != column.upper():
+            ordered_column = _ordered_column(expression)
+            if ordered_column != column.upper():
+                # `ordering` takes a bare column name; a declared value that
+                # carries ASC/DESC or NULLS ordering decoration renders
+                # identically to the SQL side once both are printed raw, so
+                # this compares and prints the normalized values that were
+                # actually checked against each other, not the raw inputs.
                 raise TemplateError(
                     f"{self.name}: ordering term {position} is declared as"
-                    f" {column!r} but the SQL orders by '{expression.strip()}'"
+                    f" {column.upper()!r}, but the SQL orders by column"
+                    f" {ordered_column!r} (from '{expression.strip()}');"
+                    f" `ordering` takes the bare column name, without"
+                    f" ASC/DESC or NULLS ordering decoration"
                 )
 
         # The same for the result columns. Section 4.4 records "its result
@@ -336,6 +359,8 @@ class Template:
         """Whether `row_count` rows mean the result was cut off by the limit."""
         if not isinstance(row_count, int) or isinstance(row_count, bool):
             raise ValueError("row_count must be an int")
+        if row_count < 0:
+            raise ValueError("row_count must not be negative")
         return self.limit_meaning is LimitMeaning.TRUNCATES and row_count >= self.row_limit
 
     def bind(self, arguments: Mapping[str, object]) -> Mapping[str, object]:

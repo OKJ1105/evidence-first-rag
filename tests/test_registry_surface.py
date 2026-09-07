@@ -182,10 +182,21 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
         # so that a future import of `Template` from outside this package
         # fails here rather than merely being unreviewed.
         #
+        # `Template` is not the only name worth reaching this way. `_SEAL` is
+        # the value that gates the constructor (see the comment beside it in
+        # `template.py`), so `from evidence_first_rag.registry.template import
+        # _SEAL` reopens exactly the hole the seal exists to close, without
+        # ever naming `Template`. The scan below does not key on that one
+        # name: any import resolving to the `template` submodule from outside
+        # this package -- by its dotted path, by importing the submodule
+        # itself out of the package, or by its class name -- is flagged
+        # regardless of which name is pulled out of it.
+        #
         # Only `src/` is scanned. `tests/test_registry.py` deliberately
-        # imports `Template` directly to exercise the registration safeguards
-        # themselves, and says why at the import; that is a reviewed test-only
-        # exception, not the production entry point this test guards against.
+        # imports `Template` and `_SEAL` directly to exercise the registration
+        # safeguards themselves, and says why at the import; that is a
+        # reviewed test-only exception, not the production entry point this
+        # test guards against.
         import ast
         import pathlib
 
@@ -197,9 +208,11 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module:
                     if node.module.endswith("registry.template"):
+                        # Any name at all -- `Template`, `_SEAL`, or anything
+                        # else this module defines -- reaches it this way.
                         return True
                     if node.module.endswith("registry") and any(
-                        alias.name == "Template" for alias in node.names
+                        alias.name in ("Template", "template") for alias in node.names
                     ):
                         return True
                 if isinstance(node, ast.Import):
@@ -212,7 +225,7 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
             for path in src_root.rglob("*.py")
             if registry_dir not in path.resolve().parents and imports_template(path)
         ]
-        self.assertEqual(offenders, [], f"imports Template directly: {offenders}")
+        self.assertEqual(offenders, [], f"imports registry.template directly: {offenders}")
 
 
 if __name__ == "__main__":
