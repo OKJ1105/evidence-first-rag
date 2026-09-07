@@ -17,7 +17,7 @@ import {
   renderFindings,
 } from "./findings.mjs";
 import { emptyState, parseState, renderStatusComment } from "./state.mjs";
-import { extractJson, runAgent } from "./claude.mjs";
+import { runAgent, selectJson } from "./claude.mjs";
 import { createClient } from "./github.mjs";
 import { reviewerPrompt, writerPrompt } from "./prompts.mjs";
 
@@ -508,7 +508,9 @@ export async function runLoop({
           reviewerDocs: reviewerOnlyDocs,
         }),
       });
-      const parsed = parseReview(extractJson(raw.text));
+      // parseReview is the validator: a quoted manifest in the reply parses
+      // as JSON but has no `findings` array, and is passed over (#60).
+      const parsed = selectJson(raw.text, parseReview);
       const { findings, registry } = assignIds(parsed.findings, state.registry);
       state = {
         ...state,
@@ -585,7 +587,17 @@ export async function runLoop({
       let responses = [];
       let summary;
       try {
-        const doc = JSON.parse(extractJson(raw.text));
+        // The shape prompts.mjs asks for. A quoted object in the reply that
+        // is neither a response table nor carries a summary is passed over
+        // rather than read as an empty one (#60).
+        const doc = selectJson(raw.text, (candidate) => {
+          const parsed = JSON.parse(candidate);
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+            throw new Error("Writer output is not a JSON object.");
+          if (!Array.isArray(parsed.responses) && typeof parsed.summary !== "string")
+            throw new Error("Writer output has neither `responses` nor `summary`.");
+          return parsed;
+        });
         responses = Array.isArray(doc.responses) ? doc.responses : [];
         summary = typeof doc.summary === "string" ? doc.summary : "";
       } catch {

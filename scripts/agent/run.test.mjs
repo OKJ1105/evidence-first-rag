@@ -427,6 +427,31 @@ describe("runLoop", () => {
     ).rejects.toThrow();
     expect(gh._.labels.has(LABELS.ready)).toBe(false);
   });
+
+  it("reads the verdict past a quoted manifest, not the manifest as the verdict", async () => {
+    // A Reviewer quotes what it reviews, and this repository is full of JSON
+    // it would quote. The quoted object parses; it has no `findings`. The
+    // first-parseable-object rule handed it to parseReview as the review
+    // (#60). The call site now selects by shape, so the loop reads the
+    // verdict that follows it and concludes on that.
+    const gh = fakeGitHub();
+    const reply =
+      "The manifest under review:\n```\n" +
+      JSON.stringify({ checks: [{ name: "whitespace" }] }) +
+      "\n```\n\n" +
+      JSON.stringify(review([]));
+    const result = await runLoop({
+      gh,
+      agent: fakeAgent({ reviewer: [reply] }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(result.action).toBe(LABELS.ready.replace("agent:", ""));
+    expect(gh._.labels.has(LABELS.ready)).toBe(true);
+  });
 });
 
 describe("assertNothingApproved", () => {
