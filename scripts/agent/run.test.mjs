@@ -5,6 +5,10 @@ import {
   forbiddenEdits,
   ownerDecisionEdits,
   ownerDecisionPaths,
+  parseStatusPaths,
+  git,
+  changedPathsOf,
+  pushHead,
   protectedPaths,
   riskLevelOf,
   runLoop,
@@ -975,5 +979,170 @@ describe("the two fences on a Writer turn", () => {
     // file that holds no credential.
     expect(ownerDecisionPaths).toContain("docs/contracts/");
     expect(protectedPaths).not.toContain("docs/contracts/");
+  });
+});
+
+describe("parsing the paths a Writer turn changed", () => {
+  // Every other test in this file stubs `changedPaths`, so until an external
+  // review probed it the parsing itself had never been run by a test -- which
+  // is how a fence that missed quoted paths survived three slices.
+  it("returns a plain path without its status prefix", () => {
+    expect(parseStatusPaths("?? src/a.py\0 M docs/b.md\0")).toEqual([
+      "src/a.py",
+      "docs/b.md",
+    ]);
+  });
+
+  it("still sees a path that porcelain mode would have quoted", () => {
+    // The finding. Without `-z`, git renders these as
+    // `"docs/contracts/mvp v2.md"`, and the leading quote makes
+    // startsWith("docs/contracts/") false, so the fence waved them through.
+    const paths = parseStatusPaths(
+      "?? docs/contracts/mvp.md\0?? docs/contracts/mvp v2.md\0?? docs/contracts/\u5951\u7d04.md\0",
+    );
+    expect(paths).toEqual([
+      "docs/contracts/mvp.md",
+      "docs/contracts/mvp v2.md",
+      "docs/contracts/\u5951\u7d04.md",
+    ]);
+    expect(ownerDecisionEdits(paths).length).toBe(3);
+  });
+
+  it("returns both halves of a rename", () => {
+    // A rename out of a fenced directory is as much an edit of it as a rename
+    // in, and the source path is a separate NUL-terminated field.
+    const paths = parseStatusPaths("R  src/new.py\0docs/contracts/old.md\0");
+    expect(paths).toEqual(["src/new.py", "docs/contracts/old.md"]);
+    expect(ownerDecisionEdits(paths)).toEqual(["docs/contracts/old.md"]);
+  });
+
+  it("treats empty output as no paths", () => {
+    for (const empty of ["", "\0", null, undefined]) {
+      expect(parseStatusPaths(empty)).toEqual([]);
+    }
+  });
+
+  it("returns both halves of a rename git saw only in the worktree", () => {
+    // ` R` -- the marker in the SECOND column. This is what an unstaged `mv`
+    // reports, and it is the default: status.renames follows diff.renames.
+    // Checking field[0] alone left the source field unconsumed, so the next
+    // iteration sliced three bytes off it and the fence compared against
+    // "s/contracts/old.md".
+    const paths = parseStatusPaths(" R src/new.py\0docs/contracts/old.md\0");
+    expect(paths).toEqual(["src/new.py", "docs/contracts/old.md"]);
+    expect(ownerDecisionEdits(paths)).toEqual(["docs/contracts/old.md"]);
+  });
+
+  it("returns both halves of a copy in either status column", () => {
+    for (const marker of ["C ", " C"]) {
+      const paths = parseStatusPaths(`${marker} src/new.py\0.github/old.yml\0`);
+      expect(paths).toEqual(["src/new.py", ".github/old.yml"]);
+      expect(forbiddenEdits(paths)).toEqual([".github/old.yml"]);
+    }
+  });
+
+  // A fake child: stdout arrives, then close. Registration order in git()
+  // (data handler first) makes the queued microtasks fire in that order.
+  const childWith = (stdout, code = 0, stderr = "") => ({
+    stdout: { on: (ev, h) => ev === "data" && queueMicrotask(() => h(stdout)) },
+    stderr: { on: (ev, h) => ev === "data" && stderr && queueMicrotask(() => h(stderr)) },
+    on: (ev, h) => ev === "close" && queueMicrotask(() => h(code)),
+  });
+
+  it("git() trims by default and leaves the bytes alone with raw: true", async () => {
+    const out = " M .github/workflows/ci.yml\0";
+    const spawnFn = () => childWith(out);
+    expect(await git(["status"], ".", { spawnFn })).toBe(out.trim());
+    expect(await git(["status"], ".", { raw: true, spawnFn })).toBe(out);
+  });
+
+  it("git() rejects with stderr on a nonzero exit", async () => {
+    const spawnFn = () => childWith("", 128, "fatal: not a git repository");
+    await expect(git(["status"], ".", { spawnFn })).rejects.toThrow("not a git repository");
+  });
+
+  it("changedPathsOf asks for -z, raw, and hands the parser the leading space", async () => {
+    // The composition the round-3 review asked to see tested. Drop either
+    // half -- the -z, or raw: true -- and the first path is mangled.
+    const seen = [];
+    const gitFn = async (args, cwd, opts) => {
+      seen.push({ args, cwd, opts });
+      return " M .github/workflows/ci.yml\0?? docs/contracts/mvp.md\0";
+    };
+    const paths = await changedPathsOf(gitFn, "/wt");
+    expect(seen).toEqual([
+      { args: ["status", "--porcelain", "-z"], cwd: "/wt", opts: { raw: true } },
+    ]);
+    expect(paths).toEqual([".github/workflows/ci.yml", "docs/contracts/mvp.md"]);
+    expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
+    expect(ownerDecisionEdits(paths)).toEqual(["docs/contracts/mvp.md"]);
+  });
+
+  it("changedPathsOf through the real git() sees the leading space end to end", async () => {
+    const out = " M .github/workflows/ci.yml\0";
+    const spawnFn = () => childWith(out);
+    const paths = await changedPathsOf(
+      (args, cwd, opts) => git(args, cwd, { ...opts, spawnFn }),
+      ".",
+    );
+    expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
+  });
+
+  it("pushHead routes the token through env, and the old positional shape lost it", async () => {
+    // The round-1 review of #49: git() now takes one options object, and the
+    // push call was still passing an env-shaped bag positionally. Assert the
+    // token reaches the spawned process, and show the shape that dropped it.
+    const seen = [];
+    const spawnFn = (_cmd, args, options) => {
+      seen.push({ args, env: options.env });
+      return childWith("");
+    };
+    const wrap = (args, cwd, opts) => git(args, cwd, { ...opts, spawnFn });
+
+    await pushHead(wrap, {
+      worktree: "/wt",
+      owner: "o",
+      repo: "r",
+      branch: "b",
+      token: "tok-secret",
+    });
+    expect(seen.length).toBe(1);
+    expect(seen[0].env.GH_PUSH_TOKEN).toBe("tok-secret");
+    expect(seen[0].args.some((a) => a.includes("tok-secret"))).toBe(false);
+    expect(seen[0].args).toContain("HEAD:b");
+    expect(seen[0].args).toContain("https://github.com/o/r");
+
+    // What the fixed signature does with the OLD call shape: the bag is read
+    // as options, `env` is undefined, and the token is gone.
+    seen.length = 0;
+    await git(["push"], "/wt", { ...process.env, GH_PUSH_TOKEN: "tok-secret", spawnFn });
+    expect(seen[0].env.GH_PUSH_TOKEN).toBe(undefined);
+  });
+
+  it("keeps the leading status space, which a trimmed stdout would eat", () => {
+    // git() resolves out.trim() by default. A worktree-only modification is
+    // ` M path\0`, so when it sorts first the whole stdout begins with a
+    // space; trimming it makes slice(3) cut one byte into the path and
+    // ".github/workflows/ci.yml" arrives as "github/workflows/ci.yml", which
+    // under() no longer matches. The call site passes raw: true; this asserts
+    // what the parser is owed.
+    const raw = " M .github/workflows/ci.yml\0?? docs/contracts/mvp.md\0";
+    expect(parseStatusPaths(raw)).toEqual([
+      ".github/workflows/ci.yml",
+      "docs/contracts/mvp.md",
+    ]);
+    expect(forbiddenEdits(parseStatusPaths(raw))).toEqual([
+      ".github/workflows/ci.yml",
+    ]);
+    // And the failure the fence suffered when that space was trimmed away.
+    expect(forbiddenEdits(parseStatusPaths(raw.trim()))).toEqual([]);
+  });
+
+  it("keeps a path containing a newline in one piece", () => {
+    // The other reason `-z` matters: splitting on "\n" would cut this in two
+    // and the fence would compare against two halves of a name.
+    expect(parseStatusPaths("?? scripts/we\nird.mjs\0")).toEqual([
+      "scripts/we\nird.mjs",
+    ]);
   });
 });

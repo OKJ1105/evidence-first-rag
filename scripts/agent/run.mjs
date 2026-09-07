@@ -188,6 +188,45 @@ function under(path, fence) {
   );
 }
 
+/**
+ * The paths in `git status --porcelain -z` output.
+ *
+ * `-z` is the whole point. Without it git quotes any path containing a space,
+ * a tab, or a non-ASCII byte (`core.quotePath` is on by default), and a
+ * quoted string does not match `startsWith("docs/contracts/")` -- so BF3 and
+ * BF7 waved through a *new* file whose name happened to need quoting. An
+ * external review demonstrated it: three of four paths under
+ * `docs/contracts/` slipped the fence. `-z` emits raw bytes with NUL
+ * separators and no quoting at all, which removes the class rather than
+ * matching more patterns.
+ *
+ * A rename or copy entry carries two paths: the destination in the entry
+ * itself, then the source as its own NUL-terminated field. Both are returned.
+ * A rename *out of* a fenced directory is as much an edit of that directory
+ * as a rename into one, and taking only the destination would miss it.
+ */
+export function parseStatusPaths(output) {
+  const fields = String(output ?? "").split("\0");
+  const paths = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    if (field === "") continue;
+    // `XY<space>PATH`: two status characters, a separator, then raw bytes.
+    paths.push(field.slice(3));
+    // The marker can sit in EITHER column. `R ` is a rename staged in the
+    // index; ` R` is one git detected in the worktree only, which is what an
+    // unstaged `mv` reports and what `status.renames` makes the default. A
+    // check on `field[0]` alone leaves the source field unconsumed, and the
+    // next iteration then slices three bytes off a bare path.
+    const marker = field.slice(0, 2);
+    if (marker.includes("R") || marker.includes("C")) {
+      index += 1;
+      if (fields[index]) paths.push(fields[index]);
+    }
+  }
+  return paths.filter(Boolean);
+}
+
 /** Paths in `changed` that a Writer turn was not allowed to touch (BF3). */
 export function forbiddenEdits(changed) {
   return changed.filter((p) => under(p, protectedPaths));
@@ -697,11 +736,20 @@ export async function runLoop({
   };
 }
 
-/* c8 ignore start - wiring, exercised by the workflow rather than by tests */
-
-function git(args, cwd, env) {
+/**
+ * Run git and resolve its stdout, trimmed.
+ *
+ * `raw: true` resolves the bytes untouched, and `git status --porcelain -z`
+ * is why the option exists. A worktree-only modification is reported as
+ * ` M path\0` -- a LEADING SPACE. Trimming the whole stdout eats that space
+ * when the entry sorts first, `parseStatusPaths` then slices one byte too
+ * far, and `.github/workflows/ci.yml` arrives as `github/workflows/ci.yml`,
+ * which `under()` no longer matches. That is the same fence bypass the `-z`
+ * change closed, reached through whitespace instead of quoting.
+ */
+export function git(args, cwd, { raw = false, env, spawnFn = spawn } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    const child = spawnFn("git", args, {
       cwd,
       env: env ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -712,11 +760,53 @@ function git(args, cwd, env) {
     child.stderr.on("data", (d) => (err += d));
     child.on("close", (code) =>
       code === 0
-        ? resolve(out.trim())
+        ? resolve(raw ? out : out.trim())
         : reject(new Error(`git ${args.join(" ")} failed: ${err.trim()}`)),
     );
   });
 }
+
+/**
+ * The paths a Writer turn changed, as BF3 and BF7 read them.
+ *
+ * Exported so the composition is a tested unit: `-z` AND `raw: true`, or the
+ * fence is bypassable. `parseStatusPaths` alone proves what the parser does
+ * with a leading space; only this proves the parser is handed one.
+ */
+export async function changedPathsOf(gitFn, worktree) {
+  return parseStatusPaths(
+    await gitFn(["status", "--porcelain", "-z"], worktree, { raw: true }),
+  );
+}
+
+/**
+ * Push the worktree's HEAD to the pull request branch.
+ *
+ * BF3: the credential travels in the environment of this one command and is
+ * never written into .git/config, where the agents' Read could reach it.
+ *
+ * Exported so the credential's route is a tested unit. `git()` takes its
+ * options as one object, and the round-1 review of #49 found this call still
+ * handing it an env-shaped bag positionally. Destructured as options that bag
+ * has no `env` key, the spawn falls back to `process.env`, and the token never
+ * reaches the helper -- so the first real fix-round push fails auth and the
+ * run dies. The test asserts the token arrives under `env` and nowhere else.
+ */
+export function pushHead(gitFn, { worktree, owner, repo, branch, token }) {
+  return gitFn(
+    [
+      "-c",
+      "credential.helper=!f() { echo username=x-access-token; echo password=$GH_PUSH_TOKEN; }; f",
+      "push",
+      `https://github.com/${owner}/${repo}`,
+      `HEAD:${branch}`,
+    ],
+    worktree,
+    { env: { ...process.env, GH_PUSH_TOKEN: token } },
+  );
+}
+
+/* c8 ignore start - wiring, exercised by the workflow rather than by tests */
 
 async function main() {
   const worktree = process.env.CI_AGENT_WORKTREE ?? process.cwd();
@@ -787,11 +877,7 @@ async function main() {
       checks: () =>
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
-      changedPaths: async () =>
-        (await git(["status", "--porcelain"], worktree))
-          .split("\n")
-          .map((l) => l.slice(3).trim())
-          .filter(Boolean),
+      changedPaths: () => changedPathsOf(git, worktree),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;
@@ -804,20 +890,13 @@ async function main() {
           ],
           worktree,
         );
-        // BF3: the push credential is passed through the environment of this
-        // one command, never written into .git/config where the agents' Read
-        // could reach it.
-        await git(
-          [
-            "-c",
-            "credential.helper=!f() { echo username=x-access-token; echo password=$GH_PUSH_TOKEN; }; f",
-            "push",
-            `https://github.com/${owner}/${repo}`,
-            `HEAD:${branch}`,
-          ],
+        await pushHead(git, {
           worktree,
-          { ...process.env, GH_PUSH_TOKEN: process.env.GITHUB_TOKEN },
-        );
+          owner,
+          repo,
+          branch,
+          token: process.env.GITHUB_TOKEN,
+        });
         return git(["rev-parse", "HEAD"], worktree);
       },
     });
