@@ -188,7 +188,6 @@ function under(path, fence) {
   );
 }
 
-/** Paths in `changed` that a Writer turn was not allowed to touch (BF3). */
 /**
  * The paths in `git status --porcelain -z` output.
  *
@@ -214,7 +213,13 @@ export function parseStatusPaths(output) {
     if (field === "") continue;
     // `XY<space>PATH`: two status characters, a separator, then raw bytes.
     paths.push(field.slice(3));
-    if (field[0] === "R" || field[0] === "C") {
+    // The marker can sit in EITHER column. `R ` is a rename staged in the
+    // index; ` R` is one git detected in the worktree only, which is what an
+    // unstaged `mv` reports and what `status.renames` makes the default. A
+    // check on `field[0]` alone leaves the source field unconsumed, and the
+    // next iteration then slices three bytes off a bare path.
+    const marker = field.slice(0, 2);
+    if (marker.includes("R") || marker.includes("C")) {
       index += 1;
       if (fields[index]) paths.push(fields[index]);
     }
@@ -222,6 +227,7 @@ export function parseStatusPaths(output) {
   return paths.filter(Boolean);
 }
 
+/** Paths in `changed` that a Writer turn was not allowed to touch (BF3). */
 export function forbiddenEdits(changed) {
   return changed.filter((p) => under(p, protectedPaths));
 }
@@ -720,7 +726,18 @@ export async function runLoop({
 
 /* c8 ignore start - wiring, exercised by the workflow rather than by tests */
 
-function git(args, cwd, env) {
+/**
+ * Run git and resolve its stdout, trimmed.
+ *
+ * `raw: true` resolves the bytes untouched, and `git status --porcelain -z`
+ * is why the option exists. A worktree-only modification is reported as
+ * ` M path\0` -- a LEADING SPACE. Trimming the whole stdout eats that space
+ * when the entry sorts first, `parseStatusPaths` then slices one byte too
+ * far, and `.github/workflows/ci.yml` arrives as `github/workflows/ci.yml`,
+ * which `under()` no longer matches. That is the same fence bypass the `-z`
+ * change closed, reached through whitespace instead of quoting.
+ */
+function git(args, cwd, env, { raw = false } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn("git", args, {
       cwd,
@@ -733,7 +750,7 @@ function git(args, cwd, env) {
     child.stderr.on("data", (d) => (err += d));
     child.on("close", (code) =>
       code === 0
-        ? resolve(out.trim())
+        ? resolve(raw ? out : out.trim())
         : reject(new Error(`git ${args.join(" ")} failed: ${err.trim()}`)),
     );
   });
@@ -809,7 +826,11 @@ async function main() {
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: async () =>
-        parseStatusPaths(await git(["status", "--porcelain", "-z"], worktree)),
+        parseStatusPaths(
+          await git(["status", "--porcelain", "-z"], worktree, undefined, {
+            raw: true,
+          }),
+        ),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;

@@ -994,6 +994,44 @@ describe("parsing the paths a Writer turn changed", () => {
     }
   });
 
+  it("returns both halves of a rename git saw only in the worktree", () => {
+    // ` R` -- the marker in the SECOND column. This is what an unstaged `mv`
+    // reports, and it is the default: status.renames follows diff.renames.
+    // Checking field[0] alone left the source field unconsumed, so the next
+    // iteration sliced three bytes off it and the fence compared against
+    // "s/contracts/old.md".
+    const paths = parseStatusPaths(" R src/new.py\0docs/contracts/old.md\0");
+    expect(paths).toEqual(["src/new.py", "docs/contracts/old.md"]);
+    expect(ownerDecisionEdits(paths)).toEqual(["docs/contracts/old.md"]);
+  });
+
+  it("returns both halves of a copy in either status column", () => {
+    for (const marker of ["C ", " C"]) {
+      const paths = parseStatusPaths(`${marker} src/new.py\0.github/old.yml\0`);
+      expect(paths).toEqual(["src/new.py", ".github/old.yml"]);
+      expect(forbiddenEdits(paths)).toEqual([".github/old.yml"]);
+    }
+  });
+
+  it("keeps the leading status space, which a trimmed stdout would eat", () => {
+    // git() resolves out.trim() by default. A worktree-only modification is
+    // ` M path\0`, so when it sorts first the whole stdout begins with a
+    // space; trimming it makes slice(3) cut one byte into the path and
+    // ".github/workflows/ci.yml" arrives as "github/workflows/ci.yml", which
+    // under() no longer matches. The call site passes raw: true; this asserts
+    // what the parser is owed.
+    const raw = " M .github/workflows/ci.yml\0?? docs/contracts/mvp.md\0";
+    expect(parseStatusPaths(raw)).toEqual([
+      ".github/workflows/ci.yml",
+      "docs/contracts/mvp.md",
+    ]);
+    expect(forbiddenEdits(parseStatusPaths(raw))).toEqual([
+      ".github/workflows/ci.yml",
+    ]);
+    // And the failure the fence suffered when that space was trimmed away.
+    expect(forbiddenEdits(parseStatusPaths(raw.trim()))).toEqual([]);
+  });
+
   it("keeps a path containing a newline in one piece", () => {
     // The other reason `-z` matters: splitting on "\n" would cut this in two
     // and the fence would compare against two halves of a name.
