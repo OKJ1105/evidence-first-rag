@@ -103,6 +103,9 @@ class Outcome:
     correct: bool
     false_resolution: bool
     status: str | None = None
+    # The status revalidation refused with, or None when it accepted. Recorded
+    # so the artifact shows *why* a no-route case counted, not only that it did.
+    refused_as: str | None = None
 
     def as_json(self) -> dict:
         return {
@@ -113,6 +116,7 @@ class Outcome:
             "accepted": self.accepted,
             "correct": self.correct,
             "false_resolution": self.false_resolution,
+            "refused_as": self.refused_as,
             "status": self.status,
         }
 
@@ -134,6 +138,14 @@ class Metrics:
         answering "no route applies" to a request that has no route is a
         correct resolution, and a metric that ignored those would reward a
         resolver for guessing.
+
+        A no-route case is also correct when revalidation refused the proposal
+        **with the status the case registers** (Section 8.3). Section 8.1's
+        `FX-110` registers "the adapter proposed two `revision_label` values"
+        as the input whose correct outcome is `invalid_request` from the
+        deterministic layer; an adapter that does exactly that is producing
+        the registered outcome, and scoring it a miss put a perfect adapter at
+        43/48 = 0.896 under a 0.90 bar for doing what the contract asks.
         """
         return 0.0 if not self.total else self.correct / self.total
 
@@ -171,8 +183,8 @@ def measure(cases, resolve, runtime=None) -> tuple[Metrics, tuple[Outcome, ...]]
     weakened = []
     for case in cases:
         proposal = resolve(case.text)
-        accepted = _accepted(proposal, case.text)
-        correct = _correct(proposal, case)
+        accepted, refused_as = _revalidated(proposal, case.text)
+        correct = _correct(proposal, case, refused_as)
         outcome_status = None
         if runtime is not None:
             outcome_status = answer(runtime, proposal, case.text).status.value
@@ -186,6 +198,7 @@ def measure(cases, resolve, runtime=None) -> tuple[Metrics, tuple[Outcome, ...]]
                 correct=correct,
                 false_resolution=accepted and not correct,
                 status=outcome_status,
+                refused_as=refused_as,
             )
         )
     return (
@@ -199,18 +212,27 @@ def measure(cases, resolve, runtime=None) -> tuple[Metrics, tuple[Outcome, ...]]
     )
 
 
-def _accepted(proposal: Proposal, request_text: str) -> bool:
-    """Whether revalidation would let this proposal reach the database."""
+def _revalidated(proposal: Proposal, request_text: str) -> tuple[bool, str | None]:
+    """Whether revalidation lets this proposal reach the database, and if not,
+    the status it refused with.
+
+    One call answers both questions, so `accepted` and `_correct` can never
+    disagree about the same proposal.
+    """
     try:
         revalidate(proposal, request_text)
-    except Refusal:
-        return False
-    return True
+    except Refusal as refusal:
+        return False, refusal.status.value
+    return True, None
 
 
-def _correct(proposal: Proposal, case: EvaluationCase) -> bool:
+def _correct(proposal: Proposal, case: EvaluationCase, refused_as: str | None) -> bool:
     if not case.resolves():
-        return proposal.route not in _ROUTE_NAMES
+        # The case registers no route. Correct is a proposal that names none
+        # of the three either -- or one the deterministic layer refused with
+        # exactly the status the case registers, which is the registered
+        # outcome reached the way Section 8.1 describes it (Section 8.3).
+        return proposal.route not in _ROUTE_NAMES or refused_as == case.expected_status
     if proposal.route != case.expected_route:
         return False
     return dict(proposal.arguments) == dict(case.expected_arguments)
