@@ -1,0 +1,92 @@
+# The Section 4.7 comparison, run once, on purpose, by a person.
+#
+# Dispatch only. Never on push, pull_request, or a schedule: every run spends
+# money, and Charter Section 9's ordering -- thresholds registered before the
+# run they judge -- is a deliberate act that should carry a person's name,
+# not a side effect of a push. Issue #57 records the owner's approval of this
+# workflow and of the repository Secret it reads.
+#
+# The job mirrors `database-checks` in repository-checks.yml, which is
+# already the reference for "a determinism claim anyone can re-run": the same
+# postgres:17 service container, the same job-scoped non-secret passwords,
+# the same provisioning. What differs is the extra it installs (`[adapter]`,
+# the only way the model SDK enters this repository) and the one step that
+# holds the credential.
+#
+# The artifact is uploaded so it gets off the runner; Actions artifacts
+# expire, so the acceptance record (#58) commits it. It contains synthetic
+# SAMPLE_* request texts, the model's proposals and two metric tables, and
+# no credential -- the runner logs none.
+name: Milestone 2 comparison
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comparison:
+    name: comparison
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Section 3.4 pins PostgreSQL at the major version; any patch release
+        # satisfies the contract.
+        image: postgres:17
+        env:
+          # Not a secret. This password reaches a container that exists only
+          # for this job, listens on the runner's loopback, and is destroyed
+          # with it.
+          POSTGRES_PASSWORD: ci_superuser_not_a_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: ci_superuser_not_a_secret
+      MVP_PROVISIONING_PASSWORD: ci_provisioning_not_a_secret
+      MVP_RUNTIME_PASSWORD: ci_runtime_not_a_secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      # The `adapter` extra is how someone opts into the model SDK. Nothing
+      # else in this repository installs it; Charter Section 3.1 keeps the
+      # model outside the path that produces facts.
+      - name: Install the package with the adapter extra
+        run: python -m pip install --quiet -e ".[adapter]"
+
+      - name: Provision the schema, the roles, and the fixtures
+        run: python -m evidence_first_rag.db.provision --recreate
+
+      # The only step that holds the credential. The runner exits 0 when the
+      # run was judged, adoptable or not, and 2 when the thresholds were not
+      # registered before it -- a run that must not be cited, and a red job
+      # says so.
+      - name: Run the comparison once
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m evidence_first_rag.adapter.run --artifact milestone-2-comparison.json
+
+      # `if: always()` so an unjudged run's document is still inspectable.
+      - name: Upload the artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: milestone-2-comparison
+          path: milestone-2-comparison.json
+          retention-days: 90
+          if-no-files-found: error
