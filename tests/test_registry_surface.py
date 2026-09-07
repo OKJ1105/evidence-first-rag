@@ -192,6 +192,25 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
         # itself out of the package, or by its class name -- is flagged
         # regardless of which name is pulled out of it.
         #
+        # Review finding B1: an import-statement scan is not the whole
+        # reachability surface. `registry/registry.py` itself writes `from
+        # .template import _SEAL, ..., Template, ...`, and Python's import
+        # machinery attaches every name a module imports as a plain attribute
+        # of that module, and attaches an imported submodule as a plain
+        # attribute of its parent package -- both as a side effect of the
+        # import statement, not anything this package's code decides. So
+        # `_SEAL` and `Template` are reachable by ordinary attribute access
+        # (`registry.template._SEAL`, `registry.registry.Template`, and any
+        # further indirection through a variable holding either module) from
+        # nothing more than the intended `from evidence_first_rag import
+        # registry`, without any import statement anywhere naming `template`,
+        # `_SEAL`, or `Template`. No import-statement scan can see that. So
+        # the walk below also flags any attribute access literally named
+        # `_SEAL` or `Template`, regardless of what expression it is accessed
+        # on: tracing every alias back to the import that produced it would
+        # only invite the next indirection, where matching the attribute name
+        # itself does not care how the object holding it was reached.
+        #
         # Only `src/` is scanned. `tests/test_registry.py` deliberately
         # imports `Template` and `_SEAL` directly to exercise the registration
         # safeguards themselves, and says why at the import; that is a
@@ -218,6 +237,10 @@ class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
                 if isinstance(node, ast.Import):
                     if any(alias.name.endswith("registry.template") for alias in node.names):
                         return True
+                if isinstance(node, ast.Attribute) and node.attr in ("_SEAL", "Template"):
+                    # Reached through package-attribute propagation rather
+                    # than an import statement -- see the comment above.
+                    return True
             return False
 
         offenders = [

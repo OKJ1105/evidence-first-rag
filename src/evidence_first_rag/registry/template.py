@@ -86,16 +86,22 @@ _ESCAPED_PERCENT = re.compile(r"%%")
 #
 # This seal stops only the no-import path: a caller who never names this
 # module at all, and reaches `Template` by calling `type()` on an exported
-# instance. It does nothing against the other half -- a caller who imports
-# this sentinel directly, `from evidence_first_rag.registry.template import
-# _SEAL` -- because whoever holds the value satisfies the check it guards.
-# That half is `tests/test_registry_surface.py`'s job: it scans the source
-# tree and fails if anything outside this package imports `Template` or
-# `_SEAL` from here. Neither guard is a runtime-proof barrier -- this is
-# Python, and a committer editing this file directly can always change what
-# it does -- but the seal plus the scan together are a boundary CI enforces,
-# not a convention a caller happens to follow. Do not read `_SEAL` alone as
-# more than half of that.
+# instance. It does nothing against the other half -- a caller who reaches
+# `_SEAL` or `Template` some other way, whether by importing this module
+# directly (`from evidence_first_rag.registry.template import _SEAL`) or by
+# plain attribute access on a module it already legitimately holds (Python's
+# import machinery attaches every submodule, and every name a module
+# imports, as a plain attribute of the importing module and its parent
+# package -- so `registry.template._SEAL` is reachable from nothing more
+# than `from evidence_first_rag import registry`) -- because whoever holds
+# the value satisfies the check it guards. That half is
+# `tests/test_registry_surface.py`'s job: it scans the source tree and fails
+# if anything outside this package imports `Template` or `_SEAL` from here,
+# or reaches either by an attribute access of that name. Neither guard is a
+# runtime-proof barrier -- this is Python, and a committer editing this file
+# directly can always change what it does -- but the seal plus the scan
+# together are a boundary CI enforces, not a convention a caller happens to
+# follow. Do not read `_SEAL` alone as more than half of that.
 _SEAL = object()
 
 
