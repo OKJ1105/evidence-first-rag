@@ -724,8 +724,6 @@ export async function runLoop({
   };
 }
 
-/* c8 ignore start - wiring, exercised by the workflow rather than by tests */
-
 /**
  * Run git and resolve its stdout, trimmed.
  *
@@ -737,9 +735,9 @@ export async function runLoop({
  * which `under()` no longer matches. That is the same fence bypass the `-z`
  * change closed, reached through whitespace instead of quoting.
  */
-function git(args, cwd, env, { raw = false } = {}) {
+export function git(args, cwd, { raw = false, env, spawnFn = spawn } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    const child = spawnFn("git", args, {
       cwd,
       env: env ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -755,6 +753,21 @@ function git(args, cwd, env, { raw = false } = {}) {
     );
   });
 }
+
+/**
+ * The paths a Writer turn changed, as BF3 and BF7 read them.
+ *
+ * Exported so the composition is a tested unit: `-z` AND `raw: true`, or the
+ * fence is bypassable. `parseStatusPaths` alone proves what the parser does
+ * with a leading space; only this proves the parser is handed one.
+ */
+export async function changedPathsOf(gitFn, worktree) {
+  return parseStatusPaths(
+    await gitFn(["status", "--porcelain", "-z"], worktree, { raw: true }),
+  );
+}
+
+/* c8 ignore start - wiring, exercised by the workflow rather than by tests */
 
 async function main() {
   const worktree = process.env.CI_AGENT_WORKTREE ?? process.cwd();
@@ -825,12 +838,7 @@ async function main() {
       checks: () =>
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
-      changedPaths: async () =>
-        parseStatusPaths(
-          await git(["status", "--porcelain", "-z"], worktree, undefined, {
-            raw: true,
-          }),
-        ),
+      changedPaths: () => changedPathsOf(git, worktree),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;

@@ -6,6 +6,8 @@ import {
   ownerDecisionEdits,
   ownerDecisionPaths,
   parseStatusPaths,
+  git,
+  changedPathsOf,
   protectedPaths,
   riskLevelOf,
   runLoop,
@@ -1011,6 +1013,53 @@ describe("parsing the paths a Writer turn changed", () => {
       expect(paths).toEqual(["src/new.py", ".github/old.yml"]);
       expect(forbiddenEdits(paths)).toEqual([".github/old.yml"]);
     }
+  });
+
+  // A fake child: stdout arrives, then close. Registration order in git()
+  // (data handler first) makes the queued microtasks fire in that order.
+  const childWith = (stdout, code = 0, stderr = "") => ({
+    stdout: { on: (ev, h) => ev === "data" && queueMicrotask(() => h(stdout)) },
+    stderr: { on: (ev, h) => ev === "data" && stderr && queueMicrotask(() => h(stderr)) },
+    on: (ev, h) => ev === "close" && queueMicrotask(() => h(code)),
+  });
+
+  it("git() trims by default and leaves the bytes alone with raw: true", async () => {
+    const out = " M .github/workflows/ci.yml\0";
+    const spawnFn = () => childWith(out);
+    expect(await git(["status"], ".", { spawnFn })).toBe(out.trim());
+    expect(await git(["status"], ".", { raw: true, spawnFn })).toBe(out);
+  });
+
+  it("git() rejects with stderr on a nonzero exit", async () => {
+    const spawnFn = () => childWith("", 128, "fatal: not a git repository");
+    await expect(git(["status"], ".", { spawnFn })).rejects.toThrow("not a git repository");
+  });
+
+  it("changedPathsOf asks for -z, raw, and hands the parser the leading space", async () => {
+    // The composition the round-3 review asked to see tested. Drop either
+    // half -- the -z, or raw: true -- and the first path is mangled.
+    const seen = [];
+    const gitFn = async (args, cwd, opts) => {
+      seen.push({ args, cwd, opts });
+      return " M .github/workflows/ci.yml\0?? docs/contracts/mvp.md\0";
+    };
+    const paths = await changedPathsOf(gitFn, "/wt");
+    expect(seen).toEqual([
+      { args: ["status", "--porcelain", "-z"], cwd: "/wt", opts: { raw: true } },
+    ]);
+    expect(paths).toEqual([".github/workflows/ci.yml", "docs/contracts/mvp.md"]);
+    expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
+    expect(ownerDecisionEdits(paths)).toEqual(["docs/contracts/mvp.md"]);
+  });
+
+  it("changedPathsOf through the real git() sees the leading space end to end", async () => {
+    const out = " M .github/workflows/ci.yml\0";
+    const spawnFn = () => childWith(out);
+    const paths = await changedPathsOf(
+      (args, cwd, opts) => git(args, cwd, { ...opts, spawnFn }),
+      ".",
+    );
+    expect(forbiddenEdits(paths)).toEqual([".github/workflows/ci.yml"]);
   });
 
   it("keeps the leading status space, which a trimmed stdout would eat", () => {
