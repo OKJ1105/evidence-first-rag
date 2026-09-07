@@ -6,6 +6,8 @@ import {
   deniedTools,
   detail,
   extractJson,
+  extractJsonCandidates,
+  selectJson,
   parseAgentOutput,
 } from "./claude.mjs";
 
@@ -91,6 +93,81 @@ describe("extractJson", () => {
   it("prefers a json fence over an object mentioned earlier in prose", () => {
     const reply = 'I considered {"draft":true} first.\n```json\n{"final":true}\n```';
     expect(extractJson(reply)).toBe('{"final":true}');
+  });
+
+  // J1/J2 from the author's notes: an object that PARSES is not thereby the
+  // verdict. This repository is full of JSON a Reviewer would quote -- the
+  // checks manifest, an expected document, a fixture line -- and the second
+  // implementation handed the first of those to parseReview as the review.
+  // Only the caller knows the shape it wants, so the caller chooses.
+  describe("selectJson", () => {
+    const verdict = '{"summary":"ok","findings":[]}';
+    const acceptReview = (s) => {
+      const doc = JSON.parse(s);
+      if (!Array.isArray(doc.findings)) throw new Error("no `findings` array");
+      return doc;
+    };
+
+    it("passes over a quoted manifest in a bare fence to reach the verdict", () => {
+      const reply =
+        "The manifest:\n```\n{\"checks\":[{\"name\":\"x\"}]}\n```\n" + verdict;
+      expect(selectJson(reply, acceptReview)).toEqual({ summary: "ok", findings: [] });
+    });
+
+    it("passes over a quoted file even when it sits in a json fence", () => {
+      // The label is the agent's claim, not proof. A quoted file in a ```json
+      // fence is ranked first and still has to satisfy the caller.
+      const reply = '```json\n{"checks":[]}\n```\n' + verdict;
+      expect(selectJson(reply, acceptReview)).toEqual({ summary: "ok", findings: [] });
+    });
+
+    it("ranks the agent's own json fence ahead of an earlier bare object", () => {
+      const reply =
+        'I considered {"summary":"draft","findings":[]} first.\n```json\n' +
+        '{"summary":"final","findings":[]}\n```';
+      expect(selectJson(reply, acceptReview).summary).toBe("final");
+    });
+
+    it("selects the Writer's response table past a quoted object", () => {
+      const acceptWriter = (s) => {
+        const doc = JSON.parse(s);
+        if (!Array.isArray(doc.responses)) throw new Error("no `responses` array");
+        return doc;
+      };
+      const reply =
+        '```\n{"a":1}\n```\n{"responses":[{"id":"B1","action":"fixed"}],"summary":"done"}';
+      expect(selectJson(reply, acceptWriter).responses.length).toBe(1);
+    });
+
+    it("says how many candidates it saw and why the last was refused", () => {
+      let message = "";
+      try {
+        selectJson('```\n{"checks":[]}\n```\n{"other":true}', acceptReview);
+      } catch (error) {
+        expect(error instanceof AgentError).toBe(true);
+        message = error.message;
+      }
+      expect(message.includes("None of the 2 JSON object(s)")).toBe(true);
+      expect(message.includes("no `findings` array")).toBe(true);
+    });
+
+    it("throws the no-JSON error, not a rejection, when nothing parses", () => {
+      expect(() => selectJson("no json here", acceptReview)).toThrow(AgentError);
+    });
+  });
+
+  describe("extractJsonCandidates", () => {
+    it("returns every parseable object once, nested ones not repeated", () => {
+      const reply = '{"outer":{"inner":1}} and {"b":2}';
+      expect(extractJsonCandidates(reply)).toEqual([
+        '{"outer":{"inner":1}}',
+        '{"b":2}',
+      ]);
+    });
+
+    it("returns nothing for a reply with no object", () => {
+      expect(extractJsonCandidates("prose only")).toEqual([]);
+    });
   });
 
   it("says what it scanned when nothing parses", () => {

@@ -247,87 +247,161 @@ function truncate(s, limit = 1500) {
 }
 
 /**
- * Pull the agent's JSON verdict out of its reply.
+ * Every parseable top-level JSON object in an agent's reply, best guess first.
  *
  * Models wrap JSON in prose or a fence even when told not to. Extracting is
- * tolerant; validating what was extracted is not - that is `findings.mjs`.
+ * tolerant; validating what was extracted is not - that is `findings.mjs`,
+ * and `selectJson` is where the two meet.
  *
- * **The reply usually contains other fences.** A Reviewer quotes the code it
- * is reviewing, and a review of a code change nearly always does. The
- * previous implementation took the FIRST fence in the reply, whatever its
- * language, and parsed that: a quoted snippet with no brace threw "returned
- * no JSON object", one with an unbalanced brace threw "JSON object is not
- * closed", and one with a balanced brace was returned as if it were the
- * verdict. Issues #39 and #48 are the first two; the third is worse, because
- * nothing raises. So every fence is considered, `json` and unlabelled ones
- * first, the unfenced reply last - and a candidate only counts if it parses.
+ * **A reply usually contains other objects.** A Reviewer quotes the code it
+ * is reviewing, and this repository is full of JSON it would quote: the
+ * checks manifest, the expected documents, a fixture line. The first
+ * implementation took the first fence in the reply, whatever its language,
+ * and parsed that -- #39 and #48 died on it. The second took the first
+ * object that *parsed*, which handed a quoted `agent-checks.json` to
+ * `parseReview` as if it were the verdict. Neither can tell a verdict from a
+ * quotation, because that is not a property of the text; it is a property
+ * of the shape the caller is expecting. So this returns every candidate, in
+ * the order most likely to be right, and the caller's validator chooses.
+ *
+ * Order: objects inside a ```json fence first -- the agent labelling its own
+ * answer -- then everything else in document order. Both prompts ask for a
+ * bare object and nothing else, so with an obedient agent there is exactly
+ * one candidate and the order never matters.
+ *
+ * @returns {string[]} JSON source slices, deduplicated.
+ */
+export function extractJsonCandidates(text) {
+  const reply = String(text ?? "");
+  const jsonFences = [];
+  for (const m of reply.matchAll(/```([^\n`]*)\n?([\s\S]*?)```/g)) {
+    if (m[1].trim().toLowerCase() === "json") {
+      const bodyStart = m.index + m[0].indexOf(m[2], m[1].length + 3);
+      jsonFences.push([bodyStart, bodyStart + m[2].length]);
+    }
+  }
+  const inJsonFence = (at) => jsonFences.some(([s, e]) => at >= s && at < e);
+
+  const found = parseableObjects(reply);
+  const ranked = found
+    .map((o) => ({ ...o, rank: inJsonFence(o.start) ? 0 : 1 }))
+    .sort((a, b) => a.rank - b.rank || a.start - b.start);
+
+  const seen = new Set();
+  const out = [];
+  for (const { slice } of ranked) {
+    if (!seen.has(slice)) {
+      seen.add(slice);
+      out.push(slice);
+    }
+  }
+  return out;
+}
+
+/**
+ * The first candidate the reply carries, or throw.
+ *
+ * Kept for callers that have no shape to check against. Anything that does
+ * should use `selectJson`, because "the first thing that parses" is exactly
+ * the guess that returned a quoted config as a review.
  */
 export function extractJson(text) {
-  const reply = String(text ?? "");
-  const fences = [...reply.matchAll(/```([^\n`]*)\n?([\s\S]*?)```/g)].map(
-    (m) => ({ info: m[1].trim().toLowerCase(), body: m[2] }),
-  );
+  const candidates = extractJsonCandidates(text);
+  if (candidates.length > 0) return candidates[0];
+  throw new AgentError(noJsonMessage(text));
+}
 
-  // A `json` fence is the agent doing what it was asked. An unlabelled one is
-  // the next most likely. Anything else is quoted material that may happen to
-  // parse, so it goes behind the unfenced reply rather than ahead of it.
-  const preferred = fences.filter((f) => f.info === "json" || f.info === "");
-  const others = fences.filter((f) => f.info !== "json" && f.info !== "");
-  const candidates = [
-    ...preferred.map((f) => f.body),
-    reply,
-    ...others.map((f) => f.body),
-  ];
+/**
+ * The first candidate `accept` does not reject, as whatever `accept` returns.
+ *
+ * `accept` is the caller's validator -- `parseReview` for the Reviewer, the
+ * response-table shape for the Writer. It is expected to throw on anything
+ * that is not the reply it wants, and every throw is a candidate skipped
+ * rather than a run lost. When nothing is accepted the error names how many
+ * candidates there were and why the last one was refused, so a reply with
+ * the wrong shape says so instead of "not closed".
+ */
+export function selectJson(text, accept) {
+  const candidates = extractJsonCandidates(text);
+  if (candidates.length === 0) throw new AgentError(noJsonMessage(text));
 
+  let lastRejection = null;
   for (const candidate of candidates) {
-    const found = firstParseableObject(candidate);
-    if (found !== null) return found;
+    try {
+      return accept(candidate);
+    } catch (error) {
+      lastRejection = error;
+    }
   }
-
+  const reason = lastRejection?.message ?? String(lastRejection);
   throw new AgentError(
+    `None of the ${candidates.length} JSON object(s) in the agent's reply` +
+      ` is the reply expected. Last rejection: ${reason}` +
+      `\nreply: ${truncate(String(text ?? ""))}`,
+  );
+}
+
+function noJsonMessage(text) {
+  const reply = String(text ?? "");
+  const fences = reply.match(/```/g)?.length ?? 0;
+  return (
     `The agent's reply carries no parseable JSON object` +
-      ` (${fences.length} fenced block(s) scanned).` +
-      `\nreply: ${truncate(reply)}`,
+    ` (${Math.floor(fences / 2)} fenced block(s) scanned).` +
+    `\nreply: ${truncate(reply)}`
   );
 }
 
 /**
- * The first balanced `{...}` in `text` that `JSON.parse` accepts, or null.
+ * Every balanced `{...}` in `text` that `JSON.parse` accepts, in document
+ * order, each with the offset it starts at.
  *
  * Balance alone is not enough. `{ return b; }` is balanced and is not JSON;
  * returning it handed the loop a "verdict" the Reviewer never wrote. Parsing
- * is the check, and scanning past a rejected candidate is what lets a reply
- * that mentions `{` in prose still yield its real object.
+ * is the check. A span that parses is skipped over whole, so an object's own
+ * nested objects are not reported again; a span that does not parse advances
+ * one brace, so a stray `{` in prose cannot hide the real object behind it.
  */
-function firstParseableObject(text) {
+function parseableObjects(text) {
   const source = String(text ?? "");
-  for (let start = source.indexOf("{"); start !== -1; start = source.indexOf("{", start + 1)) {
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    for (let i = start; i < source.length; i += 1) {
-      const ch = source[i];
-      if (escaped) {
-        escaped = false;
-      } else if (ch === "\\") {
-        escaped = true;
-      } else if (ch === '"') {
-        inString = !inString;
-      } else if (!inString && ch === "{") {
-        depth += 1;
-      } else if (!inString && ch === "}") {
-        depth -= 1;
-        if (depth === 0) {
-          const slice = source.slice(start, i + 1);
-          try {
-            JSON.parse(slice);
-            return slice;
-          } catch {
-            break; // Balanced but not JSON. Try the next opening brace.
-          }
-        }
+  const found = [];
+  let start = source.indexOf("{");
+  while (start !== -1) {
+    const end = balancedEnd(source, start);
+    let next = start + 1;
+    if (end !== -1) {
+      const slice = source.slice(start, end + 1);
+      try {
+        JSON.parse(slice);
+        found.push({ slice, start });
+        next = end + 1;
+      } catch {
+        // Balanced but not JSON. Fall through to the next brace.
       }
     }
+    start = source.indexOf("{", next);
   }
-  return null;
+  return found;
+}
+
+/** Index of the `}` that closes the `{` at `start`, or -1 if none does. */
+function balancedEnd(source, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i];
+    if (escaped) {
+      escaped = false;
+    } else if (ch === "\\") {
+      escaped = true;
+    } else if (ch === '"') {
+      inString = !inString;
+    } else if (!inString && ch === "{") {
+      depth += 1;
+    } else if (!inString && ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
 }
