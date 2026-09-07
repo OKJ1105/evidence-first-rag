@@ -28,6 +28,7 @@ import uuid
 
 from ..contract import CONTRACT_IDENTIFIER, CONTRACT_VERSION
 from ..registry import REGISTERED as REGISTERED_TEMPLATES
+from ..adapter.revalidation import Proposal, answer as through_the_adapter
 from ..runtime import Request, Runtime
 from . import checks, expected, probes
 from .artifact import Artifact, FixtureOutcome, Verdict, comparable
@@ -76,7 +77,7 @@ def run(open_runtime_database, *, probe_connection, invariant_failures) -> Artif
     fixtures = []
     for case in REGISTERED:
         mark = len(recording.executions)
-        result = runtime.execute(Request(route=case.route, arguments=case.arguments))
+        result = _answer(runtime, case)
         executions = recording.since(mark)
         document = normalize(result)
         outcomes.append((case.identifier, result.status.value, executions))
@@ -148,6 +149,24 @@ def run(open_runtime_database, *, probe_connection, invariant_failures) -> Artif
         ),
         fixtures=tuple(fixtures),
     )
+
+
+def _answer(runtime, case):
+    """One case, through the layer Section 8.1 registers it against.
+
+    A case carrying request text is a proposal the adapter made, so it goes
+    through Section 4.6's revalidation on the way in; `FX-112` exists only at
+    that depth, because a runtime handed arguments directly has no request
+    text to compare them with. Everything else is a request the runtime
+    answers on its own, which is every data-dependent case.
+    """
+    if case.is_a_proposal:
+        return through_the_adapter(
+            runtime,
+            Proposal(route=case.route, arguments=case.arguments),
+            case.request_text,
+        )
+    return runtime.execute(Request(route=case.route, arguments=case.arguments))
 
 
 def run_twice(open_runtime_database, *, probe_connection, invariant_failures) -> Artifact:

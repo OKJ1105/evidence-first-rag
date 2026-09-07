@@ -191,9 +191,18 @@ def _document(
     contributing=(),
     mapping_provenance=(),
     limitations=(),
+    producing_layer=None,
+    connection_opened=True,
 ) -> dict:
-    """The Section 5 and Section 7 envelope around a case's rows."""
-    allowed = _bound(case)
+    """The Section 5 and Section 7 envelope around a case's rows.
+
+    `connection_opened=False` is Section 5's three no-connection families, and
+    every field that would describe an execution becomes the explicit empty
+    value Section 7 requires -- `bound_parameters` above all, because those
+    outcomes bound nothing and the arguments the adapter proposed are exactly
+    what a rejected proposal consists of.
+    """
+    allowed = _bound(case) if connection_opened else {}
     return {
         "status": status,
         "rows": list(rows),
@@ -208,15 +217,15 @@ def _document(
             "resolved_scope": resolved_scope,
             "collation": COLLATION,
             "read_only_safeguards": {
-                "role_name": RUNTIME_ROLE,
-                "read_only_transaction": True,
-                "connection_opened": True,
+                "role_name": RUNTIME_ROLE if connection_opened else "",
+                "read_only_transaction": connection_opened,
+                "connection_opened": connection_opened,
             },
         },
         "source_trace": {
             "contributing_scopes": list(contributing),
             "mapping_provenance": list(mapping_provenance),
-            "producing_layer": None,
+            "producing_layer": producing_layer,
             "fixture_provenance": list(FIXTURE_PROVENANCE),
         },
         "limitations": list(limitations),
@@ -243,6 +252,37 @@ def _bound(case: Case) -> dict:
 def _stops_at_candidates(case: Case) -> bool:
     """Whether Section 4.2 answers this case before the route's template runs."""
     return case.identifier in {"FX-105", "FX-106", "FX-113"}
+
+
+# Two more deliberate second copies of prose the runtime composes, for the
+# same reason as `superseded_detail` above: importing the wording would make
+# the expectation agree by construction, and a registered expectation exists
+# to fail when the text a user reads changes.
+ENTITY_DISCOVERY_DETAIL = (
+    "Entity Discovery is not implemented in v0.1; this outcome is terminal and"
+    " never reaches the database (Sections 4.6 and 5)."
+)
+
+
+def no_reference_detail(route: str, missing: list[str]) -> str:
+    return (
+        f"route {route!r} is determined, but {missing} is missing, so"
+        f" no canonical reference can be formed (Sections 4.2 and 5)"
+    )
+
+
+def _refused(case: Case, status: str, *, producing_layer=None, limitations=()) -> dict:
+    """The expected document for a case Section 5 gives no connection."""
+    return _document(
+        case,
+        status=status,
+        rows=[],
+        template="",
+        version="",
+        producing_layer=producing_layer,
+        connection_opened=False,
+        limitations=limitations,
+    )
 
 
 def build() -> dict[str, dict]:
@@ -343,6 +383,26 @@ def build() -> dict[str, dict]:
         ],
     )
     documents["FX-107"] = facts("FX-107", powertrain_base, None, "TPL_MESSAGE_FACTS_V1")
+
+    # The adapter-level half. All five open no connection, so their evidence
+    # is Section 7's explicit empty values throughout.
+    documents["FX-108"] = _refused(
+        by_identifier["FX-108"], "unsupported", producing_layer="runtime"
+    )
+    documents["FX-109"] = _refused(by_identifier["FX-109"], "invalid_request")
+    documents["FX-110"] = _refused(by_identifier["FX-110"], "invalid_request")
+    documents["FX-111"] = _refused(
+        by_identifier["FX-111"],
+        "needs_entity_discovery",
+        limitations=[
+            {
+                "kind": "entity_discovery_not_implemented",
+                "detail": f"{ENTITY_DISCOVERY_DETAIL} "
+                + no_reference_detail("message_facts", ["message_key"]),
+            }
+        ],
+    )
+    documents["FX-112"] = _refused(by_identifier["FX-112"], "invalid_request")
     documents["FX-113"] = _document(
         by_identifier["FX-113"],
         status="ambiguous",
