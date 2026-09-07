@@ -17,6 +17,8 @@ Three of them, and each is an absence:
 
 import inspect
 import pathlib
+import subprocess
+import sys
 import unittest
 
 from evidence_first_rag import runtime
@@ -63,9 +65,34 @@ class ThePublicSurfaceIsPinned(unittest.TestCase):
         }
         self.assertEqual(exported, PUBLIC_SURFACE)
 
-    def test_connection_is_not_reachable_through_the_package(self):
-        # Importing `runtime` must not pull the driver in behind it.
-        self.assertNotIn("connection", dir(runtime))
+    def test_importing_the_package_pulls_in_no_driver(self):
+        """The claim, in a fresh interpreter.
+
+        `dir(runtime)` cannot answer it: importing
+        `evidence_first_rag.runtime.connection` anywhere -- including from
+        another test file -- binds `connection` as an attribute of the
+        package, so a `dir()` assertion passes or fails depending on which
+        tests ran first. The same defect was found and fixed in
+        `tests/test_adapter_surface.py`; this is its twin.
+        """
+        source = (
+            "import sys;"
+            "sys.path.insert(0, 'src');"
+            "import evidence_first_rag.runtime;"
+            "assert 'psycopg' not in sys.modules, 'the driver was imported';"
+            "print('clean')"
+        )
+        finished = subprocess.run(
+            [sys.executable, "-c", source],
+            capture_output=True,
+            text=True,
+            cwd=pathlib.Path(__file__).resolve().parent.parent,
+        )
+        self.assertEqual(finished.returncode, 0, finished.stderr)
+        self.assertIn("clean", finished.stdout)
+
+    def test_the_connection_module_is_not_part_of_the_public_surface(self):
+        self.assertNotIn("connection", runtime.__all__)
 
 
 class NoEntryPointAcceptsSqlFromACaller(unittest.TestCase):
