@@ -261,6 +261,42 @@ class TheMetricsCountWhatTheyClaim(unittest.TestCase):
         self.assertEqual(metrics.false_resolution, 1.0)
         self.assertTrue(outcomes[0].accepted)
 
+    def test_a_no_route_case_refused_with_its_registered_status_is_correct(self):
+        # Section 8.3's extension: an adapter that names a route revalidation
+        # then refuses is scored correct if the refusal's status is the one
+        # the case registers -- the registered outcome, reached a different
+        # way, rather than a miss.
+        case = EvaluationCase(
+            identifier="EV-005",
+            text=TEXT,
+            expected_status="invalid_request",
+        )
+        metrics, outcomes = measure(
+            [case],
+            lambda text: Proposal(
+                route="message_facts", arguments=ARGUMENTS | {"message_key": "SAMPLE_INVENTED"}
+            ),
+        )
+        self.assertEqual(metrics.task_coverage, 1.0)
+        self.assertEqual(metrics.false_resolution, 0.0)
+        self.assertFalse(outcomes[0].accepted)
+        self.assertTrue(outcomes[0].correct)
+
+    def test_a_no_route_case_refused_with_a_different_status_is_still_a_miss(self):
+        case = EvaluationCase(
+            identifier="EV-006",
+            text=TEXT,
+            expected_status="unsupported",
+        )
+        metrics, outcomes = measure(
+            [case],
+            lambda text: Proposal(
+                route="message_facts", arguments=ARGUMENTS | {"message_key": "SAMPLE_INVENTED"}
+            ),
+        )
+        self.assertEqual(metrics.task_coverage, 0.0)
+        self.assertFalse(outcomes[0].correct)
+
     def test_an_empty_set_reports_zero_rather_than_dividing_by_it(self):
         metrics, _ = measure([], lambda text: Proposal(route="unsupported"))
         self.assertEqual(metrics.task_coverage, 0.0)
