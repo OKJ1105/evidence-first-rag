@@ -39,7 +39,7 @@ Contract Section 8.1 fixtures `FX-106` (`coverage_gap`), `FX-107` (`not_found`),
 
 ## Gate item 6 — The runtime identity cannot write data or change the schema
 
-Contract Section 4.10's four refusal assertions (`INSERT`, `UPDATE`, `DELETE`, `ALTER`) as the `mvp_runtime` identity, in `conformance/probes.py` and exercised by `tests_database/test_roles.py` and `tests_database/test_conformance_run.py`. The runtime opens a `REPEATABLE READ`, read-only session (`runtime/connection.py`), and the evidence bundle records `read_only_transaction: true` on every executed outcome.
+Contract Section 4.10's four refusal assertions (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`) as the `mvp_runtime` identity, in `conformance/probes.py` and exercised by `tests_database/test_roles.py` and `tests_database/test_conformance_run.py`. The runtime opens a `REPEATABLE READ`, read-only session (`runtime/connection.py`), and the evidence bundle records `read_only_transaction: true` on every executed outcome.
 
 ## Gate item 7 — Representative source tables remain unchanged throughout conformance execution
 
