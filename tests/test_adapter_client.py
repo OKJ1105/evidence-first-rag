@@ -127,6 +127,61 @@ class ReadingAResponseNeverRaises(unittest.TestCase):
                     adapter_client.Adapter.read(response(text)).route, "unsupported"
                 )
 
+    def test_a_repeated_key_survives_as_a_contradiction(self):
+        # Section 8.1 registers `FX-110` as "two different `revision_label`
+        # values". Plain `json.loads` keeps the last and drops the first, so
+        # the contradiction disappeared before revalidation could see it and
+        # `FX-110` was unreachable through the adapter -- found by an external
+        # review, and reproduced. A Python mapping cannot hold one key twice,
+        # so the two values are kept as a list, which the runtime already
+        # refuses as contradictory.
+        raw = (
+            '{"route":"message_facts","arguments":{'
+            '"revision_label":"SAMPLE_REV_A",'
+            '"revision_label":"SAMPLE_REV_B",'
+            '"message_key":"SAMPLE_MSG_ENGINE_STATUS"}}'
+        )
+        proposal = adapter_client.Adapter.read(response(raw))
+        self.assertEqual(
+            dict(proposal.arguments)["revision_label"],
+            ["SAMPLE_REV_A", "SAMPLE_REV_B"],
+        )
+
+    def test_three_of_the_same_key_are_all_kept(self):
+        raw = '{"route":"message_facts","arguments":{"x":"1","x":"2","x":"3"}}'
+        proposal = adapter_client.Adapter.read(response(raw))
+        self.assertEqual(dict(proposal.arguments)["x"], ["1", "2", "3"])
+
+    def test_a_single_key_is_untouched(self):
+        # The guard must not turn every argument into a list.
+        proposal = adapter_client.Adapter.read(response(proposal_json()))
+        self.assertEqual(
+            dict(proposal.arguments), {"message_key": "SAMPLE_MSG_ENGINE_STATUS"}
+        )
+
+    def test_the_contradiction_reaches_invalid_request_end_to_end(self):
+        from evidence_first_rag.adapter import answer
+        from evidence_first_rag.runtime import Runtime
+        from evidence_first_rag import Status
+        from .runtime_support import BASE, FakeDatabase
+
+        raw = (
+            '{"route":"message_facts","arguments":{'
+            + ",".join(f'"{k}":"{v}"' for k, v in BASE.items())
+            + ',"revision_label":"SAMPLE_REV_B"'
+            ',"message_key":"SAMPLE_MSG_ENGINE_STATUS"}}'
+        )
+        proposal = adapter_client.Adapter.read(response(raw))
+        database = FakeDatabase({})
+        result = answer(
+            Runtime(database=database),
+            proposal,
+            "SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_REV_B"
+            " SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE SAMPLE_MSG_ENGINE_STATUS",
+        )
+        self.assertIs(result.status, Status.INVALID_REQUEST)
+        self.assertEqual(database.sessions, 0)
+
     def test_a_proposal_is_passed_on_unfiltered(self):
         # An adapter that cleaned up its own output would hide the failures
         # the Milestone 2 comparison exists to measure. A route the contract
