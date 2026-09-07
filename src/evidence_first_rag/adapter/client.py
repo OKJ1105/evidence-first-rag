@@ -32,6 +32,34 @@ from .revalidation import Proposal
 # Section 4.6, pinned. The identifier is the contract's, not a default.
 MODEL = "claude-opus-5"
 
+
+def _keep_duplicates(pairs):
+    """Turn a repeated JSON key into a multi-valued argument, not a last-win.
+
+    Section 8.1 registers `FX-110` as "contradictory scope, for example two
+    different `revision_label` values", and a model that emitted the key twice
+    is exactly that. Plain `json.loads` keeps the last occurrence and drops
+    the first, so the contradiction disappears before revalidation can see it
+    and `FX-110` becomes unreachable through the adapter -- found by an
+    external review, and reproduced.
+
+    Collecting them into a list is what makes the conflict representable: a
+    Python mapping cannot hold one key twice, and `runtime/request.py` already
+    refuses a multi-valued argument as contradictory. So the adapter reports
+    what the model said, and the deterministic layer decides what it means,
+    which is the division Section 4.6 draws.
+    """
+    document = {}
+    for key, value in pairs:
+        if key not in document:
+            document[key] = value
+            continue
+        existing = document[key]
+        document[key] = (
+            [*existing, value] if isinstance(existing, list) else [existing, value]
+        )
+    return document
+
 # The decoding configuration Section 4.6 requires recorded. Frozen so that the
 # artifact records what ran and a change is visible in the diff.
 #
@@ -118,7 +146,7 @@ class Adapter:
             (block.text for block in response.content if block.type == "text"), ""
         )
         try:
-            document = json.loads(text)
+            document = json.loads(text, object_pairs_hook=_keep_duplicates)
         except json.JSONDecodeError:
             return Proposal(route=vocabulary.UNSUPPORTED_ROUTE, arguments={})
         if not isinstance(document, dict):
