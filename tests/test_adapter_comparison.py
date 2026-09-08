@@ -261,6 +261,85 @@ class TheMetricsCountWhatTheyClaim(unittest.TestCase):
         self.assertEqual(metrics.false_resolution, 1.0)
         self.assertTrue(outcomes[0].accepted)
 
+    def test_a_refusal_carrying_the_registered_status_is_correct(self):
+        # Section 8.3, and Section 8.1's FX-110: the adapter proposed two
+        # values for one dimension, the deterministic layer refused with
+        # invalid_request, and that IS the registered outcome. Correct, never
+        # accepted, therefore never a false resolution.
+        contradictory = EvaluationCase(
+            identifier="EV-110",
+            text=f"{TEXT} or SAMPLE_REV_B",
+            expected_status="invalid_request",
+        )
+        metrics, outcomes = measure(
+            [contradictory],
+            lambda text: Proposal(
+                route="message_facts",
+                arguments=ARGUMENTS | {"revision_label": ["SAMPLE_REV_A", "SAMPLE_REV_B"]},
+            ),
+        )
+        self.assertEqual(metrics.task_coverage, 1.0)
+        self.assertEqual(metrics.false_resolution, 0.0)
+        self.assertTrue(outcomes[0].correct)
+        self.assertFalse(outcomes[0].accepted)
+        self.assertEqual(outcomes[0].refused_as, "invalid_request")
+
+    def test_the_status_has_to_match_not_merely_be_a_refusal(self):
+        # The same contradictory proposal against a case that registers
+        # `unsupported`: refused, yes -- but not with the registered status,
+        # so it is a miss. Any refusal is not the registered outcome.
+        wants_unsupported = EvaluationCase(
+            identifier="EV-108",
+            text=f"{TEXT} or SAMPLE_REV_B",
+            expected_status="unsupported",
+        )
+        metrics, outcomes = measure(
+            [wants_unsupported],
+            lambda text: Proposal(
+                route="message_facts",
+                arguments=ARGUMENTS | {"revision_label": ["SAMPLE_REV_A", "SAMPLE_REV_B"]},
+            ),
+        )
+        self.assertEqual(metrics.task_coverage, 0.0)
+        self.assertFalse(outcomes[0].correct)
+        self.assertEqual(outcomes[0].refused_as, "invalid_request")
+
+    def test_an_accepted_proposal_on_a_no_route_case_is_still_a_false_resolution(self):
+        # The extension touches refusals only. A no-route request answered
+        # with a valid, verbatim, accepted call still reached the database
+        # about something the user did not ask for.
+        exporting = EvaluationCase(
+            identifier="EV-U",
+            text=f"export {TEXT} as tsv",
+            expected_status="unsupported",
+        )
+        metrics, outcomes = measure(
+            [exporting], lambda text: Proposal(route="message_facts", arguments=ARGUMENTS)
+        )
+        self.assertEqual(metrics.false_resolution, 1.0)
+        self.assertTrue(outcomes[0].accepted)
+        self.assertFalse(outcomes[0].correct)
+        self.assertIsNone(outcomes[0].refused_as)
+
+    def test_a_resolving_case_is_scored_by_route_and_arguments_alone(self):
+        # Refused with needs_entity_discovery, and the case registers a route:
+        # the refusal status plays no part. Wrong arguments, so a miss.
+        metrics, outcomes = measure(
+            [RESOLVING],
+            lambda text: Proposal(route="message_facts", arguments=dict(BASE)),
+        )
+        self.assertEqual(metrics.task_coverage, 0.0)
+        self.assertEqual(outcomes[0].refused_as, "needs_entity_discovery")
+        self.assertFalse(outcomes[0].correct)
+
+    def test_the_outcome_records_why_it_counted(self):
+        _, outcomes = measure(
+            [UNRESOLVABLE], lambda text: Proposal(route="unsupported", arguments={})
+        )
+        document = outcomes[0].as_json()
+        self.assertIn("refused_as", document)
+        self.assertEqual(document["refused_as"], "unsupported")
+
     def test_an_empty_set_reports_zero_rather_than_dividing_by_it(self):
         metrics, _ = measure([], lambda text: Proposal(route="unsupported"))
         self.assertEqual(metrics.task_coverage, 0.0)
