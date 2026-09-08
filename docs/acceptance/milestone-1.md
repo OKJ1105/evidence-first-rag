@@ -2,9 +2,9 @@
 
 **Milestone:** 1 — Deterministic PostgreSQL runtime
 
-**Disposition:** _(to be written by the repository owner: `Accepted` or `Rejected`, with a sentence of reasoning)_
+**Disposition:**Accepted
 
-**Date:** _(the date of the disposition)_
+**Date:**2026-09-08
 
 **Recorded by:** repository owner
 
