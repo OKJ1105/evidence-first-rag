@@ -9,7 +9,7 @@ version of the contract this code claims to satisfy.
 
 # Section 1.
 CONTRACT_IDENTIFIER = "mvp-v0.1"
-CONTRACT_VERSION = "0.5.0"
+CONTRACT_VERSION = "0.6.0"
 
 # Section 6: the database is created with LC_COLLATE='C' and ordering is
 # byte-wise. The evidence bundle records "C".

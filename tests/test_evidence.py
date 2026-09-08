@@ -1,5 +1,7 @@
 """Section 7: the three evidence structures and their empty-value rules."""
 
+import pathlib
+import re
 import unittest
 
 from evidence_first_rag import (
@@ -26,7 +28,19 @@ class TheBundleCitesThisContract(unittest.TestCase):
 
     def test_the_constants_match_section_1(self):
         self.assertEqual(CONTRACT_IDENTIFIER, "mvp-v0.1")
-        self.assertEqual(CONTRACT_VERSION, "0.5.0")
+        self.assertEqual(CONTRACT_VERSION, "0.6.0")
+
+    def test_the_version_constant_is_the_one_the_contract_document_declares(self):
+        # The contract and the code have drifted before: 0.6.0 merged while
+        # CONTRACT_VERSION still said 0.5.0, so every evidence bundle cited a
+        # version the document no longer carried. This reads Section 1's own
+        # version line and refuses the drift. Section 7 requires the bundle to
+        # carry the version the code claims to satisfy; a constant nobody
+        # compares against the document is a claim nobody checks.
+        contract = pathlib.Path(__file__).resolve().parents[1] / "docs" / "contracts" / "mvp-v0.1.md"
+        match = re.search(r"^\*\*Version:\*\* `(\d+\.\d+\.\d+)`", contract.read_text(), re.M)
+        self.assertIsNotNone(match, "Section 1 of the contract has no **Version:** line")
+        self.assertEqual(CONTRACT_VERSION, match.group(1))
 
     def test_it_records_the_section_6_collation(self):
         self.assertEqual(executed_bundle().collation, "C")
