@@ -534,6 +534,20 @@ describe("the approve guard runs before the loop publishes anything (#5)", () =>
     };
   }
 
+  /**
+   * An agent that records each turn into the same order array.
+   *
+   * Anchoring "after the agent turns" on a comment is a proxy, and O1 on #86
+   * showed the proxy is loose: the round-1 review comment is the FIRST
+   * `createComment`, so a guard placed just after it still looks before the
+   * Writer turn and the round-2 review. Recording the turns themselves makes
+   * the assertion say what it means.
+   */
+  const recordingAgent = (order, agent) => async (call) => {
+    order.push(`agent:${call.role}`);
+    return agent(call);
+  };
+
   const conclusions = /Awaiting human merge|Stopped — a human is needed/;
 
   const drive = (gh, agent, commit = async () => null) =>
@@ -605,24 +619,35 @@ describe("the approve guard runs before the loop publishes anything (#5)", () =>
     expect(label).toBeGreaterThan(guard);
   });
 
-  it("lists the reviews after the agent turns, not before them", async () => {
+  it("lists the reviews after every agent turn, not before them", async () => {
     // The other half of the position, and the half "before publication" does
     // not imply. `assertNothingApproved` filters on `submitted_at >= since`
     // with `since = startedAt`, so the guard is bounded to what appeared
-    // while the loop held the pull request. Hoisted to the top of the run it
-    // would still be "before publication" and would still throw on a
-    // pre-existing approval — but an approval submitted during the Reviewer
-    // or Writer turn, which is the window it exists to cover, would not yet
-    // exist when it looked. Raised as N2 on #86.
+    // while the loop held the pull request. Hoisted earlier it would still be
+    // "before publication" and would still throw on a pre-existing approval —
+    // but an approval submitted during a Reviewer or Writer turn, which is
+    // the window it exists to cover, would not yet exist when it looked.
+    // Raised as N2, then narrowed by O1, on #86.
+    //
+    // A full two-round run, so there is a Writer turn and a second Reviewer
+    // turn for the guard to be late enough for. Anchoring on the first
+    // comment would pass with the guard sitting between round 1 and round 2.
     const gh = recordingGitHub();
-    const agent = fakeAgent({ reviewer: [review([])] });
-    await drive(gh, agent);
+    const agent = recordingAgent(
+      gh.order,
+      fakeAgent({
+        reviewer: [review([blocking("first")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "fixed", note: "n" }], summary: "s" }],
+      }),
+    );
+    await drive(gh, agent, async () => "sha1");
 
-    // The review turn's own comment: posted by the loop after the Reviewer
-    // has run, so a guard later than it has seen the turn.
-    const firstComment = gh.order.indexOf("createComment");
-    expect(firstComment).toBeGreaterThan(-1);
-    expect(gh.order.indexOf("listReviews")).toBeGreaterThan(firstComment);
+    const turns = gh.order.filter((c) => c.startsWith("agent:"));
+    expect(turns).toEqual(["agent:reviewer", "agent:writer", "agent:reviewer"]);
+
+    const guard = gh.order.indexOf("listReviews");
+    const lastTurn = gh.order.findLastIndex((c) => c.startsWith("agent:"));
+    expect(guard).toBeGreaterThan(lastTurn);
   });
 
   it("still concludes normally when nothing approved", async () => {

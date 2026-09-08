@@ -82,7 +82,7 @@ Its position is the load-bearing part. The check runs after the loop has decided
 
 Both halves of that position matter. It runs **after** the agent turns because the check is bounded to what appeared while the loop held the pull request; hoisted to the top of the run it would look before the window it exists to cover. It runs **before** publication because a guard that fires afterwards reports rather than prevents.
 
-**Two early returns come back before the guard, and neither can reach `ready`.** An `L0` pull request publishes its "nothing was reviewed" comment, its state and the `agent:needs-human` label, then returns; so does a re-run against a head the loop already concluded on. The guarantee is about the conclusion path — the only one that can label a pull request ready to merge — not about every comment the loop is capable of posting.
+**Two early returns come back before the guard, and neither can reach `ready`.** An `L0` pull request publishes its "nothing was reviewed" comment, its state and the `agent:needs-human` label, then returns. A re-run against a head the loop already concluded on returns earlier still: it removes the `agent:running` label and publishes nothing at all. So the guarantee is about the conclusion path — the only one that can label a pull request ready to merge — and the only early return that publishes anything is the one that cannot produce `ready`.
 
 This document said "at the end" until #5. The guard moved ahead of publication in #4's round-1 fixes and the sentence did not follow, which is the shape of drift where a document describes a weaker guarantee than the code gives and a later change quietly restores the weaker one. A unit test now pins the ordering.
 
