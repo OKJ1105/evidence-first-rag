@@ -1,6 +1,8 @@
 import { describe, expect, it } from "./test-kit.mjs";
 import {
   LABELS,
+  UNPINNED_MODEL,
+  agentRunner,
   assertNothingApproved,
   forbiddenEdits,
   ownerDecisionEdits,
@@ -920,6 +922,106 @@ describe("BF6 - the record is not overwritten", () => {
     expect(gh._.comments.map((c) => c.body).join("\n")).toContain(
       "session_reviewer",
     );
+  });
+
+  // #30. The merged reviews on #18 and #24 name no model, so they cannot be
+  // compared against a later one. Property 5 records the turn's identity, and
+  // the model is half of it.
+  it("names the model beside the session id in both published comments", async () => {
+    const gh = fakeGitHub();
+    const agent = async ({ role }) => ({
+      role,
+      text: JSON.stringify(
+        role === "reviewer"
+          ? review([blocking("something")])
+          : { responses: [{ id: "B1", action: "fixed", note: "done" }], summary: "fixed" },
+      ),
+      sessionId: `session_${role}`,
+      model: `model_${role}`,
+    });
+    await runLoop({
+      gh,
+      agent,
+      checks: passingChecks,
+      commit: async () => "sha1",
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("Reviewer model: `model_reviewer` · session: `session_reviewer`");
+    expect(all).toContain("Writer model: `model_writer` · session: `session_writer`");
+  });
+
+  it("says the model was not reported rather than naming an empty one", async () => {
+    const gh = fakeGitHub();
+    const agent = fakeAgent({ reviewer: [review([])] });
+    await runLoop({
+      gh,
+      agent,
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("Reviewer model: `not reported`");
+    expect(all).not.toContain("Reviewer model: ``");
+  });
+});
+
+describe("agentRunner resolves the model per role and publishes what it asked for", () => {
+  // `main()` is wiring and is otherwise uncovered, which is how CI_AGENT_MODEL
+  // came to be read and never set. This is the seam: the model handed to the
+  // CLI and the model published beside the session id are the same value, and
+  // it comes from the environment rather than from a constant.
+  const spy = () => {
+    const seen = [];
+    const run = async (args) => {
+      seen.push(args);
+      return { role: args.role, text: "{}", sessionId: "s1" };
+    };
+    return { seen, run };
+  };
+
+  it("hands the CLI the per-role model from the environment", async () => {
+    const { seen, run } = spy();
+    const agent = agentRunner({
+      timeoutMs: 1,
+      cwd: "/w",
+      settingsPath: "/s.json",
+      env: {
+        CI_AGENT_WRITER_MODEL: "writer-model",
+        CI_AGENT_REVIEWER_MODEL: "reviewer-model",
+      },
+      run,
+    });
+    await agent({ role: "reviewer", prompt: "p" });
+    await agent({ role: "writer", prompt: "p" });
+    expect(seen.map((a) => a.model)).toEqual(["reviewer-model", "writer-model"]);
+    // The rest of the turn's configuration still reaches the CLI.
+    expect(seen[0]).toMatchObject({ timeoutMs: 1, cwd: "/w", settingsPath: "/s.json" });
+  });
+
+  it("publishes the same model it asked for", async () => {
+    const { run } = spy();
+    const agent = agentRunner({
+      env: { CI_AGENT_MODEL: "shared-model" },
+      run,
+    });
+    const result = await agent({ role: "reviewer", prompt: "p" });
+    expect(result.model).toBe("shared-model");
+  });
+
+  it("omits the flag and publishes UNPINNED_MODEL when nothing is set", async () => {
+    // `--model ""` is an argument the CLI has to interpret; undefined makes
+    // `claude.mjs` leave the flag off entirely.
+    const { seen, run } = spy();
+    const agent = agentRunner({ env: {}, run });
+    const result = await agent({ role: "writer", prompt: "p" });
+    expect(seen[0].model).toBe(undefined);
+    expect(result.model).toBe(UNPINNED_MODEL);
   });
 });
 

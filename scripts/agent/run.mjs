@@ -42,6 +42,74 @@ const outcomeLabels = [LABELS.ready, LABELS.needsHuman, LABELS.failed];
 export const protectedPaths = ["scripts/", ".github/", ".githooks/", ".claude/"];
 
 /**
+ * The model each role runs on, pinned per role rather than shared.
+ *
+ * `CI_AGENT_MODEL` was read here and set nowhere, so every Writer and every
+ * Reviewer turn ran on whatever the CLI defaulted to. The CLI version is
+ * pinned in the workflow precisely so the toolchain moves only by a
+ * deliberate commit; leaving the model it drives unpinned undid that. A
+ * provider-side default change would silently alter what writes and what
+ * judges this repository, with nothing in the history to show it — and the
+ * reviews already merged (#18, #24) name no model, so they cannot be compared
+ * against a later one.
+ *
+ * **Two variables, both currently the same value.** Model difference is not
+ * an independence property and is not required — the repository owner dropped
+ * that requirement on 2026-09-03 (#30), and `docs/DEVELOPMENT_WORKFLOW.md`
+ * records the decision and what it gives up. The pair is kept anyway so that
+ * assigning the Reviewer a different model on one slice is a one-line change
+ * with a commit behind it, rather than a mechanism that has to be built first.
+ * Nothing here requires the two to differ, and nothing requires them to match.
+ *
+ * Falls back to the shared `CI_AGENT_MODEL`, then to the CLI's own default. An
+ * unset or blank model resolves to `undefined` rather than to `""`: the caller
+ * omits the flag entirely, because `--model ""` is an argument the CLI has to
+ * interpret, and the published comment reports the turn as unpinned rather
+ * than naming a model that was never chosen.
+ *
+ * @param {"writer"|"reviewer"} role
+ * @param {Record<string,string|undefined>} [env]
+ * @returns {string|undefined} A model identifier, or undefined to let the CLI choose.
+ */
+export function modelFor(role, env = process.env) {
+  const perRole =
+    role === "reviewer" ? env.CI_AGENT_REVIEWER_MODEL : env.CI_AGENT_WRITER_MODEL;
+  const chosen = perRole ?? env.CI_AGENT_MODEL;
+  const trimmed = typeof chosen === "string" ? chosen.trim() : "";
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/** What the published comment says for a turn the workflow left unpinned. */
+export const UNPINNED_MODEL = "CLI default (unpinned)";
+
+/**
+ * The `agent` dependency `runLoop` calls, with the per-role model resolved.
+ *
+ * A factory rather than an inline closure in `main()` so that the one thing
+ * worth asserting is assertable: that the model reaching the CLI is
+ * `modelFor(role)` and not a constant, and that the value published beside the
+ * session id is the same one. `main()` is wiring and is not otherwise covered;
+ * a pin nothing checks is how `CI_AGENT_MODEL` came to be read and never set.
+ *
+ * The model stamped on the result is the model the orchestrator *asked for*,
+ * which is the fact worth recording: an unset one is published as
+ * `UNPINNED_MODEL` rather than as a default name nobody chose.
+ */
+export function agentRunner({
+  timeoutMs,
+  cwd,
+  settingsPath,
+  env = process.env,
+  run = runAgent,
+}) {
+  return async ({ role, prompt }) => {
+    const model = modelFor(role, env);
+    const result = await run({ role, prompt, timeoutMs, cwd, settingsPath, model });
+    return { ...result, model: model ?? UNPINNED_MODEL };
+  };
+}
+
+/**
  * Paths whose changes require a recorded human decision.
  *
  * A second fence, and deliberately not part of `protectedPaths`. BF3 is about
@@ -566,7 +634,7 @@ export async function runLoop({
           `## Independent review — round ${state.round + 1} of ${cap}`,
           "",
           `Head \`${currentHead}\` · Issue #${issueNumber} · risk \`${riskLevel}\``,
-          `Reviewer session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+          `Reviewer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
           parsed.summary,
           "",
@@ -668,7 +736,7 @@ export async function runLoop({
           `## Writer response — round ${state.round} of ${cap}`,
           "",
           `Head \`${currentHead}\``,
-          `Writer session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+          `Writer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
           summary,
           "",
@@ -865,15 +933,11 @@ async function main() {
       docs,
       reviewerOnlyDocs,
       ctx: { prNumber, runUrl, startedAt, reset },
-      agent: ({ role, prompt }) =>
-        runAgent({
-          role,
-          prompt,
-          timeoutMs: agentTimeoutMs,
-          cwd: worktree,
-          settingsPath,
-          model: process.env.CI_AGENT_MODEL,
-        }),
+      agent: agentRunner({
+        timeoutMs: agentTimeoutMs,
+        cwd: worktree,
+        settingsPath,
+      }),
       checks: () =>
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
