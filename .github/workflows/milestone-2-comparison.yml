@@ -22,13 +22,21 @@ name: Milestone 2 comparison
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
+# Nothing by default, and the one job below takes only what `actions/checkout`
+# needs. Set this way round rather than as a single `contents: read` at the
+# top: the effective grant is identical while there is one job, but a second
+# job added later would inherit that grant instead of starting from zero.
+permissions: {}
 
 jobs:
   comparison:
     name: comparison
     runs-on: ubuntu-latest
+
+    permissions:
+      # `actions/checkout` reads the repository. `actions/upload-artifact@v4`
+      # needs no scope beyond it, and the job writes nothing back.
+      contents: read
 
     services:
       postgres:
