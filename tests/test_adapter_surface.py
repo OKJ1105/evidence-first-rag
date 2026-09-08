@@ -25,13 +25,16 @@ PACKAGE = pathlib.Path(adapter.__file__).resolve().parent
 
 PUBLIC_SURFACE = {
     "Baseline",
+    "CURATED",
     "CuratedEntry",
+    "EVALUATION_SET",
     "EvaluationCase",
     "Judgement",
     "Metrics",
     "Outcome",
     "Proposal",
     "Report",
+    "THRESHOLDS",
     "Thresholds",
     "answer",
     "compare",
