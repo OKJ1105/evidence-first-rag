@@ -76,7 +76,11 @@ The fence is by path rather than by judgement, and that is deliberate. A code fi
 
 The cost is that a correct contract fix also has to come from an out-of-loop writer. It is accepted: the precise alternative is a prompt rule asking the Writer to tell a derivable correction from a choice, which is the judgement that failed twice in one day. Revisit it if contract amendments become frequent enough that the out-of-loop fixes cost more than the mistakes did. A contract-only pull request therefore always ends at `agent:needs-human`, which is the honest outcome rather than a regression.
 
-**A guard fails the run if anything approved.** The workflow token *could* submit a review, so the orchestrator lists reviews at the end and fails if an approval appeared while it held the pull request.
+**A guard fails the run if anything approved, and it runs before anything is published.** The workflow token *could* submit a review, so the orchestrator lists the pull request's reviews and fails if an approval appeared while it held it.
+
+Its position is the load-bearing part. The check runs after the loop has decided its outcome and **before** the conclusion comment, the state write and the outcome label — so a run that finds an approval leaves no `agent:ready-for-human-merge` behind it, and the pull request is not left carrying a verdict the loop then disowned. A guard that ran after publication would report the problem rather than prevent it.
+
+This document said "at the end" until #5. The guard moved ahead of publication in #4's round-1 fixes and the sentence did not follow, which is the shape of drift where a document describes a weaker guarantee than the code gives and a later change quietly restores the weaker one. A unit test now pins the ordering.
 
 **The loop cannot refund the cap; only the owner can.** Pushing a commit invalidates the recorded review but does not reset the round count. `/agent-loop reset` is the owner's deliberate act and the only way the count returns to zero.
 

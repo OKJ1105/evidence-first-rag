@@ -501,6 +501,122 @@ describe("assertNothingApproved", () => {
   });
 });
 
+// #5. The three cases above pin what the guard decides. None of them pins
+// WHERE it runs, and the position is the guarantee: `docs/agent-loop.md` said
+// "at the end" long after #4's round-1 fixes moved it ahead of publication,
+// and a guard that runs after the label has gone out reports the problem
+// instead of preventing it. Nothing would have failed if it drifted back.
+
+describe("the approve guard runs before the loop publishes anything (#5)", () => {
+  const approval = () => [
+    {
+      state: "APPROVED",
+      submitted_at: "2026-01-01T01:00:00Z",
+      user: { login: "someone" },
+    },
+  ];
+
+  /** A fake that records the order of the calls the conclusion is made of. */
+  function recordingGitHub(options) {
+    const gh = fakeGitHub(options);
+    const order = [];
+    const wrap = (name, fn) => async (...args) => {
+      order.push(name);
+      return fn(...args);
+    };
+    return {
+      ...gh,
+      order,
+      listReviews: wrap("listReviews", gh.listReviews),
+      createComment: wrap("createComment", gh.createComment),
+      updateComment: wrap("updateComment", gh.updateComment),
+      addLabels: wrap("addLabels", gh.addLabels),
+    };
+  }
+
+  const conclusions = /Awaiting human merge|Stopped — a human is needed/;
+
+  const drive = (gh, agent, commit = async () => null) =>
+    runLoop({
+      gh,
+      agent,
+      checks: passingChecks,
+      commit,
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+
+  it("publishes no conclusion, no verdict state and no outcome label on the ready path", async () => {
+    const gh = fakeGitHub({ reviews: approval() });
+    const agent = fakeAgent({ reviewer: [review([])] });
+    await expect(drive(gh, agent)).rejects.toThrow(/never approve/);
+
+    const bodies = gh._.comments.map((c) => c.body).join("\n");
+    expect(bodies).not.toMatch(conclusions);
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(false);
+    // The marker may exist from the review step; it must not carry the verdict.
+    expect(stateOf(gh).phase).not.toBe("ready-for-human-merge");
+  });
+
+  it("does the same on the needs-human path, where the outcome is not ready", async () => {
+    // The guard sits above the branch that chooses the label, so an unresolved
+    // blocking finding must not publish either.
+    const gh = fakeGitHub({
+      pr: {
+        head: { sha: "sha0", ref: "agent/1-x" },
+        body: "Closes #42\n\nRisk level: `L1`",
+        labels: [],
+      },
+      reviews: approval(),
+    });
+    const agent = fakeAgent({
+      reviewer: [review([blocking("still broken")]), review([blocking("still broken")])],
+      writer: [{ responses: [{ id: "B1", action: "declined", note: "no" }], summary: "s" }],
+    });
+    await expect(drive(gh, agent, async () => "sha1")).rejects.toThrow(
+      /never approve/,
+    );
+    expect(gh._.comments.map((c) => c.body).join("\n")).not.toMatch(conclusions);
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(false);
+  });
+
+  it("lists the reviews before the conclusion comment, not after it", async () => {
+    // The ordering itself, rather than its consequence. On a clean run the
+    // guard passes, so the only evidence of its position is when it was called.
+    const gh = recordingGitHub();
+    const agent = fakeAgent({ reviewer: [review([])] });
+    await drive(gh, agent);
+
+    const guard = gh.order.indexOf("listReviews");
+    const label = gh.order.indexOf("addLabels", 1);
+    expect(guard).toBeGreaterThan(-1);
+    const conclusionComment = gh._.comments.findIndex((c) =>
+      conclusions.test(c.body),
+    );
+    expect(conclusionComment).toBeGreaterThan(-1);
+    // Every publishing call after the guard: the comment, the state write and
+    // the outcome label.
+    const publishing = gh.order.slice(guard + 1);
+    expect(publishing).toContain("createComment");
+    expect(publishing).toContain("updateComment");
+    expect(publishing).toContain("addLabels");
+    expect(label).toBeGreaterThan(guard);
+  });
+
+  it("still concludes normally when nothing approved", async () => {
+    // The guard must not be satisfied by refusing everything.
+    const gh = fakeGitHub({
+      reviews: [{ state: "COMMENTED", submitted_at: "2026-01-01T01:00:00Z" }],
+    });
+    const agent = fakeAgent({ reviewer: [review([])] });
+    const result = await drive(gh, agent);
+    expect(result.action).toBe("ready-for-human-merge");
+    expect(gh._.labels.has(LABELS.ready)).toBe(true);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Regression tests for the review's blocking findings. Each is written to fail
 // against the code as it was, not merely to pass against the code as it is.
