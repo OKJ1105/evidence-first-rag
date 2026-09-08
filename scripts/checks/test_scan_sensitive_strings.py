@@ -22,6 +22,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import shutil
 import tempfile
@@ -173,11 +174,32 @@ class TestAssignedSecrets(ScanCheck):
         self.write("roles.sql", "ALTER ROLE r PASSWORD :" + "'runtime_password';\n")
         self.assert_passes()
 
-    def test_a_quoted_literal_in_the_same_psql_position_fails(self):
-        # The other side of the interpolation exemption: `:` before a quote is
-        # psql naming a variable, but a literal in that position is a literal.
+    def test_the_same_shape_outside_sql_is_read_as_a_value_and_fails(self):
+        # The exemption's real other side, and the reason it is restricted to
+        # .sql: psql interpolation exists in psql. The identical characters in
+        # a configuration file are an assignment, and its value is checked.
+        self.write("config.yml", "password:'" + "k7Qm2Xb9Zr4T" + "'\n")
+        self.assert_fails("assigned-secret")
+
+    def test_a_space_before_the_quote_is_not_interpolation_and_fails(self):
+        # `:'name'` is one token. A space between them is an ordinary
+        # assignment of a quoted literal, in a .sql file as anywhere else.
+        self.write("roles.sql", "ALTER ROLE r PASSWORD : '" + "k7Qm2Xb9Zr4T" + "';\n")
+        self.assert_fails("assigned-secret")
+
+    def test_an_equals_sign_in_a_sql_file_fails(self):
+        # .sql is an expression source, so a bare value there is a name. A
+        # quoted one is still a literal and is still caught.
         self.write("roles.sql", "ALTER ROLE r PASSWORD = '" + "k7Qm2Xb9Zr4T" + "';\n")
         self.assert_fails("assigned-secret")
+
+    def test_the_sql_interpolation_exemption_covers_whatever_it_quotes(self):
+        # Recorded rather than claimed away: inside a .sql file the exemption
+        # applies to the quoted text whatever it looks like, because psql's
+        # grammar admits no literal in that position for it to be told apart
+        # from. This asserts the residual so a later reader finds it stated.
+        self.write("roles.sql", "ALTER ROLE r PASSWORD :" + "'k7Qm2Xb9Zr4T';\n")
+        self.assert_passes()
 
     def test_a_placeholder_value_passes(self):
         self.write("w.yml", "  POSTGRES_PASSWORD: ci_superuser_" + "not_a_secret\n")
@@ -278,10 +300,25 @@ class TestWhatIsReported(ScanCheck):
         self.assertNotIn(value, output)
         self.assertIn("(16 characters)", output)
 
-    def test_a_non_credential_match_is_printed(self):
-        # Masking a host or a path would only make the finding hard to act on.
+    def test_an_address_is_not_printed_in_full_either(self):
+        # A finding never reprints what it found, whichever rule produced it:
+        # the address a personal-email hit names is the thing not to repeat
+        # into a log, exactly as a credential is.
+        local, domain = "a.person", "somecompany.com"
+        self.write("notes.md", "contact " + local + "@" + domain + "\n")
+        output = self.assert_fails("personal-email")
+        self.assertNotIn(domain, output)
+        self.assertIn("(24 characters)", output)
+
+    def test_a_host_is_not_printed_in_full_either(self):
         self.write("notes.md", "https://" + "build.internal/status\n")
-        self.assertIn("build.internal", self.assert_fails("internal-host"))
+        output = self.assert_fails("internal-host")
+        self.assertNotIn("build.internal", output)
+
+    def test_the_file_and_line_are_never_masked(self):
+        # What makes a masked finding actionable: the reader opens the line.
+        self.write("deep/notes.md", "\n" + "see /Users/" + "jdoe/checkouts\n")
+        self.assertIn("deep/notes.md:2:", self.assert_fails("local-machine-path"))
 
     def test_the_finding_names_the_file_the_line_and_the_clause(self):
         self.write("deep/config.yml", "\n\n" + 'token: "' + "k7Qm2Xb9Zr4T" + '"\n')
@@ -308,6 +345,27 @@ class TestWhatIsScanned(ScanCheck):
         path = self.directory / "blob.bin"
         path.write_bytes(b"\x00\x01\xff " + b"AKIA" + b"IOSFODNN7EXAMPLE" + b"\x00")
         self.assert_fails("issued-credential")
+
+    def test_a_symlink_target_is_scanned(self):
+        # A link is how a local machine path arrives in the tree without any
+        # file containing one, so the target as written is read.
+        os.symlink("/Users/" + "jdoe/checkouts/mvp", self.directory / "checkout")
+        self.assert_fails("local-machine-path")
+
+    def test_a_symlink_is_not_followed_out_of_the_tree(self):
+        # The target is read as text, not opened. Following it would read
+        # outside the repository, which is not what a repository scan reports.
+        outside = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        (outside / "keys.txt").write_text(
+            "id " + "AKIA" + "IOSFODNN7EXAMPLE" + "\n", encoding="utf-8"
+        )
+        os.symlink(outside / "keys.txt", self.directory / "keys.txt")
+        self.assert_passes()
+
+    def test_a_broken_symlink_does_not_crash_the_scan(self):
+        os.symlink(self.directory / "nowhere", self.directory / "dangling")
+        self.assert_passes()
 
     def test_a_skipped_directory_is_not_scanned(self):
         # Asserted so the exclusion stays deliberate and visible rather than

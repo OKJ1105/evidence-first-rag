@@ -23,6 +23,12 @@ in the tree legitimately: a value that names a variable rather than carrying
 one, or that is marked as an example. Both are matched explicitly below, so
 the exemption is auditable and each is probed by a negative test.
 
+A finding never reprints what it found. Every match is reduced to four
+characters and a length, whichever rule produced it: a credential printed into
+a CI log is exposed a second time, and the local machine paths and addresses
+the other rules find name a person. The file and line number are what make a
+finding actionable, and they are printed in full.
+
 Exits 1 and lists every hit when any rule matches.
 """
 
@@ -113,10 +119,11 @@ _SECRET_NAME = (
     r"(?:password|passwd|secret|token|api[-_]?key|apikey|credential)s?"
 )
 
-# The assignment operator is `=`, or `:` when it is not immediately followed by
-# a quote: `PASSWORD :'name'` is psql interpolation, not a literal.
+# `=` or `:` introduces the value. The gap and the quote are captured so that
+# psql's `:'name'` interpolation can be told apart from an assignment, since
+# its colon would otherwise read as the operator.
 _ASSIGNMENT = re.compile(
-    r"(?i)\b" + _SECRET_NAME + r"\s*(?:=|:(?!'))\s*"
+    r"(?i)\b" + _SECRET_NAME + r"\s*(?P<operator>[=:])(?P<gap>\s*)"
     r"(?P<quote>[\"'])?(?P<value>(?(quote)[^\"'\n]*|[^\s#,;)\]}]+))"
 )
 
@@ -171,9 +178,30 @@ def _exempt_value(value):
     return bool(REFERENCE_VALUE.match(value) or PLACEHOLDER_VALUE.search(value))
 
 
+def _psql_interpolation(match, path):
+    """`:'name'` in a .sql file names a client variable, so the quoted text is
+    an identifier rather than a value.
+
+    Narrow on purpose. The colon has to be immediately followed by the quote,
+    with nothing between, and only in SQL: the same shape in YAML or in prose
+    is read as an assignment and its value is checked. What this exemption
+    still gives up is stated rather than hidden — inside a .sql file it applies
+    whatever the quoted text is, because psql's grammar admits no literal in
+    that position for it to be told apart from.
+    """
+    return (
+        path.suffix == ".sql"
+        and match.group("operator") == ":"
+        and not match.group("gap")
+        and match.group("quote") == "'"
+    )
+
+
 def _assigned_secret(line, path):
     for match in _ASSIGNMENT.finditer(line):
         value = match.group("value")
+        if _psql_interpolation(match, path):
+            continue
         if match.group("quote") is None and path.suffix in EXPRESSION_SOURCES:
             continue
         if len(value) < MINIMUM_SECRET_LENGTH or _exempt_value(value):
@@ -204,51 +232,42 @@ def _matches(pattern, group=0):
 
 
 # Every rule names the clause it enforces, so a hit says which rule of the
-# repository it broke rather than only which regex fired. `mask` is set on the
-# rules whose match may be a live credential: printing one into a CI log widens
-# the exposure the scan exists to stop.
+# repository it broke rather than only which regex fired.
 RULES = (
     (
         "private-key",
         "AGENTS.md: never add credentials or secrets",
         _matches(_PRIVATE_KEY),
-        True,
     ),
     (
         "issued-credential",
         "AGENTS.md: never add credentials or secrets",
         _matches(_ISSUED_CREDENTIAL),
-        True,
     ),
     (
         "assigned-secret",
         "AGENTS.md: never add credentials or secrets",
         _assigned_secret,
-        True,
     ),
     (
         "url-credentials",
         "AGENTS.md: never add credentials or secrets",
         _matches(_URL_CREDENTIALS, "value"),
-        True,
     ),
     (
         "internal-host",
         "AGENTS.md: never add internal URLs",
         _matches(_INTERNAL_HOST),
-        False,
     ),
     (
         "local-machine-path",
         "AGENTS.md: never add local machine paths",
         _home_path,
-        False,
     ),
     (
         "personal-email",
         "AGENTS.md: never add personal information",
         _personal_email,
-        False,
     ),
 )
 
@@ -263,20 +282,38 @@ def mask(text):
 
 def scan_text(text, where, failures):
     for number, line in enumerate(text.splitlines(), 1):
-        for name, clause, find, secret in RULES:
+        for name, clause, find in RULES:
             for hit in find(line, where):
-                shown = mask(hit) if secret else hit
-                failures.append(f"{where}:{number}: {name}: {shown} — {clause}")
+                failures.append(f"{where}:{number}: {name}: {mask(hit)} — {clause}")
 
 
 def files(root):
-    """Every file under root, skipping directories that hold no reviewable
-    repository content."""
+    """Every file and symlink under root, skipping directories that hold no
+    reviewable repository content.
+
+    `rglob` yields a symlink without descending into it, so a link is one
+    entry and cannot loop or lead the scan out of the tree.
+    """
     for path in sorted(root.rglob("*")):
         if any(part in SKIP_DIRECTORIES for part in path.parts):
             continue
-        if path.is_file() and not path.is_symlink():
+        if path.is_symlink() or path.is_file():
             yield path
+
+
+def contents(path):
+    """What there is to scan at this path.
+
+    For a symlink that is its target as written, not the file it points at:
+    following it would read the same file twice when the target is inside the
+    tree, and read outside the repository when it is not. The target is worth
+    reading in its own right — an absolute path into a developer's home
+    directory is exactly what one of the rules looks for, and a link is how it
+    would arrive without any file containing it.
+    """
+    if path.is_symlink():
+        return str(path.readlink())
+    return path.read_bytes().decode("utf-8", errors=DECODE_ERRORS)
 
 
 def main() -> int:
@@ -284,8 +321,7 @@ def main() -> int:
     scanned = 0
     for path in files(ROOT):
         scanned += 1
-        text = path.read_bytes().decode("utf-8", errors=DECODE_ERRORS)
-        scan_text(text, path, failures)
+        scan_text(contents(path), path, failures)
 
     if failures:
         print("Sensitive strings found:")
