@@ -9,6 +9,7 @@ what the exit code means, and that the gate's refusals reach the document.
 
 import datetime
 import hashlib
+import importlib.util
 import json
 import pathlib
 import re
@@ -24,6 +25,12 @@ from evidence_first_rag.references import SCOPE_DIMENSIONS
 from evidence_first_rag.runtime import Runtime
 
 from .runtime_support import FakeDatabase, candidate_row, message_row
+
+HAS_SDK = importlib.util.find_spec("anthropic") is not None
+
+if HAS_SDK:
+    from evidence_first_rag.adapter.client import MODEL as REAL_MODEL
+    from evidence_first_rag.adapter.client import Adapter
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 LOADED_SCOPES = [
@@ -129,6 +136,35 @@ class TheArtifact(unittest.TestCase):
             self.assertEqual(json.loads(target.read_text()), self.document)
         finally:
             target.unlink(missing_ok=True)
+
+
+@unittest.skipUnless(HAS_SDK, "the adapter extra is not installed")
+class ThePinIsTheRealAdapterConfiguration(unittest.TestCase):
+    """Section 8's 'the pin is asserted, not assumed', against the real client.
+
+    Every other test in this file hand-types a local `DECODING` mapping,
+    which would not notice `client.py`'s `DECODING` drifting -- gaining or
+    losing a key -- or `main()` swapping `pinned_decoding=Adapter.configuration()`
+    for something stale. This one imports the real `Adapter` and feeds its
+    actual `configuration()` through, the same shape `main()` uses, without
+    spending a network call.
+    """
+
+    def test_the_artifact_records_the_real_adapter_configuration(self):
+        configuration = Adapter.configuration()
+        document = runner.perform(
+            propose=perfect,
+            runtime=empty_runtime(),
+            model=REAL_MODEL,
+            decoding=configuration,
+        )
+        self.assertEqual(document["model"], REAL_MODEL)
+        self.assertEqual(document["decoding"], configuration)
+        self.assertIn("thinking", document["decoding"])
+        # `pinned_decoding` defaults to `decoding`: if `perform` (or a future
+        # `main()`) fed `judge` a different value as the pin, the drift would
+        # surface here as a refused, non-adoptable judgement.
+        self.assertTrue(document["judgement"]["adoptable"], document["judgement"]["reasons"])
 
 
 class TheGateReachesTheDocument(unittest.TestCase):
