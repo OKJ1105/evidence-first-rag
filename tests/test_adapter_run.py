@@ -12,8 +12,12 @@ import hashlib
 import importlib.util
 import json
 import pathlib
+import contextlib
+import io
 import re
+import tempfile
 import unittest
+import unittest.mock
 
 from evidence_first_rag import CONTRACT_IDENTIFIER, CONTRACT_VERSION
 from evidence_first_rag.adapter import Baseline, Proposal, Thresholds, measure
@@ -29,8 +33,10 @@ from .runtime_support import FakeDatabase, candidate_row, message_row
 HAS_SDK = importlib.util.find_spec("anthropic") is not None
 
 if HAS_SDK:
+    from evidence_first_rag.adapter import client as adapter_client
     from evidence_first_rag.adapter.client import MODEL as REAL_MODEL
     from evidence_first_rag.adapter.client import Adapter
+    from evidence_first_rag.runtime import connection as runtime_connection
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 LOADED_SCOPES = [
@@ -116,11 +122,44 @@ class TheArtifact(unittest.TestCase):
         self.assertTrue(all("refused_as" in o for o in outcomes))
 
     def test_the_baseline_in_the_artifact_is_the_measured_floor(self):
-        metrics, _ = measure(EVALUATION_SET, Baseline(CURATED).resolve)
+        # The whole document rather than two fields, and measured against the
+        # same runtime the artifact used: without one the weakening check has
+        # nothing to read, so the two sides would not be comparing the same
+        # thing.
+        #
+        # `Metrics` carries four fields; `task_coverage` and
+        # `false_resolution` are properties derived from them. So widening
+        # this assertion cannot catch a wrong ratio -- both sides would
+        # compute it the same way -- and the only fields it adds are `total`
+        # and `weakened_negatives`. Under this runtime nothing is weakened,
+        # which makes that half vacuous here; the test below is where it
+        # earns its keep.
+        metrics, _ = measure(EVALUATION_SET, Baseline(CURATED).resolve, empty_runtime())
         recorded = self.document["report"]["baseline"]
-        self.assertEqual(recorded["correct"], metrics.correct)
+        self.assertEqual(recorded, metrics.as_json())
         self.assertEqual(recorded["correct"], 22)
         self.assertEqual(recorded["false_resolutions"], 0)
+
+    def test_the_recorded_baseline_carries_the_weakened_negatives(self):
+        # The case the two-field form could not see. Against a database that
+        # answers everything, the baseline weakens two registered negatives
+        # while `correct` stays 22 and `false_resolutions` stays 0 -- so a
+        # regression that stopped recording weakening would have passed a
+        # check that read only those two.
+        runtime = indiscriminate_runtime()
+        document = runner.perform(
+            propose=perfect, runtime=runtime, model="m", decoding=DECODING
+        )
+        metrics, _ = measure(
+            EVALUATION_SET, Baseline(CURATED).resolve, indiscriminate_runtime()
+        )
+        recorded = document["report"]["baseline"]
+        self.assertEqual(recorded, metrics.as_json())
+        self.assertEqual(recorded["correct"], 22)
+        self.assertEqual(recorded["false_resolutions"], 0)
+        self.assertEqual(
+            recorded["weakened_negatives"], ["EV-P-FX-106-0", "EV-P-FX-107-0"]
+        )
 
     def test_the_two_irreproducible_fields_are_present_and_distinct_per_run(self):
         again = runner.perform(
@@ -304,3 +343,67 @@ class TheAdapterPathNeverFallsBackToTheBaseline(unittest.TestCase):
         self.assertEqual(
             document["report"]["adapter"]["correct"], document["report"]["baseline"]["correct"]
         )
+
+
+@unittest.skipUnless(HAS_SDK, "the adapter extra is not installed")
+class TheWiringPassesTheRealPin(unittest.TestCase):
+    """#77 gap 1. `main` is what the dispatched workflow runs, and until now
+    nothing watched it.
+
+    `ThePinIsTheRealAdapterConfiguration` asserts that `perform` records the
+    configuration it is handed. It does not assert that `main` hands it the
+    real one, and `main` is the only caller in a dispatched run. Mutating
+    `main` to pass a stale `pinned_decoding` left the entire suite green,
+    which is how this gap was found rather than argued about; contract
+    Section 4.6's model-pinning row is marked Automated and merge-blocking,
+    so the evidence for it cannot stop one call short of the caller.
+
+    The model and the database are replaced, so this spends no credential,
+    opens no connection and makes no network call.
+    """
+
+    def recorded_call(self):
+        """Run `main` with `perform` recording, and return its keywords."""
+        recorded = {}
+
+        def recording_perform(**keywords):
+            recorded.update(keywords)
+            return self.document
+
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = pathlib.Path(directory) / "artifact.json"
+            with (
+                unittest.mock.patch.object(runner, "perform", recording_perform),
+                unittest.mock.patch.object(
+                    adapter_client.Adapter,
+                    "from_environment",
+                    classmethod(lambda cls: cls(client=object())),
+                ),
+                unittest.mock.patch.object(
+                    runtime_connection, "PsycopgDatabase", lambda **keywords: object()
+                ),
+            ):
+                # `main` prints its one-line summary; the test is about what
+                # it passed, not what it said.
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = runner.main(["--artifact", str(artifact)])
+            self.assertEqual(code, 0)
+            self.assertTrue(artifact.exists(), "main did not write the artifact")
+        return recorded
+
+    def setUp(self):
+        self.document = runner.perform(
+            propose=perfect, runtime=empty_runtime(), model=REAL_MODEL, decoding=DECODING
+        )
+
+    def test_main_hands_the_runner_the_real_model_and_configuration(self):
+        recorded = self.recorded_call()
+        self.assertEqual(recorded["model"], REAL_MODEL)
+        self.assertEqual(recorded["decoding"], Adapter.configuration())
+
+    def test_main_hands_the_runner_the_real_configuration_as_the_pin(self):
+        # The half the earlier fix left open: `judge` is what enforces
+        # Section 4.6, and it reads `pinned_decoding`.
+        recorded = self.recorded_call()
+        self.assertEqual(recorded["pinned_decoding"], Adapter.configuration())
+        self.assertIn("thinking", recorded["pinned_decoding"])
