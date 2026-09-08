@@ -179,7 +179,7 @@ Registered under `mvp-v0.1` Section 4.4's safeguards, which apply unchanged. Eac
 
 `TPL_DISCOVERY_EXACT_V1` returns tier 1 and tier 2 rows only: rows whose `match_text` equals the bound `term` byte for byte. `TPL_DISCOVERY_LEXICAL_V1` returns tier 3 and tier 4 rows, matching on `match_tokens` against the bound normalized term as an array, so a variable number of tokens is one bound parameter and not an assembled query. Neither returns any column of `message_occurrence` or `signal_occurrence` other than the canonical reference columns; Section 4.12 forbids an attribute in a discovery result, and the registered result column list is where that is enforced.
 
-**The row limit is 11 because `k` is 10.** An eleventh row means the candidate list was truncated, which Section 7 requires `limitations` to record. This is the overflow-detection pattern `mvp-v0.1` Section 4.4 uses for its facts templates, applied to a list that legitimately has many rows.
+**The row limit is 11 because `k` is 10.** An eleventh row means the candidate list was truncated, which Section 7 requires `limitations` to record. This is the **truncation** pattern `mvp-v0.1` Section 4.4 uses for `TPL_SNAPSHOT_CANDIDATES_V1` — "candidates beyond the limit are truncated; `limitations` records the truncation" — applied to a list that can legitimately exceed `k`. It is deliberately **not** the facts-template pattern in that same section, where a limit of 2 makes a second row a violation of the database's own invariants and a `data` failure. A discovery term matching many entities is ordinary and safe; a message key matching two rows is not.
 
 Both discovery templates bind `parent_message_key` as an optional parameter that, when null, imposes no restriction, and when non-null restricts to that one parent Message occurrence within the resolved snapshot. `mvp-v0.1` Section 4.4's rule that a parameter outside the allowlist is refused, and that a missing required parameter is refused, applies to both.
 
@@ -250,15 +250,38 @@ A `candidates` outcome is completed by an explicit selection. This section fixes
 
 **The candidate-set digest.** A discovery result that carries candidates also carries `candidate_set_id`: the SHA-256, lower-case hexadecimal, of a UTF-8 JSON object with keys sorted byte-wise and no insignificant whitespace, containing exactly the contract identifier and version, the `registry_digest`, the resolved scope's four dimensions, `entity_kind`, `parent_message_key` or null, the byte-exact `term`, the method identifier and version, and the ordered candidate list as serialized in the result. It is a **digest, not a token**: it holds no session state, no randomness, and no clock, and any process with the same registry and the same request recomputes it.
 
-**The selection request.** One route, `entity_selection`. Its arguments are every argument of the discovery request that produced the list, plus `candidate_set_id` and `selected_rank`. The runtime then:
+**The selection request.** One route, `entity_selection`. Its arguments are named and allowlisted like every other route's:
 
-1. re-executes the discovery request deterministically, against the registry state it finds now;
-2. recomputes `candidate_set_id` from the result;
-3. refuses with `invalid_request` unless the recomputed digest equals the supplied one;
-4. refuses with `invalid_request` unless `selected_rank` names a candidate in the recomputed list;
-5. emits that candidate's canonical entity reference to the `mvp-v0.1` route the caller names, as an ordinary fully-scoped request.
+| Argument | Required | Notes |
+| --- | --- | --- |
+| every argument of the discovery request that produced the list | all | The four scope dimensions, `entity_kind`, `parent_message_key` where it was supplied, and the byte-exact `term`. The selection re-runs that request; it does not re-describe it. |
+| `candidate_set_id` | required | The digest the discovery result carried. |
+| `selected_rank` | required | The 1-based `rank` of the chosen candidate. |
+| `target_route` | required | The `mvp-v0.1` Section 4.5 route the selected reference is dispatched to. Allowed values are exactly `message_facts`, `signal_facts`, and `signal_mapping`. |
+| `mapping_key` | optional, and permitted only when `target_route` is `signal_mapping` | Passed through to `TPL_SIGNAL_MAPPING_V1`, which `mvp-v0.1` Section 4.5 declares it optional for. Supplying it with any other `target_route` is `invalid_request`. |
 
-Step 3 is the whole mechanism. The selection is trusted because the runtime **re-derived** the list the caller says it chose from, not because the caller asserted it. A registry that changed between the two requests changes the digest and the selection is refused — the fail-closed outcome, and the one a caller can act on by discovering again. Fixtures `DX-018` and `DX-019` register the two refusals.
+`target_route` is required rather than derived, because it cannot be derived: a signal candidate is valid input to **two** `mvp-v0.1` routes, `signal_facts` and `signal_mapping`, which answer different questions and take different argument shapes. Deriving one from `entity_kind` would pick for the caller, and the pick would be silent.
+
+| Resolved `entity_kind` | Permitted `target_route` |
+| --- | --- |
+| `message` | `message_facts` |
+| `signal` | `signal_facts`, `signal_mapping` — the selected signal is the mapping's source endpoint |
+
+The runtime then:
+
+1. refuses with `invalid_request` unless `target_route` is one of the three names above, and unless `mapping_key`, when present, accompanies `target_route` = `signal_mapping`;
+2. re-executes the discovery request deterministically, against the registry state it finds now;
+3. recomputes `candidate_set_id` from the result;
+4. refuses with `invalid_request` unless the recomputed digest equals the supplied one;
+5. refuses with `invalid_request` unless `selected_rank` names a candidate in the recomputed list;
+6. refuses with `invalid_request` unless the **resolved candidate's** `entity_kind` permits `target_route`, by the table above;
+7. emits that candidate's canonical entity reference — and `mapping_key` when supplied — to `target_route`, as an ordinary fully-scoped `mvp-v0.1` request, which then runs entirely under that contract.
+
+Steps 1 and 6 are both needed and are not the same check: step 1 validates an argument, and step 6 validates it against a candidate that is not known until step 5. No fact template executes if any of them refuses.
+
+`target_route` is **not** part of the `candidate_set_id` digest. The digest is over the discovery request and what discovery produced, and discovery does not know what the caller will ask next; folding the target route into it would make a list undiscoverable by the process that has to re-derive it.
+
+Step 4 is the whole trust mechanism. The selection is trusted because the runtime **re-derived** the list the caller says it chose from, not because the caller asserted it. A registry that changed between the two requests changes the digest and the selection is refused — the fail-closed outcome, and the one a caller can act on by discovering again. Fixtures `DX-018` through `DX-022` register the five refusals.
 
 **What a selection is not.** It resolves no scope dimension: every scope dimension was already resolved before discovery ran (Section 4.3). It creates no continuity: selecting an occurrence in one snapshot says nothing about an occurrence in another. And it is **never made by a model.** Charter Section 3.3 forbids an adapter to silently resolve an ambiguous entity, and choosing among candidates is that act; the selection comes from a person, or from an API caller relaying a person's choice, and Milestone 4 owns that surface.
 
@@ -347,7 +370,7 @@ Every status family this contract can produce, and the condition that produces i
 | `not_found` | Scope resolves to exactly one snapshot that is within approved coverage, and no approved entity matches the term at any tier. |
 | `coverage_gap` | The approved data scope does not contain, or cannot be established to contain, the coverage the request needs — a scope dimension no snapshot has. Returned instead of `not_found` whenever coverage cannot be established. |
 | `ambiguous` | Source scope is missing or under-specified. Governed by `mvp-v0.1` Section 4.2 unchanged: the candidate scopes are listed and **no discovery template executes**. |
-| `invalid_request` | A malformed or empty term, a term over the length limit, a parameter outside the route allowlist, `parent_message_key` with `entity_kind` = `message`, a contradictory scope, or a selection whose candidate-set digest does not re-derive or whose rank names no candidate (Section 4.8). |
+| `invalid_request` | A malformed or empty term, a term over the length limit, a parameter outside the route allowlist, `parent_message_key` with `entity_kind` = `message`, or a contradictory scope. On a selection (Section 4.8): a `target_route` outside the three `mvp-v0.1` routes, a `mapping_key` without `target_route` = `signal_mapping`, a candidate-set digest that does not re-derive, a `selected_rank` naming no candidate, or a `target_route` the resolved candidate's `entity_kind` does not permit. No fact template executes in any of these. |
 | `unsupported` | The request is not representable by this contract at the producing layer — an `entity_kind` outside `message` and `signal`, or an operation discovery does not perform. The trace records the producing layer. |
 
 **`success` is not in this table, and its absence is the point.** `success` in `mvp-v0.1` Section 5 means a registered template returned facts. Discovery returns no facts, so a discovery result can never carry that status, and no reader can mistake a candidate list for an answer. The `success` that ends a discovery flow is the `mvp-v0.1` result of the fact route the selected reference is passed to.
@@ -382,7 +405,7 @@ Every discovery and selection result, including every negative outcome, carries 
 - `registry_digest` and `registry_built_at` — **the addition that makes a discovery result reproducible.** A result without them names no registry state, and Section 4.8's re-derivation would have nothing to compare against.
 - `method_identifier` and `method_version` — which retrieval method produced the list.
 - `match_tier` and `matched_text` for a `resolved` outcome; per candidate for `candidates`.
-- `candidate_set_id` and `candidate_count` for a `candidates` outcome; the `candidate_set_id` cited and the `selected_rank` for an `entity_selection` result.
+- `candidate_set_id` and `candidate_count` for a `candidates` outcome; for an `entity_selection` result, the `candidate_set_id` cited, the `selected_rank`, and the `target_route` the reference was dispatched to — the route is recorded because it is the caller's choice among the routes the candidate permits, and a result that did not name it could not be traced back to the request that produced it.
 
 **`source_trace`**
 
@@ -399,7 +422,7 @@ Every discovery and selection result, including every negative outcome, carries 
 - when the outcome is `candidates`, stating that **no reference was resolved** and that an explicit selection is required — so that a candidate list is never read as an answer;
 - when the outcome is `not_found`, stating that no approved entity matched **and that absence from the approved registry is not absence from the data**. The registry is an allowlist (Section 4.2), and a result that let a reader infer the entity does not exist would be inferring coverage the runtime never established;
 - when any participating snapshot has a non-null `superseded_by`, naming it — inherited from `mvp-v0.1` Section 7 and required of an alias asserted by a superseded snapshot;
-- when a reference reached a fact route through the Section 4.8 selection path, naming the `candidate_set_id` and the candidate count it was selected from. This is the explicit-selection entry `mvp-v0.1` Section 7 requires, now backed by a path that verifies it;
+- when a reference reached a fact route through the Section 4.8 selection path, naming the `candidate_set_id`, the candidate count it was selected from, and the `target_route` it was dispatched to. This is the explicit-selection entry `mvp-v0.1` Section 7 requires, now backed by a path that verifies it;
 - when the outcome is `coverage_gap`, stating what coverage could not be established.
 
 ## 8. Acceptance evidence
@@ -417,7 +440,7 @@ Each obligation is either an automated assertion over registered inputs or a rec
 | Section 4.6 candidate contract | Automated. `DX-016` for truncation at `k`; a test asserting one candidate per entity where several match texts match; a test asserting no attribute column appears in a candidate. |
 | Section 4.7 auto-resolution | Automated. `DX-001` through `DX-007`. `DX-004` and `DX-005` are the two collisions that must **not** resolve, and either alone is satisfied by a rule this section rejects. |
 | Section 4.7 alias policy | **Recorded human decision.** Whether an approved alias may auto-resolve is the Charter Section 4.2 question this section answers; the alternative is recorded beside the adopted rule, and the owner's contract review is what adopts one. |
-| Section 4.8 selection path | Automated. `DX-017` for a verified selection reaching a fact route, `DX-018` and `DX-019` for the two refusals; a test asserting that a changed registry changes `candidate_set_id`. |
+| Section 4.8 selection path | Automated. `DX-017` for a verified selection reaching a fact route, `DX-018` through `DX-022` for the five refusals; a test asserting that a changed registry changes `candidate_set_id`, and one asserting that `target_route` is **not** an input to that digest. |
 | Section 4.9 `M-LEX-1` | Automated. The method's results over the registered evaluation set, recorded in the run artifact with its identifier and version. |
 | Section 4.9 registering another method | **Recorded human decision**, per registration, as a minor version of this contract. A method that would send registry content outside the process additionally requires a separately reviewed ADR. |
 | Section 4.10 evaluation set | Automated once registered: each authoring rule becomes an assertion over the registered cases. The set itself is registered by Section 8.3, which is reserved. |
@@ -450,14 +473,18 @@ Every fixture uses `SAMPLE_*` identifiers only. Every status family in Section 5
 | `DX-014` | `entity_kind` outside `message` and `signal` | `unsupported`, producing layer recorded |
 | `DX-015` | Occurrence present in the loaded data but absent from `approved_entity` | `not_found`, limitation stating that absence from the registry is not absence from the data |
 | `DX-016` | More than `k` entities match at one tier | `candidates`, exactly ten, truncation recorded in `limitations` |
-| `DX-017` | Selection citing a candidate set that re-derives, then the `mvp-v0.1` route | `success` from that route, with the selection entry in `limitations` |
+| `DX-017` | Selection citing a candidate set that re-derives, with a `target_route` the candidate permits | `success` from that route, with the selection entry in `limitations` naming the digest, the count and the route |
 | `DX-018` | Selection citing a `candidate_set_id` that does not re-derive | `invalid_request`, no fact template executed |
 | `DX-019` | Selection whose `selected_rank` names no candidate in the re-derived list | `invalid_request`, no fact template executed |
 | `DX-020` | Alias asserted by a snapshot whose `superseded_by` is non-null | The outcome the term earns, with the required `superseded_by` entry in `limitations` |
+| `DX-021` | Selection of a `message`-kind candidate with `target_route` = `signal_facts`, and of a `signal`-kind candidate with `target_route` = `message_facts` | `invalid_request` in both, no fact template executed |
+| `DX-022` | Selection carrying `mapping_key` with `target_route` = `signal_facts`, and one naming a `target_route` outside the three `mvp-v0.1` routes | `invalid_request` in both, no fact template executed |
 
 `DX-004` and `DX-005` are the two halves of Section 4.7's uniqueness rule — a collision between kinds of match text, and a collision between parents — and an implementation that passes one while failing the other has made something other than tier-1-and-2 uniqueness its rule. Read them together, as `mvp-v0.1` Section 8.1 says of `FX-105` and `FX-113`.
 
 `DX-015` is the fixture that proves the registry is an allowlist rather than a mirror of the loaded data. Without it, an implementation that discovered straight from `message_occurrence` and `signal_occurrence` would pass every other case here.
+
+`DX-021` and `DX-022` are the two halves of the Section 4.8 route check, and they fail at different steps: `DX-022` is refused at step 1, on the argument alone, and `DX-021` at step 6, against a candidate the runtime does not have until step 5. A single fixture would leave whichever step it did not reach untested, and an implementation with only one of the two checks would still pass it.
 
 `DX-020` deliberately does not fix its own status: whether the term earns `resolved` or `candidates` is decided by Section 4.7 as for any other term, and what the supersession changes is the `limitations` entry, not the outcome. A superseded snapshot still holds facts about itself; what is prohibited is presenting them as holding in a later snapshot.
 
