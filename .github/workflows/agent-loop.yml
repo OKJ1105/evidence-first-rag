@@ -195,6 +195,20 @@ jobs:
           CI_AGENT_BASE_REF: ${{ steps.pr.outputs.base }}
           CI_AGENT_RESET: ${{ needs.gate.outputs.reset }}
           CI_AGENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # The model each role runs on, pinned here for the same reason the
+          # CLI version above is pinned: so it moves only by a deliberate
+          # commit. A concrete identifier, never a `${{ }}` passthrough --
+          # a passthrough would move the pin into repository settings, where
+          # a change leaves no commit, and leaving one is the point.
+          #
+          # The two values are equal today and nothing requires them to be.
+          # Model difference is not one of the independence properties and is
+          # not required (owner's decision of 2026-09-03, recorded on #30 and
+          # in docs/DEVELOPMENT_WORKFLOW.md). Two variables exist so that
+          # giving the Reviewer a different model on one slice is a one-line
+          # change rather than a new mechanism.
+          CI_AGENT_WRITER_MODEL: claude-opus-5
+          CI_AGENT_REVIEWER_MODEL: claude-opus-5
         run: node scripts/agent/run.mjs
 
       - name: Report a crashed run

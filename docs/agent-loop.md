@@ -51,7 +51,7 @@ An unrecorded or unrecognised level is treated as `L2`, because uncertainty rais
 | 2. Owner-sourced instructions | The prompts and the loop's own code run from a **second checkout of the base branch**, never from the branch under review, so a branch cannot supply the reviewer that judges it. `AGENTS.md`, `CLAUDE.md`, both workflow documents, `docs/reviewer-brief.md`, the Project Charter and the contract framework are read from that checkout and inlined into the prompts. |
 | 3. Recorded order of exposure | The Reviewer prompt carries the **Issue** (resolved from the pull request's `Closes #n`, and the run aborts if there is none), the diff and the check results. The pull request body never reaches either prompt, and a test asserts it. |
 | 4. No authorship | The Reviewer process is spawned with a read-only tool set. It could not edit if it tried. |
-| 5. Attributable identity | Each review and each Writer response is its own comment, recording the run URL, the round and the `claude -p` session identifier for that turn. Both post under one account, so the session identifier is the stated fallback, not a distinct identity. |
+| 5. Attributable identity | Each review and each Writer response is its own comment, recording the run URL, the round, the model that turn ran on and the `claude -p` session identifier for it. Both post under one account, so the session identifier is the stated fallback, not a distinct identity. The model is the orchestrator's resolved choice, and a turn the workflow left unpinned is published as such rather than as a named default. |
 
 ## 4. Design invariants
 

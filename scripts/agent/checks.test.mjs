@@ -12,6 +12,7 @@ import { describe, expect, it } from "./test-kit.mjs";
 import {
   checksManifestPath,
   loadChecksManifest,
+  modelFor,
   runChecks,
 } from "./run.mjs";
 
@@ -216,5 +217,75 @@ describe("runChecks", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// #30. `CI_AGENT_MODEL` was read and set nowhere, so every turn ran on
+// whatever the CLI defaulted to and no merged review names what produced it.
+// These pin the resolution order and, more importantly, the unset case: an
+// empty variable must not reach the CLI as `--model ""`.
+//
+// Deliberately absent: any assertion that the two configured models differ.
+// The different-model requirement was dropped by the repository owner on
+// 2026-09-03 (#30), and a test asserting it would re-impose through the test
+// suite what the governing document no longer asks for.
+
+describe("modelFor pins the model per role", () => {
+  it("resolves each role from its own variable", () => {
+    const env = {
+      CI_AGENT_WRITER_MODEL: "claude-opus-5",
+      CI_AGENT_REVIEWER_MODEL: "claude-fable-5-1",
+    };
+    expect(modelFor("writer", env)).toBe("claude-opus-5");
+    expect(modelFor("reviewer", env)).toBe("claude-fable-5-1");
+  });
+
+  it("falls back to the shared variable when a role is unset", () => {
+    const env = { CI_AGENT_MODEL: "claude-opus-5" };
+    expect(modelFor("writer", env)).toBe("claude-opus-5");
+    expect(modelFor("reviewer", env)).toBe("claude-opus-5");
+  });
+
+  it("prefers the per-role variable over the shared one", () => {
+    const env = {
+      CI_AGENT_MODEL: "claude-opus-5",
+      CI_AGENT_REVIEWER_MODEL: "claude-fable-5-1",
+    };
+    expect(modelFor("reviewer", env)).toBe("claude-fable-5-1");
+    expect(modelFor("writer", env)).toBe("claude-opus-5");
+  });
+
+  it("accepts two roles configured to the same model", () => {
+    // The shipped configuration. Nothing may refuse it: model difference is
+    // not an independence property and is not required.
+    const env = {
+      CI_AGENT_WRITER_MODEL: "claude-opus-5",
+      CI_AGENT_REVIEWER_MODEL: "claude-opus-5",
+    };
+    expect(modelFor("writer", env)).toBe("claude-opus-5");
+    expect(modelFor("reviewer", env)).toBe("claude-opus-5");
+  });
+
+  it("reports nothing pinned rather than an empty model", () => {
+    // An empty string would reach the CLI as `--model ""`. `undefined` makes
+    // `claude.mjs` omit the flag, and the published comment says "unpinned".
+    expect(modelFor("writer", {})).toBe(undefined);
+    expect(modelFor("reviewer", { CI_AGENT_REVIEWER_MODEL: "  " })).toBe(undefined);
+    expect(modelFor("writer", { CI_AGENT_MODEL: "" })).toBe(undefined);
+  });
+
+  it("trims a padded value rather than passing the padding through", () => {
+    expect(modelFor("writer", { CI_AGENT_WRITER_MODEL: " claude-opus-5 " })).toBe(
+      "claude-opus-5",
+    );
+  });
+
+  it("treats an unknown role as the writer's variable rather than throwing", () => {
+    // `runAgent` already rejects an unknown role with a named error, and this
+    // resolver runs before it. Returning a value keeps the failure there,
+    // where the message says which role was wrong.
+    expect(modelFor("auditor", { CI_AGENT_MODEL: "claude-opus-5" })).toBe(
+      "claude-opus-5",
+    );
   });
 });

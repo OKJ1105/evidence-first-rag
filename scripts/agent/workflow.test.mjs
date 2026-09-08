@@ -114,6 +114,35 @@ describe("the two tool denylists agree", () => {
   });
 });
 
+describe("the workflow pins the model each loop role runs on", () => {
+  // Unset is the failure mode this exists for. The CLI version above it is
+  // pinned so the toolchain moves only by a deliberate commit; an unpinned
+  // model undoes that silently, and nothing else in the repository would
+  // notice. `modelFor` resolves whatever is set — these assert that
+  // something is.
+  const values = () =>
+    [...workflow.matchAll(/\n\s+CI_AGENT_\w*MODEL:[ \t]*(.+)/g)].map((m) =>
+      m[1].trim(),
+    );
+
+  it.each([["CI_AGENT_WRITER_MODEL"], ["CI_AGENT_REVIEWER_MODEL"]])(
+    "sets %s in the loop job",
+    (name) => {
+      expect(workflow).toMatch(new RegExp("\\n\\s+" + name + ":[ \\t]*\\S+"));
+    },
+  );
+
+  it("sets exactly those two and no third model variable", () => {
+    expect(values()).toHaveLength(2);
+  });
+
+  it("names a concrete model, not a passthrough expression", () => {
+    // `${{ ... }}` here would move the pin into repository settings, where a
+    // change leaves no commit. Leaving one is the whole point.
+    for (const v of values()) expect(v.startsWith("${{")).toBe(false);
+  });
+});
+
 describe("CRLF tolerance", () => {
   it("normalizes a CRLF checkout before matching", () => {
     // Fed CRLF directly, the line patterns above match nothing. This asserts
