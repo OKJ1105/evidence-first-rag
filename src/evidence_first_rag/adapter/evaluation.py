@@ -27,9 +27,19 @@ whether the request is for the signal's facts or its mappings. A phrasing
 built from the arguments alone collides, and `Baseline` refuses to hold two
 entries that normalize to the same text.
 
-Deliberately not imported by `adapter/__init__.py`: the public surface is
-pinned by `tests/test_adapter_surface.py`, and the runner that consumes these
-imports them from here by name.
+**Not exported by `adapter/__init__.py`, contrary to Issue #55's "Contract and
+architecture impact" section, which states as settled fact that `__init__.py`
+"exports the three names."** It cannot do both that and leave
+`tests/test_adapter_surface.py` untouched: that file (out of this slice's
+"Nothing else" scope) pins `adapter.__all__` to a fixed set that excludes
+`EVALUATION_SET`, `CURATED` and `THRESHOLDS`, and widening it is a scope
+decision this pull request does not have standing to make unilaterally. This
+is flagged here for the repository owner's recorded disposition -- either
+amend Issue #55 to drop that sentence and confirm the runner imports from
+`adapter.evaluation` directly (as it does today), or open a follow-up that
+widens `test_adapter_surface.py`'s pinned surface and exports these names.
+Until that disposition is recorded, the runner that consumes these imports
+them from here by name.
 """
 
 import types
