@@ -35,6 +35,18 @@ jobs:
         # and asserts the check above notices.
         run: python3 scripts/checks/test_validate_fixtures.py
 
+      - name: Scan for sensitive strings
+        # Charter Section 11's release condition, run on every pull request
+        # rather than once at the gate: credentials, internal URLs, local
+        # machine paths, and personal information anywhere in the tree.
+        run: python3 scripts/checks/scan_sensitive_strings.py
+
+      - name: Sensitive-string scan unit tests
+        # The negative cases: each breaks one rule in a tree the test builds
+        # and asserts the scan above notices, and each exemption is probed
+        # from both sides.
+        run: python3 scripts/checks/test_scan_sensitive_strings.py
+
       - uses: actions/setup-python@v5
         with:
           python-version-file: .python-version
