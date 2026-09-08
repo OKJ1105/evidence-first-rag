@@ -1,6 +1,6 @@
 # Claude Code Instructions
 
-Claude Code is the default writer for this repository. These instructions supplement [AGENTS.md](AGENTS.md), the [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md), and the [AI Development Workflow](docs/ai-development-workflow.md). Those documents and the frozen Project Charter remain authoritative.
+Claude Code is the default writer for this repository. These instructions supplement [AGENTS.md](AGENTS.md), the [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md), and the [AI Development Workflow](docs/ai-development-workflow.md). Those documents and the frozen Project Charter remain authoritative. The [Operating Policy](docs/operating-policy.md) governs cadence — pipelined slices, batched owner sittings, parallel tracks — and names the tracking Issue (#68) that holds the live queue; read both before starting.
 
 ## Writer workflow
 
