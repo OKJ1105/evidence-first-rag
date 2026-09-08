@@ -223,3 +223,48 @@ class TheModuleStaysImportableWithoutTheSdkOrTheDriver(unittest.TestCase):
         self.assertNotIn("psycopg", top_level)
         self.assertNotIn("client", top_level)
         self.assertNotIn("connection", top_level)
+
+
+class TheAdapterPathNeverFallsBackToTheBaseline(unittest.TestCase):
+    """#56's remaining acceptance-evidence item, as a probe rather than a read.
+
+    `run.py` imports `Baseline`, and has to: the control group is the point
+    of the comparison. What must never happen is the *adapter's* answers
+    coming from it. `tests/test_adapter_surface.py` cannot be extended to
+    this module the way it covers the answering path, because there the
+    absence of the import is the assertion and here the import is required.
+    So the separation is asserted where it actually lives: in what `perform`
+    passes to `compare`.
+    """
+
+    @staticmethod
+    def refusing(text):
+        """A resolver that proposes nothing for anything."""
+        return Proposal(route="unsupported", arguments={})
+
+    def test_a_resolver_that_answers_nothing_scores_its_own_floor(self):
+        # A resolver that never routes is correct exactly on the cases that
+        # should not resolve, and never on P. Its number is not the
+        # baseline's, so a silent substitution would move it.
+        document = runner.perform(
+            propose=self.refusing, runtime=empty_runtime(), model="m", decoding=DECODING
+        )
+        expected, _ = measure(EVALUATION_SET, self.refusing, empty_runtime())
+        self.assertEqual(document["report"]["adapter"], expected.as_json())
+        self.assertNotEqual(
+            document["report"]["adapter"]["correct"], document["report"]["baseline"]["correct"]
+        )
+
+    def test_the_probe_discriminates(self):
+        # Rule 9: a check never seen to fail is not evidence. Hand `perform`
+        # the baseline itself as the adapter, which is precisely the shape a
+        # fallback would take, and the assertion above inverts.
+        document = runner.perform(
+            propose=Baseline(CURATED).resolve,
+            runtime=empty_runtime(),
+            model="m",
+            decoding=DECODING,
+        )
+        self.assertEqual(
+            document["report"]["adapter"]["correct"], document["report"]["baseline"]["correct"]
+        )
