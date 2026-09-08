@@ -17,9 +17,9 @@ calls a model -- is imported explicitly by whoever has a credential, and the
 SDK is an optional extra (`pip install evidence-first-rag[adapter]`) so that a
 runtime that answers questions never needs a model library present at all.
 
-Two things this package deliberately does not contain: the curated request set
-and the adoption thresholds. Contract Section 9 lists both as open decisions
-owned by the contract and registered before the run that judges them, and
+The curated request set and the adoption thresholds are the two decisions
+Contract Section 9 requires to be registered before the run that judges them;
+`evaluation.py` mirrors Section 8.3's registration of both, and
 `comparison.judge` refuses to produce a verdict without them.
 """
 
@@ -35,17 +35,21 @@ from .comparison import (
     judge,
     measure,
 )
+from .evaluation import CURATED, EVALUATION_SET, THRESHOLDS
 from .revalidation import Proposal, answer, refused, revalidate
 
 __all__ = [
     "Baseline",
+    "CURATED",
     "CuratedEntry",
+    "EVALUATION_SET",
     "EvaluationCase",
     "Judgement",
     "Metrics",
     "Outcome",
     "Proposal",
     "Report",
+    "THRESHOLDS",
     "Thresholds",
     "answer",
     "compare",
