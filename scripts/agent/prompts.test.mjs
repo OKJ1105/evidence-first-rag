@@ -121,3 +121,99 @@ describe("the Writer is told about both fences, with the reason for each", () =>
     expect(prompt).toContain("not a failure of your turn");
   });
 });
+
+// #29. The Reviewer holds `Read`, `Glob` and `Grep` over one working tree and
+// no history, and nothing in its prompt said so. Three findings asserted
+// repository state it could not observe, one of them grading a real gap
+// `optional` on a mitigation that does not exist. The fix is context, and the
+// tests that matter are the ones pinning that it stays context rather than
+// becoming an instruction to keep quiet.
+
+describe("the Reviewer is told its field of view (#29)", () => {
+  const prompt = reviewerPrompt({
+    issueNumber: 29,
+    issueBody: "ISSUE",
+    riskLevel: "L1",
+    branch: "b",
+    diff: "d",
+    checks: { summary: "ok" },
+    round: 1,
+    priorFindings: [],
+    docs: "SHARED-DOCS",
+    reviewerDocs: "BRIEF-AND-CHARTER",
+  });
+  const flat = prompt.replace(/\s+/g, " ");
+
+  it("states the boundary: one tree, no shell, no history, no base branch", () => {
+    expect(flat).toMatch(/one working tree/);
+    expect(flat).toMatch(/`Read`, `Glob` and `Grep`/);
+    expect(flat).toMatch(/No shell, no network, no GitHub API, and \*\*no history\*\*/);
+    expect(flat).toMatch(/no base branch/);
+  });
+
+  it("names the three situations it cannot tell apart, and which one it sees", () => {
+    expect(flat).toMatch(/indistinguishable/);
+    expect(flat).toContain("A file that exists nowhere in the repository.");
+    expect(flat).toContain("A file that exists on the base branch but not in this tree");
+    expect(flat).toContain("A file this diff deletes.");
+    expect(flat).toMatch(/only the third is visible/);
+  });
+
+  it("asks for the unruled-out alternative, and does not ask for silence", () => {
+    // The load-bearing half of #29. An instruction that reads "do not raise
+    // what you cannot verify" would suppress the finding instead of scoping
+    // it, and a suppressed gap is worse than a loosely worded one.
+    expect(flat).toContain("This is not a request for silence");
+    expect(flat).toMatch(/still a finding/);
+    expect(flat).toContain("Name the alternative you could not rule out");
+    expect(flat).toMatch(/which observation would settle it/);
+  });
+
+  it("requires the claim to be scoped to the tree it was read from", () => {
+    expect(flat).toMatch(/no file matching `X` in this tree/);
+    expect(flat).toMatch(/rather than "`X` does not exist in the repository"/);
+  });
+
+  it("forbids grading a finding on an unopened mitigation", () => {
+    // The #24 `O1` shape: `optional` awarded for a source scan that never
+    // looks for what the finding said it looks for.
+    expect(flat).toMatch(/Grade the finding on what you verified/);
+    expect(flat).toMatch(/never on a mitigation you are assuming/);
+    expect(flat).toMatch(/an unchecked mitigation reported as one is worse/);
+  });
+
+  it("says the manifest checks are not the whole of CI", () => {
+    // Raised as the same finding on three consecutive pull requests, because
+    // the answer lived only in the pull request body, which BF1 withholds.
+    expect(flat).toMatch(/not the whole of CI/);
+    expect(flat).toContain("`.github/agent-checks.json`");
+    expect(flat).toContain("`database-checks`");
+    expect(flat).toMatch(/CI stays authoritative for merge/);
+  });
+
+  it("scopes an unseen check as a limit of its view, still reportable", () => {
+    expect(flat).toMatch(
+      /a fact about your field of view, not evidence that the change is unverified/,
+    );
+    expect(flat).toMatch(/Report that you could not see it/);
+  });
+});
+
+describe("the field of view is the Reviewer's alone", () => {
+  it("is not in the Writer prompt, which edits the tree rather than judging it", () => {
+    const p = writerPrompt({
+      issueNumber: 29,
+      issueBody: "ISSUE",
+      riskLevel: "L1",
+      branch: "b",
+      findings: [],
+      checks: { summary: "ok" },
+      round: 1,
+      cap: 2,
+      docs: "SHARED-DOCS",
+      protectedPaths: ["scripts/"],
+      ownerDecisionPaths: ["docs/contracts/"],
+    });
+    expect(p).not.toContain("What you can and cannot see");
+  });
+});

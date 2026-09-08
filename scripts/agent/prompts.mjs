@@ -37,6 +37,76 @@ ${docs}
 `.trim();
 }
 
+/**
+ * What the Reviewer can and cannot observe (#29).
+ *
+ * The Reviewer holds `Read`, `Glob` and `Grep` over one working tree and no
+ * history, and nothing used to say so. It produced three findings asserting
+ * repository state it had no way to observe — a file that "exists nowhere in
+ * the repository", a file that "has one commit", and a `_SEAL` bypass
+ * "caught by" a source scan that never looks for `_SEAL`. The third is the
+ * expensive one: it graded a real gap `optional` on the strength of a
+ * mitigation that does not exist, and the grade is what the owner reads.
+ *
+ * None of that is a capability failure — a stronger model given the same
+ * one-tree, no-history view and told nothing about it makes the same class of
+ * claim. So the fix is context, and it is deliberately not a request for
+ * silence: a stale branch and a missing file are both worth reporting. What
+ * has to go is the assertion of the version that was never checked.
+ */
+function fieldOfView() {
+  return `
+## What you can and cannot see
+
+Your field of view is **one working tree** — the branch under review, at this
+head — reached through \`Read\`, \`Glob\` and \`Grep\`. That is the whole of it.
+No shell, no network, no GitHub API, and **no history**: no earlier commit, no
+base branch, no other branch, no other pull request. The governing documents
+above are inlined precisely because you cannot read the base branch yourself.
+
+So these three are **indistinguishable** from where you stand, and only the
+third is visible to you at all:
+
+1. A file that exists nowhere in the repository.
+2. A file that exists on the base branch but not in this tree — because this
+   branch predates it, or removed it in an earlier commit.
+3. A file this diff deletes.
+
+The diff separates the third from the other two. Nothing available to you
+separates the first from the second.
+
+The same limit covers every claim about repository state you did not read off
+this tree or this diff: how many commits a file has, when it was added,
+whether something exists elsewhere in the repository, whether some other test
+covers a case, whether a mitigation you did not open is real.
+
+**This is not a request for silence.** A missing file and a stale branch are
+both worth reporting, and a gap you cannot fully rule out is still a finding.
+Report it, scoped to what you saw:
+
+- Say what you observed, in the terms you observed it — "no file matching
+  \`X\` in this tree" rather than "\`X\` does not exist in the repository".
+- Name the alternative you could not rule out, inside the finding itself, and
+  say which observation would settle it.
+- Grade the finding on what you verified, never on a mitigation you are
+  assuming. If you have not opened the thing you are crediting, you have not
+  verified it, and an unchecked mitigation reported as one is worse than the
+  gap reported plainly.
+
+### The check results are not the whole of CI
+
+The results below are the checks in \`.github/agent-checks.json\` — what this
+loop runs between turns. The repository's own CI runs more than that,
+including jobs that need services the loop's runner does not provide (the
+\`database-checks\` job and its PostgreSQL service, at the time of writing).
+Those results are not in your view, and CI stays authoritative for merge.
+
+A check absent from the list below is therefore a fact about your field of
+view, not evidence that the change is unverified. Report that you could not
+see it, and say so as that; do not report it as the change having no coverage.
+`.trim();
+}
+
 /** The Reviewer turn. Produces JSON; posts nothing. */
 export function reviewerPrompt({
   issueNumber,
@@ -68,6 +138,8 @@ properties in docs/ai-development-workflow.md. You did not write any part of
 the change below and must not edit anything.
 
 ${houseRules(docs)}
+
+${fieldOfView()}
 
 ## Your brief, the Charter and the contract framework
 
