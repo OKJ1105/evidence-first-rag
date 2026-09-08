@@ -605,6 +605,26 @@ describe("the approve guard runs before the loop publishes anything (#5)", () =>
     expect(label).toBeGreaterThan(guard);
   });
 
+  it("lists the reviews after the agent turns, not before them", async () => {
+    // The other half of the position, and the half "before publication" does
+    // not imply. `assertNothingApproved` filters on `submitted_at >= since`
+    // with `since = startedAt`, so the guard is bounded to what appeared
+    // while the loop held the pull request. Hoisted to the top of the run it
+    // would still be "before publication" and would still throw on a
+    // pre-existing approval — but an approval submitted during the Reviewer
+    // or Writer turn, which is the window it exists to cover, would not yet
+    // exist when it looked. Raised as N2 on #86.
+    const gh = recordingGitHub();
+    const agent = fakeAgent({ reviewer: [review([])] });
+    await drive(gh, agent);
+
+    // The review turn's own comment: posted by the loop after the Reviewer
+    // has run, so a guard later than it has seen the turn.
+    const firstComment = gh.order.indexOf("createComment");
+    expect(firstComment).toBeGreaterThan(-1);
+    expect(gh.order.indexOf("listReviews")).toBeGreaterThan(firstComment);
+  });
+
   it("still concludes normally when nothing approved", async () => {
     // The guard must not be satisfied by refusing everything.
     const gh = fakeGitHub({
