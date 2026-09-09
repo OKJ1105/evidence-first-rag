@@ -330,6 +330,35 @@ class TestWhatIsScanned(HistoryCheck):
         output = self.assert_fails("issued-credential")
         self.assertIn("c.md", output)
 
+    def test_every_chunk_boundary_is_crossed(self):
+        # O2 on #97. Reading every version at once made peak memory the size
+        # of the whole history, and this scan deliberately does not skip
+        # vendored or build output — so one committed binary would put that
+        # past a runner's budget, and an OOM-killed security check reads as
+        # an infrastructure flake rather than as a finding. Chunking is only
+        # safe if nothing falls between two chunks, so the smallest possible
+        # chunk is driven over a count that is not a multiple of it.
+        self.module.BATCH = 1
+        files = {f"f{index}.md": f"line {index}\n" for index in range(6)}
+        files["last.md"] = "id " + AWS_KEY + "\n"
+        self.repository.commit("many", **files)
+        self.assertIn("last.md", self.assert_fails("issued-credential"))
+
+    def test_a_chunk_that_divides_the_work_unevenly_loses_nothing(self):
+        self.module.BATCH = 3
+        files = {f"g{index}.md": f"line {index}\n" for index in range(7)}
+        files["g7.md"] = "id " + AWS_KEY + "\n"
+        self.repository.commit("uneven", **files)
+        self.assertIn("g7.md", self.assert_fails("issued-credential"))
+
+    def test_the_count_is_the_same_whatever_the_chunk_size(self):
+        for index in range(4):
+            self.repository.commit(f"c{index}", **{f"h{index}.md": f"{index}\n"})
+        self.module.BATCH = 1000
+        whole = self.assert_passes()
+        self.module.BATCH = 2
+        self.assertEqual(whole, self.assert_passes())
+
     def test_many_blobs_are_all_read(self):
         # The batch reader's offsets, over enough objects that a systematic
         # off-by-one would land the credential outside what is scanned.

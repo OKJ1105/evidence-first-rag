@@ -66,6 +66,16 @@ REVISION = "HEAD"
 # branch checkout under CI and under the loop.
 WORK_TREE = None
 
+# How many file versions are read and scanned before the next request.
+#
+# Bounded on purpose. Reading every version at once makes the peak memory the
+# size of all distinct blobs in the history, and this scan deliberately does
+# not skip `node_modules` or build output — so one committed binary or
+# vendored tree would put that peak past a runner's budget. An OOM-killed
+# security check reads as an infrastructure flake rather than as a finding,
+# which is the worst way for a check like this to fail.
+BATCH = 256
+
 
 def rules():
     """The tree scan's rule set, loaded by path.
@@ -134,6 +144,12 @@ def named_objects():
     return sorted(blobs, key=lambda entry: (entry[1], entry[0]))
 
 
+def batched(items, size):
+    """`items` in chunks of at most `size`, preserving order."""
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
 def contents(names):
     """Read many blobs in one `git cat-file --batch`.
 
@@ -192,22 +208,28 @@ def main() -> int:
                 "fetch-depth: 0."
             )
         blobs = named_objects()
-        # O1: one request per object, not one per path it occupies. `cat-file
-        # --batch` returns the whole body for every request line.
-        body = contents(sorted({name for name, _ in blobs}))
         commits = git("rev-list", "--count", REVISION).decode().strip()
+        for chunk in batched(blobs, BATCH):
+            # One request per object in the chunk, not one per path it
+            # occupies: `cat-file --batch` returns the whole body for every
+            # request line. Each chunk is scanned before the next is read, so
+            # what is held at once is bounded by `BATCH` rather than by the
+            # size of the history.
+            body = contents(sorted({name for name, _ in chunk}))
+            for name, path in chunk:
+                text = body[name].decode("utf-8", errors=scan.DECODE_ERRORS)
+                scan.scan_text(
+                    text,
+                    pathlib.PurePosixPath(path),
+                    failures,
+                    label=f"{name[:12]} {path}",
+                )
     except subprocess.CalledProcessError as error:
         return cannot_run(
             f"git failed: {error.stderr.decode('utf-8', errors='replace').strip()}"
         )
     except RuntimeError as error:
         return cannot_run(str(error))
-
-    for name, path in blobs:
-        text = body[name].decode("utf-8", errors=scan.DECODE_ERRORS)
-        scan.scan_text(
-            text, pathlib.PurePosixPath(path), failures, label=f"{name[:12]} {path}"
-        )
 
     if failures:
         print("Sensitive strings found in the Git history:")
