@@ -280,11 +280,18 @@ def mask(text):
     return f"{text[:keep]}... ({len(text)} characters)"
 
 
-def scan_text(text, where, failures):
+def scan_text(text, where, failures, label=None):
+    """Append every finding in one file's text.
+
+    `where` is the path, and it decides the path-sensitive rules. `label` is
+    what a finding is reported against when that is not the path — the history
+    scan reports an object in a commit, which has no path in the tree to open.
+    """
+    shown = where if label is None else label
     for number, line in enumerate(text.splitlines(), 1):
         for name, clause, find in RULES:
             for hit in find(line, where):
-                failures.append(f"{where}:{number}: {name}: {mask(hit)} — {clause}")
+                failures.append(f"{shown}:{number}: {name}: {mask(hit)} — {clause}")
 
 
 def files(root):

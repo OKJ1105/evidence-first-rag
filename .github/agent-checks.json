@@ -46,6 +46,20 @@
       ]
     },
     {
+      "name": "sensitive-strings-history",
+      "command": [
+        "python3",
+        "{baseDir}/scripts/checks/scan_history_sensitive_strings.py"
+      ]
+    },
+    {
+      "name": "sensitive-string-history-scan-unit-tests",
+      "command": [
+        "python3",
+        "{baseDir}/scripts/checks/test_scan_history_sensitive_strings.py"
+      ]
+    },
+    {
       "name": "package-unit-tests",
       "command": [
         "python3",
