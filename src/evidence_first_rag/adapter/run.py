@@ -5,7 +5,7 @@
 This is the only entry point that calls a model, and the last piece of code
 the Section 8 gate needs. It runs `compare` over the registered set with the
 registered curated table, hands the report to `judge` with the registered
-thresholds, and writes one JSON document. It never prints "adopt": a
+thresholds, and writes **two** JSON documents. It never prints "adopt": a
 `Judgement.adoptable` of true means the numbers cleared a bar set in advance,
 and adoption is the owner's recorded decision at the gate (Section 8.2).
 
@@ -37,6 +37,27 @@ artifact the AGENTS.md "portable placeholder identifiers only" obligation
 is therefore discharged by the human review of the pull request that
 commits it, and by nothing mechanical.
 
+**The second document, and why it is never committed.** `PATH.raw.json`
+beside the main artifact carries, per model call, the text the adapter
+parsed, the `stop_reason`, and the token usage. It exists because #58's first
+run could report that all forty-eight proposals were refused without showing
+one thing the model wrote: the parsed arguments say *what was proposed*, this
+says *what it was parsed from*.
+
+**It is uploaded as an Actions artifact for its ninety-day life and that is
+all.** Raw model text is unbounded and is the one thing in this repository
+that the `SAMPLE_*` convention cannot vouch for -- the paragraph above
+explains why no scanner decides that question either, and there the content
+is at least forty-eight parsed argument mappings a reader can check, while
+this is whatever the model emitted. So the main artifact is what `docs/acceptance/`
+records and this one stays off the tree. The workflow uploads both; nothing
+commits this one.
+
+The main artifact gains only `usage_totals` from all of this, and gains it
+**absent rather than zero** when no call exposed usage: a run that could not
+observe its own cost must not report having cost nothing, the same rule
+`Report.executed` applies to a run that touched no database.
+
 `perform` is pure with respect to the model and the database: both arrive as
 arguments. `main` is the wiring that supplies the real ones, and it imports
 the SDK and the driver only there, so this module is importable -- and
@@ -57,6 +78,16 @@ from .comparison import compare, judge
 from .evaluation import CURATED, EVALUATION_SET, THRESHOLDS
 
 DEFAULT_ARTIFACT = pathlib.Path("milestone-2-comparison.json")
+
+
+def raw_path(artifact: pathlib.Path) -> pathlib.Path:
+    """Where the never-committed record sits, derived from the main artifact.
+
+    Derived rather than configured so the two cannot be pointed at unrelated
+    places, and so the workflow's two `path:` lines are predictable from the
+    one `--artifact` it passes.
+    """
+    return artifact.with_name(artifact.stem + ".raw" + artifact.suffix)
 
 
 def _sha256(text: str) -> str:
@@ -81,6 +112,7 @@ def perform(
     thresholds=THRESHOLDS,
     cases=EVALUATION_SET,
     curated=CURATED,
+    recorder=None,
 ) -> dict:
     """Run the comparison once and return the artifact document.
 
@@ -91,6 +123,13 @@ def perform(
     statuses. `pinned_decoding` defaults to `decoding`: `main` passes the
     client's own configuration for both, and the artifact recording it is
     the Section 8 "equals the pinned values" evidence.
+
+    `recorder` is anything carrying a `calls` sequence -- in a dispatched run
+    it is the `Adapter` itself, which is the only object that ever saw a
+    response. It is read *after* `compare`, because that is when the calls
+    have happened. Omit it and the document is exactly what it was before:
+    `usage_totals` is a key that appears when there is something to put in
+    it, never a zero standing in for an unobserved cost.
     """
     baseline = Baseline(curated)
     report = compare(
@@ -106,7 +145,7 @@ def perform(
         thresholds,
         pinned_decoding=decoding if pinned_decoding is None else pinned_decoding,
     )
-    return {
+    document = {
         "contract_identifier": CONTRACT_IDENTIFIER,
         "contract_version": CONTRACT_VERSION,
         "run_identifier": str(uuid.uuid4()),
@@ -117,6 +156,60 @@ def perform(
         "thresholds": thresholds.as_json() if thresholds is not None else None,
         "report": report.as_json(),
         "judgement": judgement.as_json(),
+    }
+    totals = usage_totals(_calls(recorder))
+    if totals is not None:
+        document["usage_totals"] = totals
+    return document
+
+
+def _calls(recorder) -> tuple:
+    return () if recorder is None else tuple(recorder.calls)
+
+
+def usage_totals(calls) -> dict | None:
+    """The token counts summed over every call, or `None` if none reported.
+
+    Only integer values are summed. A usage payload may carry nested
+    breakdowns as well as counts, and a total is only meaningful for
+    something that adds up; the per-call records in the raw document keep
+    whatever the SDK returned, in full, so nothing is lost by this being
+    narrow.
+
+    `None` rather than `{}` for the same reason `Call.usage` is: a run that
+    observed no cost has not observed a cost of zero.
+    """
+    totals: dict[str, int] = {}
+    for call in calls:
+        usage = getattr(call, "usage", None)
+        if not usage:
+            continue
+        for name, value in usage.items():
+            if isinstance(value, int) and not isinstance(value, bool):
+                totals[name] = totals.get(name, 0) + value
+    return totals or None
+
+
+def raw_document(document: dict, calls) -> dict:
+    """The never-committed record for one run.
+
+    `run_identifier` is the main artifact's, not a fresh one: the two files
+    are halves of one run, and a reader who has the artifact needs to know
+    which raw file belongs to it. That is what ties the two halves together.
+
+    `usage_totals` appears in both on purpose rather than by oversight. The
+    raw file outlives nothing -- it is deleted with the Actions artifact --
+    but while it exists it has to be readable on its own, and a per-call
+    record with no total is a question rather than an answer. The main
+    artifact omits the key when nothing reported; this one carries `None`,
+    because a file whose whole subject is the calls should say that the
+    calls reported no usage rather than stay silent about it.
+    """
+    calls = tuple(calls)
+    return {
+        "run_identifier": document["run_identifier"],
+        "calls": [call.as_json() for call in calls],
+        "usage_totals": usage_totals(calls),
     }
 
 
@@ -175,9 +268,12 @@ def main(argv=None) -> int:
         model=MODEL,
         decoding=Adapter.configuration(),
         pinned_decoding=Adapter.configuration(),
+        recorder=adapter,
     )
     write(arguments.artifact, document)
-    print(f"{summary(document)}\n  -> {arguments.artifact}")
+    raw = raw_path(arguments.artifact)
+    write(raw, raw_document(document, adapter.calls))
+    print(f"{summary(document)}\n  -> {arguments.artifact}\n  -> {raw} (not committed)")
     return exit_code(document)
 
 
