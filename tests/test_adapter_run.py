@@ -48,13 +48,19 @@ WORKFLOW = (
 )
 
 HAS_SDK = importlib.util.find_spec("anthropic") is not None
-# The driver is its own optional dependency and its own guard. One flag for
-# both would be a guess: `pip install evidence-first-rag[adapter]` -- which is
-# what a writer discharging this file's acceptance evidence runs -- installs
-# the SDK and not `psycopg`, and importing `runtime.connection` under
-# `HAS_SDK` alone then fails the whole module at load, taking every
-# unrelated test in it down. CI never saw it because both jobs have neither
-# and the dispatched workflow has both.
+# The driver is its own guard, because the two dependencies arrive by
+# different routes and one flag for both is a guess.
+#
+# `psycopg[binary]` is a *base* dependency and `anthropic` is the `adapter`
+# extra (`pyproject.toml`), so `pip install -e ".[adapter]"` installs both
+# and never reproduces this. What does: `tests/` runs from a clean checkout
+# with nothing installed -- `tests/__init__.py` puts `src/` on the path --
+# so a writer who adds only `pip install anthropic` to that checkout has the
+# SDK and no driver. Under `HAS_SDK` alone, importing `runtime.connection`
+# then fails the whole module at load and takes every unrelated test in it
+# down. That is the environment this session was in while discharging #90's
+# acceptance evidence, and it is why CI never saw it: both CI jobs have
+# neither dependency and the dispatched workflow has both.
 HAS_DRIVER = importlib.util.find_spec("psycopg") is not None
 
 if HAS_SDK:
@@ -816,8 +822,26 @@ class TheWorkflowUploadsBothFilesUnderSeparateNames(unittest.TestCase):
     def test_the_workflow_says_the_raw_file_is_never_committed(self):
         # Not decoration. The rule lives nowhere a check can enforce it, so
         # the next reader of this file has to be told by the file.
-        self.assertIn("never", self.text)
-        self.assertIn("committed", self.text)
+        #
+        # This asserted `"never" in text` and `"committed" in text` and could
+        # not fail: "Never on push, pull_request, or a schedule" has been on
+        # line 3 since #57, and "committed" appears in the main artifact's
+        # own comment. Deleting every word of the raw-upload block left it
+        # green. Raised as N6 on #99 -- #17 rule 9, in a test written to
+        # protect this slice's one safety property. Now anchored to the step
+        # that carries the rule.
+        self.assertIn("name: Upload the raw record, which is never committed", self.text)
+        self.assertIn("is **never committed**:", self.text)
+
+    def test_no_single_artifact_carries_both_files(self):
+        # N4's structural property, asserted without PyYAML so it runs in
+        # every job rather than only where an optional dependency happens to
+        # be installed. `path: |` is the multi-file form: its absence is what
+        # says the two files cannot travel in one download.
+        self.assertNotIn("path: |", self.text)
+        self.assertEqual(self.text.count("uses: actions/upload-artifact"), 2)
+        self.assertIn("name: milestone-2-comparison\n", self.text)
+        self.assertIn("name: milestone-2-comparison-raw\n", self.text)
 
     @unittest.skipUnless(
         importlib.util.find_spec("yaml") is not None, "PyYAML is not installed"
