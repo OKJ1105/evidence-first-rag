@@ -37,6 +37,17 @@ Scope: the commits reachable from `REVISION` (`HEAD`), which is the history
 that merging this branch would publish. Other refs a checkout happens to
 carry are not scanned; they are not this branch's to answer for.
 
+**It reads file contents and nothing else.** Commit messages, annotated tag
+messages, and author and committer identities are published with the
+repository and are as decidable by these rules as a file is, and none of them
+is read here. That is a declared limit rather than an oversight, and it is
+declared for the reason the tree scan declared its own history gap: a check
+that says PASS while silently covering less than its name claims is how a
+release gate comes to rest on an incomplete basis. Extending to them is its
+own slice and needs a decision first — over this history those rules already
+find the addresses in every commit's author metadata, which no commit can
+remove.
+
 Exits 1 and lists every hit when any rule matches.
 """
 
@@ -71,14 +82,10 @@ def rules():
     return module
 
 
-def git(*arguments, stdin=b""):
+def git(*arguments):
     """One git command, in bytes, failing loudly."""
     return subprocess.run(
-        ("git",) + arguments,
-        cwd=WORK_TREE,
-        input=stdin,
-        capture_output=True,
-        check=True,
+        ("git",) + arguments, cwd=WORK_TREE, capture_output=True, check=True
     ).stdout
 
 
@@ -159,28 +166,43 @@ def contents(names):
     return body
 
 
+def cannot_run(detail) -> int:
+    """One wording for every way the scan could not look.
+
+    Distinct from a pass and from a finding on purpose: "nothing found" and
+    "could not look" are the two answers a scan must never blur, and a
+    traceback says the second one badly.
+    """
+    print(f"Sensitive strings in history: CANNOT RUN\n{detail}")
+    return 1
+
+
 def main() -> int:
     scan = rules()
     failures = []
 
+    # Every git call is inside this, not only the first two: `cat-file
+    # --batch` can fail on a partial clone or a corrupt object, and the
+    # operator should read the sentence above rather than a traceback.
     try:
         if is_shallow():
-            print(
-                "Sensitive strings in history: CANNOT RUN\n"
+            return cannot_run(
                 "The repository is a shallow clone, so most of the history is "
                 "absent and a pass here would mean nothing. Check out with "
                 "fetch-depth: 0."
             )
-            return 1
         blobs = named_objects()
+        # O1: one request per object, not one per path it occupies. `cat-file
+        # --batch` returns the whole body for every request line.
+        body = contents(sorted({name for name, _ in blobs}))
+        commits = git("rev-list", "--count", REVISION).decode().strip()
     except subprocess.CalledProcessError as error:
-        print(
-            "Sensitive strings in history: CANNOT RUN\n"
+        return cannot_run(
             f"git failed: {error.stderr.decode('utf-8', errors='replace').strip()}"
         )
-        return 1
+    except RuntimeError as error:
+        return cannot_run(str(error))
 
-    body = contents([name for name, _ in blobs])
     for name, path in blobs:
         text = body[name].decode("utf-8", errors=scan.DECODE_ERRORS)
         scan.scan_text(
@@ -188,7 +210,6 @@ def main() -> int:
         )
 
     if failures:
-        commits = git("rev-list", "--count", REVISION).decode().strip()
         print("Sensitive strings found in the Git history:")
         print("\n".join(failures))
         print(
@@ -200,10 +221,10 @@ def main() -> int:
         )
         return 1
 
-    commits = git("rev-list", "--count", REVISION).decode().strip()
     print(
         f"Sensitive strings in history: PASS "
-        f"({len(blobs)} file versions across {commits} commits)"
+        f"({len(blobs)} file versions across {commits} commits; "
+        "commit messages, tag messages and author identities are not read)"
     )
     return 0
 

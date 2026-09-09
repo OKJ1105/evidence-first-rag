@@ -28,7 +28,36 @@ import tempfile
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
-REPOSITORY = HERE.parent.parent
+
+
+def repository_root():
+    """The repository the check is running *in*, not the one it was read from.
+
+    `HERE.parent.parent` is the obvious way and it is wrong here. The loop
+    registers this file as `{baseDir}/scripts/checks/...`, so under the loop
+    it is read from the **base** checkout while the command runs with the
+    **branch** checkout as its working directory — and `agent-loop.yml` gives
+    `fetch-depth: 0` to the branch checkout only, leaving base shallow.
+    Anchoring to `__file__` would point the positive case at a shallow
+    repository, where the scan reports CANNOT RUN by design: a permanent red
+    on every pull request that no branch could fix, because the loop reads
+    base's copy of both the manifest and this file.
+
+    Resolving from the working directory is right in every place this runs:
+    CI (`fetch-depth: 0`, cwd the checkout), the loop (cwd the branch
+    checkout), and a developer's clone.
+    """
+    return pathlib.Path(
+        subprocess.run(
+            ("git", "rev-parse", "--show-toplevel"),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
+
+
+REPOSITORY = repository_root()
 
 CHECK = "scripts/checks/scan_history_sensitive_strings.py"
 CHECK_TESTS = "scripts/checks/test_scan_history_sensitive_strings.py"
@@ -310,6 +339,18 @@ class TestWhatIsScanned(HistoryCheck):
         self.assert_fails("issued-credential")
 
 
+class TestWhatThePassLineClaims(HistoryCheck):
+    def test_it_says_what_it_did_not_read(self):
+        # B2 on #97. The scan reads file contents and nothing else; commit
+        # messages, tag messages and identities are published too and are as
+        # decidable by these rules. A PASS that reads as "the history is
+        # clean" when it means "every file version is clean" is how a release
+        # gate comes to rest on an incomplete basis, so the pass says so.
+        output = self.assert_passes()
+        self.assertIn("commit messages, tag messages and author identities", output)
+        self.assertIn("are not read", output)
+
+
 class TestWhenItCannotRun(HistoryCheck):
     def test_a_shallow_clone_fails_rather_than_passing(self):
         # The one way a history scan goes wrong without anyone noticing.
@@ -338,6 +379,28 @@ class TestWhenItCannotRun(HistoryCheck):
         (self.directory / "empty").mkdir()
         output = self.assert_fails("CANNOT RUN")
         self.assertIn("git failed", output)
+
+    def test_a_failure_deeper_in_the_run_still_reports_cannot_run(self):
+        # N1 on #97. Only the first two git calls used to be guarded, so a
+        # `cat-file --batch` that failed — a partial clone, a corrupt object —
+        # printed a traceback. "Nothing found" and "could not look" are the
+        # two answers a scan must never blur, and a traceback says the second
+        # one badly.
+        def unreadable(names):
+            raise RuntimeError("git could not read 0123456789")
+
+        self.module.contents = unreadable
+        output = self.assert_fails("CANNOT RUN")
+        self.assertIn("could not read", output)
+
+    def test_a_git_failure_deeper_in_the_run_reports_it_too(self):
+        def failing(names):
+            raise subprocess.CalledProcessError(
+                128, ("git", "cat-file"), stderr=b"fatal: bad object"
+            )
+
+        self.module.contents = failing
+        self.assertIn("bad object", self.assert_fails("CANNOT RUN"))
 
     def test_a_repository_with_no_commits_fails(self):
         bare = self.directory / "fresh"
@@ -368,6 +431,36 @@ class TestWhatIsReported(HistoryCheck):
         self.assertIn("rewrite", output)
 
 
+class TestWhereTheRepositoryUnderTestComesFrom(unittest.TestCase):
+    """B1 on #97. Nothing pinned which checkout the positive case reads, and
+    the loop runs this file from a shallow one."""
+
+    def test_it_follows_the_working_directory_not_this_file(self):
+        directory = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        elsewhere = Repository(directory / "elsewhere")
+        elsewhere.commit("first", **{"README.md": "# Sample\n"})
+
+        here = pathlib.Path.cwd()
+        self.addCleanup(os.chdir, here)
+        os.chdir(elsewhere.path)
+        # `resolve()` because a temporary directory is a symlink on macOS.
+        self.assertEqual(repository_root().resolve(), elsewhere.path.resolve())
+        self.assertNotEqual(repository_root().resolve(), HERE.parent.parent)
+
+    def test_the_loop_checks_out_the_branch_with_the_whole_history(self):
+        # The other half of what the fix rests on: resolving from the working
+        # directory is only safe while the working directory the loop gives
+        # its checks has the whole history. `repository-checks.yml` has the
+        # same assertion for CI in `TestTheCheckIsRegistered`.
+        workflow = (
+            REPOSITORY / ".github/workflows/agent-loop.yml"
+        ).read_text(encoding="utf-8")
+        step = workflow[workflow.index("Check out the branch under review") :]
+        step = step[: step.index("\n      - ")]
+        self.assertIn("fetch-depth: 0", step)
+
+
 class TestTheRepositoryHistory(unittest.TestCase):
     """The positive case, and what stops a probe above from being written out
     whole: this file is committed, so a whole probe would fail the scan over
@@ -375,7 +468,7 @@ class TestTheRepositoryHistory(unittest.TestCase):
 
     def test_this_repository_passes(self):
         module = load_module("scan_history_sensitive_strings")
-        module.WORK_TREE = REPOSITORY
+        module.WORK_TREE = repository_root()
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
             code = module.main()
