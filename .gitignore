@@ -20,6 +20,20 @@ local.settings.json
 *.secrets
 secrets/
 
+# The Milestone 2 comparison's raw record, which is never committed.
+#
+# `adapter/run.py` writes two documents. The main artifact is the acceptance
+# record and #58 commits it to `docs/acceptance/`; this one carries the text
+# each model call returned before anything parsed it, and raw model text is
+# exactly what the SAMPLE_* convention cannot vouch for. It lives for the
+# ninety days of its Actions artifact and nowhere else.
+#
+# A pattern rather than `milestone-2-comparison.raw.json` because `run.py`
+# derives the name from `--artifact`, so `out.json` writes `out.raw.json`.
+# The rule is that the raw record is never committed, not that one filename
+# is not. The acceptance record itself is deliberately not matched.
+*.raw.json
+
 # Cloud and database client state
 .azure/
 .psql_history
