@@ -1295,6 +1295,35 @@ describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
     await expect(result).rejects.toThrow(/never approve/);
   });
 
+  it("publishes what the Writer proposed, marked as discarded", async () => {
+    // N2 on #92. The proposal is the input to the decision the fence reserves
+    // for the owner. Without it the record says an edit was attempted and
+    // never what it was.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const proposal = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Writer proposal"));
+    expect(proposal).not.toBeUndefined();
+    expect(proposal).toContain("discarded at the owner-decision fence");
+    expect(proposal).toContain("nothing was committed or pushed");
+    expect(proposal).toContain("amended the contract");
+    expect(proposal).toContain("amended Section 4.2");
+    expect(proposal).toContain("docs/contracts/mvp-v0.1.md");
+  });
+
+  it("does not present the discarded proposal as a change to the branch", async () => {
+    // The risk in publishing it at all: a reader taking the proposal for an
+    // applied edit. The heading and the body both have to say otherwise.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const proposal = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Writer proposal"));
+    expect(proposal).toContain("it is not a change to the branch");
+    expect(proposal).not.toContain("Writer response — round");
+  });
+
   it("still throws on a BF3 edit, so a reach for the machinery reads as a crash", async () => {
     // The other fence keeps its behaviour. A Writer editing the orchestrator
     // is not a designed terminus and must not be labelled as one.

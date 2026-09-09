@@ -260,3 +260,56 @@ describe("nextStep", () => {
     expect(round).toBe(2);
   });
 });
+
+// N1 on #92. BF7's terminus used to be synthesised by the orchestrator, which
+// made this file's opening promise — "run.mjs does nothing this file did not
+// decide" — false, and put the one outcome nobody can reach from here.
+
+describe("the owner-decision fence concludes from the state machine (#82)", () => {
+  const fenced = ["docs/contracts/mvp-v0.1.md"];
+
+  it("concludes needs-human when the Writer's edit was behind the fence", () => {
+    const step = nextStep({ riskLevel: "L2", headSha: "h", fencedEdits: fenced });
+    expect(step.action).toBe(ACTIONS.needsHuman);
+    expect(step.reason).toMatch(/docs\/contracts\/mvp-v0\.1\.md/);
+    expect(step.reason).toMatch(/recorded human decision/);
+    expect(step.reason).toMatch(/not a failed run/);
+  });
+
+  it("names every fenced path, not just the first", () => {
+    const step = nextStep({
+      riskLevel: "L2",
+      headSha: "h",
+      fencedEdits: ["docs/contracts/a.md", "docs/contracts/b.md"],
+    });
+    expect(step.reason).toContain("docs/contracts/a.md");
+    expect(step.reason).toContain("docs/contracts/b.md");
+  });
+
+  it("wins over L0, which would otherwise skip the review entirely", () => {
+    // A fenced edit is an observation about the run in hand. No later
+    // condition can turn a discarded contract edit into a different outcome.
+    expect(nextStep({ riskLevel: "L0", headSha: "h", fencedEdits: fenced }).action).toBe(
+      ACTIONS.needsHuman,
+    );
+  });
+
+  it("wins over the idempotency skip", () => {
+    expect(
+      nextStep({
+        riskLevel: "L2",
+        headSha: "h",
+        stateHeadSha: "h",
+        phase: ACTIONS.ready,
+        fencedEdits: fenced,
+      }).action,
+    ).toBe(ACTIONS.needsHuman);
+  });
+
+  it("changes nothing when no fenced edit was seen", () => {
+    // The condition it must not impose: an ordinary run is untouched.
+    const step = nextStep({ riskLevel: "L2", headSha: "h", fencedEdits: [] });
+    expect(step.action).toBe(ACTIONS.review);
+  });
+});
+

@@ -100,6 +100,18 @@ describe("the Writer is told about both fences, with the reason for each", () =>
     expect(prompt).toContain("privileges you do not have");
   });
 
+  it("says the second fence stops the run differently from the first (#82)", () => {
+    // N3 on #92. The two fences now terminate differently — BF3 aborts, BF7
+    // concludes and hands over — and a Writer told they do the same thing is
+    // reading the description that was true before #82.
+    expect(prompt).toContain("it stops the run differently");
+    expect(prompt).toContain("stops and hands the pull request to the owner");
+    expect(prompt).toContain("nothing is committed or pushed");
+    expect(prompt).toContain("That is not a failed run");
+    // The first fence keeps its own word.
+    expect(prompt).toContain("the run is **aborted** if your edits touch");
+  });
+
   it("gives the second fence the recorded-decision reason, not the credential one", () => {
     // The distinction the two lists exist to preserve: a contract is not
     // executed and holds no credential, so borrowing privilege is not why it
