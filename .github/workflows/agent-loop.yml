@@ -111,6 +111,20 @@ jobs:
       contents: write
       pull-requests: write
       issues: read
+      # #21, and the one permission this loop gained by a recorded owner
+      # decision (#68 decision 2, answered 2026-09-09). The Writer's push
+      # raises no workflow because it uses GITHUB_TOKEN, so `repository-checks`
+      # never ran on a loop-fixed head and the loop labelled it ready anyway.
+      # `actions: write` is what lets the orchestrator dispatch that workflow
+      # itself and wait for the verdict. It is write rather than read because
+      # dispatching is a write; reading the run's conclusion comes with it.
+      #
+      # It does NOT add a Secret and does not widen what the agents hold:
+      # `claude.mjs` still strips every credential from both agent processes
+      # and `run.mjs` still strips them before any manifest command (BF3).
+      # Option (1) on #21 — a PAT or App token — is the one that would have
+      # needed a Secret, and it is not the option chosen.
+      actions: write
     steps:
       - name: Resolve the pull request branch
         id: pr

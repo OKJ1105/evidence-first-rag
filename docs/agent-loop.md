@@ -108,7 +108,8 @@ This document said "at the end" until #5. The guard moved ahead of publication i
 - One run per pull request; queued rather than cancelled, so a mid-turn cancellation cannot leave the branch edited with no status comment.
 - State lives in one marker comment, edited in place. A re-run against a head the loop already concluded on does nothing. A damaged marker throws rather than silently resetting the round count.
 - 60 minutes for the job, 12 minutes per agent turn, 10 minutes per check.
-- The workflow is not triggered by `push`: the Writer pushes inside the run, and a push trigger would restart the loop on its own output. CI (`repository-checks`) does run on those pushes and stays authoritative for merge.
+- The workflow is not triggered by `push`: the Writer pushes inside the run, and a push trigger would restart the loop on its own output. CI (`repository-checks`) stays authoritative for merge, and the loop **dispatches it explicitly** on the head its Writer pushed, then waits for the conclusion before labelling (#21).
+- **Why the dispatch is needed at all.** The Writer pushes with `GITHUB_TOKEN`, and GitHub starts no workflow from an event that token raised. This document used to say CI "does run on those pushes", and it did not: on #18 the loop-pushed head `03ba0c4` had zero check runs and was labelled `agent:ready-for-human-merge` anyway. A `workflow_dispatch` raised with `GITHUB_TOKEN` is the documented exception, so the fix needs `actions: write` on the loop's job — a recorded owner decision, #68 decision 2 — and no new Secret. A red, missing, or undispatchable CI run now makes the verdict `needs-human`; the loop's own manifest checks cannot substitute, because BF4 reads them from base and they are exactly the checks that cannot cover what the branch changed about checking.
 
 ## 6. Checks
 

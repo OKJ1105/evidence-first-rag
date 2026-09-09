@@ -101,6 +101,41 @@ export function createClient({ owner, repo }) {
      * Reviews on the pull request. Read-only, and used by the guard in
      * `run.mjs` that fails the run if anything approved on its watch.
      */
+    /**
+     * Start a workflow run on `ref` (#21).
+     *
+     * The loop's Writer pushes with `GITHUB_TOKEN`, and GitHub starts no
+     * workflow from an event that token raised — so the `pull_request:
+     * synchronize` the push would otherwise fire never happens and CI never
+     * runs on the head the loop is about to label. `workflow_dispatch` raised
+     * with `GITHUB_TOKEN` is GitHub's documented exception to that rule, which
+     * is why this needs no new Secret and no PAT. It does need `actions: write`
+     * on the loop's job, which is a permission change and was the repository
+     * owner's to approve; recorded on #68 decision 2, answered 2026-09-09.
+     *
+     * 204 on success, so `request` resolves null.
+     */
+    dispatchWorkflow: (workflowFile, ref, inputs = {}) =>
+      request("POST", `${base}/actions/workflows/${workflowFile}/dispatches`, {
+        ref,
+        ...(Object.keys(inputs).length > 0 ? { inputs } : {}),
+      }),
+
+    /**
+     * Recent runs of one workflow on one branch, newest first.
+     *
+     * Deliberately not filtered by `event`: the run this looks for is the
+     * dispatched one, but a `pull_request` run on the same head is just as
+     * good an answer to "did CI pass on this commit", and refusing it would
+     * make the loop wait for a second run it did not need.
+     */
+    listWorkflowRuns: (workflowFile, branch, perPage = 20) =>
+      request(
+        "GET",
+        `${base}/actions/workflows/${workflowFile}/runs` +
+          `?branch=${encodeURIComponent(branch)}&per_page=${perPage}`,
+      ),
+
     listReviews: (number) =>
       request("GET", `${base}/pulls/${number}/reviews?per_page=100`),
   };

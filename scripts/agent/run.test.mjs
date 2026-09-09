@@ -1355,6 +1355,96 @@ describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
   });
 });
 
+// #21. The Writer's push raises no workflow, so CI never ran on the head the
+// loop labelled. These assert at the loop level what checks.test.mjs asserts
+// at the helper level: a red CI on a loop-pushed head cannot reach `ready`.
+
+describe("CI on a loop-pushed head gates the verdict (#21)", () => {
+  const driveWithCi = (ci) => {
+    const gh = fakeGitHub();
+    const seen = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "fixed" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => "pushedsha",
+      diff: async () => "d",
+      changedPaths: async () => ["src/x.py"],
+      ci: async (args) => {
+        seen.push(args);
+        return ci;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, seen, result };
+  };
+
+  const green = { ok: true, conclusion: "success", url: null, summary: "- ci: success" };
+  const red = { ok: false, conclusion: "failure", url: null, summary: "- ci: **failure**" };
+
+  it("concludes ready when the loop's checks and CI both pass", async () => {
+    const { gh, result } = driveWithCi(green);
+    const r = await result;
+    expect(r.action).toBe("ready-for-human-merge");
+    expect(gh._.labels.has(LABELS.ready)).toBe(true);
+  });
+
+  it("refuses ready when CI failed, even though every manifest check passed", async () => {
+    // The defect: `passingChecks` is green throughout, and before #21 that was
+    // the whole verdict. Head 03ba0c4 on #18 was labelled ready in this state.
+    const { gh, result } = driveWithCi(red);
+    const r = await result;
+    expect(r.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(true);
+  });
+
+  it("asks for CI on the head the push created, not the head it started from", async () => {
+    const { seen, result } = driveWithCi(green);
+    await result;
+    expect(seen).toHaveLength(1);
+    expect(seen[0].headSha).toBe("pushedsha");
+    expect(seen[0].branch).toBe("agent/1-x");
+  });
+
+  it("publishes the CI verdict where the owner reads it", async () => {
+    const { gh, result } = driveWithCi(red);
+    await result;
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("- ci: **failure**");
+    expect(all).toMatch(/CI on the head this run pushed/);
+  });
+
+  it("does not dispatch CI when the Writer pushed nothing", async () => {
+    // No new head means no unchecked commit: whatever CI the human's own push
+    // produced still applies, and a dispatch would burn a run to learn that.
+    const gh = fakeGitHub();
+    const seen = [];
+    await runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "declined" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return green;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(seen).toEqual([]);
+  });
+});
+
 describe("the two fences on a Writer turn", () => {
   // Neither fence had a test before #34, which is how the contract came to be
   // editable by a Writer turn at all. They are asserted separately on purpose:

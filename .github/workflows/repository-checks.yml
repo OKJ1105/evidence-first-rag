@@ -2,6 +2,15 @@ name: Repository checks
 
 on:
   pull_request:
+  # #21. The agent loop's Writer pushes with GITHUB_TOKEN, and GitHub starts
+  # no workflow from an event that token raised — so the `pull_request:
+  # synchronize` that push would otherwise fire never happens, and this
+  # workflow never runs on the head the loop is about to label
+  # `agent:ready-for-human-merge`. A `workflow_dispatch` raised with
+  # GITHUB_TOKEN is GitHub's documented exception, so the loop dispatches this
+  # explicitly after its push and waits for the conclusion. Additive: the
+  # `pull_request` trigger above is unchanged and stays the normal path.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,10 +26,22 @@ jobs:
           fetch-depth: 0
 
       - name: Check changed lines for whitespace errors
+        # The two shas come from the pull request event when there is one. On a
+        # dispatched run there is no pull request, so they are resolved from the
+        # checkout instead: the dispatched ref is HEAD, and the base is the
+        # default branch. `fetch-depth: 0` above is what makes that range
+        # available. Without this the step would run `git diff --check "..."`
+        # on two empty strings and fail for a reason that has nothing to do
+        # with whitespace.
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git diff --check "$BASE_SHA...$HEAD_SHA"
+          BASE_REF: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          base="${BASE_SHA:-$(git rev-parse "origin/$BASE_REF")}"
+          head="${HEAD_SHA:-$(git rev-parse HEAD)}"
+          git diff --check "$base...$head"
 
       # Shared with the agent loop's checks manifest so both verify the same
       # thing with the same code.

@@ -17,6 +17,11 @@ const workflow = normalize(
   readFileSync(".github/workflows/agent-loop.yml", "utf8"),
 );
 
+/** CI's own definition. #21 makes the loop dispatch it, so it must be dispatchable. */
+const ci = normalize(
+  readFileSync(".github/workflows/repository-checks.yml", "utf8"),
+);
+
 /** Strip carriage returns so the line patterns below see LF either way. */
 export function normalize(text) {
   return text.replaceAll("\r\n", "\n");
@@ -140,6 +145,42 @@ describe("the workflow pins the model each loop role runs on", () => {
     // `${{ ... }}` here would move the pin into repository settings, where a
     // change leaves no commit. Leaving one is the whole point.
     for (const v of values()) expect(v.startsWith("${{")).toBe(false);
+  });
+});
+
+describe("the loop can dispatch CI, and CI can be dispatched (#21)", () => {
+  // Two halves of one mechanism, in two files. Either alone is useless and
+  // fails only on a live run — the exact shape of defect this file exists for.
+
+  it("grants the loop job actions: write, which dispatching needs", () => {
+    expect(permissionsOf("loop")).toMatch(/^ {6}actions: write$/m);
+  });
+
+  it("still grants nothing else administrative", () => {
+    // The permission was widened by one line on a recorded owner decision.
+    // This pins that it was one line.
+    const granted = permissionsOf("loop");
+    expect(granted).not.toMatch(/^ {6}id-token:/m);
+    expect(granted).not.toMatch(/^ {6}packages:/m);
+    expect(granted).not.toMatch(/^ {6}administration:/m);
+  });
+
+  it("gives repository-checks a workflow_dispatch trigger", () => {
+    expect(ci).toMatch(/\n {2}workflow_dispatch:/);
+  });
+
+  it("keeps repository-checks' pull_request trigger, so the normal path is unchanged", () => {
+    // Additive, per #17 rule 2's carve-out. Replacing the trigger rather than
+    // adding to it would stop CI on every ordinary pull request.
+    expect(ci).toMatch(/\n {2}pull_request:/);
+  });
+
+  it("resolves the whitespace range without the pull request event", () => {
+    // On a dispatched run there is no pull request, so the two shas are empty
+    // and `git diff --check "..."` would fail for a reason that has nothing to
+    // do with whitespace.
+    expect(ci).toContain('base="${BASE_SHA:-$(git rev-parse "origin/$BASE_REF")}"');
+    expect(ci).toContain('head="${HEAD_SHA:-$(git rev-parse HEAD)}"');
   });
 });
 

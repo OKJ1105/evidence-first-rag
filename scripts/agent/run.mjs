@@ -472,6 +472,110 @@ async function setOutcomeLabel(gh, prNumber, label) {
   if (label) await gh.addLabels(prNumber, [label]);
 }
 
+/** The CI workflow the loop dispatches after a Writer push (#21). */
+export const ciWorkflowFile = "repository-checks.yml";
+
+/**
+ * Dispatch CI on the head the Writer just pushed, and wait for its verdict.
+ *
+ * #21: the Writer pushes with `GITHUB_TOKEN`, and GitHub starts no workflow
+ * from an event that token raised. So `repository-checks` — which
+ * `docs/agent-loop.md` calls authoritative for merge — never ran on a
+ * loop-fixed head, and the loop labelled that head
+ * `agent:ready-for-human-merge` anyway. Observed on #18: head `03ba0c4` had
+ * zero check runs and was labelled ready.
+ *
+ * The loop's own manifest checks are not a substitute. They are read from the
+ * base branch by design (BF4), so they are exactly the checks that cannot
+ * cover what the branch changed about checking.
+ *
+ * Everything is injected so the whole wait is testable without a network: a
+ * fake client, a fake clock and a fake sleep drive every branch below.
+ *
+ * @returns {Promise<{ok: boolean, conclusion: string, url: string|null, summary: string}>}
+ */
+export async function awaitCiOnHead({
+  gh,
+  branch,
+  headSha,
+  workflowFile = ciWorkflowFile,
+  timeoutMs = 15 * 60_000,
+  pollMs = 15_000,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  now = () => Date.now(),
+  log = () => {},
+}) {
+  const say = (conclusion, ok, detail, url = null) => ({
+    ok,
+    conclusion,
+    url,
+    summary: `- \`${workflowFile}\` on \`${headSha}\`: ${detail}`,
+  });
+
+  try {
+    await gh.dispatchWorkflow(workflowFile, branch);
+  } catch (err) {
+    // A dispatch this run could not raise is reported, never swallowed. The
+    // whole point of the Issue is that a silently unchecked head reaches a
+    // ready label; failing to dispatch and saying nothing would recreate it.
+    return say("not_dispatched", false, `could not be dispatched — ${err.message}`);
+  }
+
+  const deadline = now() + timeoutMs;
+  let seen = null;
+  while (now() < deadline) {
+    await sleep(pollMs);
+    let runs;
+    try {
+      runs = await gh.listWorkflowRuns(workflowFile, branch);
+    } catch (err) {
+      log(`CI poll failed, retrying: ${err.message}`);
+      continue;
+    }
+    // Only a run on the exact head matters. A run on an earlier commit is the
+    // stale-evidence mistake BF2 exists to stop.
+    seen = (runs?.workflow_runs ?? []).find((r) => r.head_sha === headSha) ?? null;
+    if (seen?.status === "completed") {
+      const ok = seen.conclusion === "success";
+      return say(seen.conclusion ?? "unknown", ok, `**${seen.conclusion}**`, seen.html_url ?? null);
+    }
+  }
+
+  return say(
+    "timed_out",
+    false,
+    seen
+      ? `started but did not finish within ${Math.round(timeoutMs / 60_000)} minutes`
+      : `no run appeared on this head within ${Math.round(timeoutMs / 60_000)} minutes`,
+    seen?.html_url ?? null,
+  );
+}
+
+/**
+ * Fold a CI verdict into the manifest checks' verdict.
+ *
+ * One `ok` is what the state machine reads, so they are combined — but the
+ * summary keeps them apart, because "the loop's checks passed and CI failed"
+ * and "a check failed" are different facts and the owner acts differently on
+ * them.
+ */
+export function withCiVerdict(checkResult, ci) {
+  if (!ci) return checkResult;
+  return {
+    ...checkResult,
+    ok: checkResult.ok && ci.ok,
+    ci,
+    summary: [
+      checkResult.summary,
+      "",
+      "CI on the head this run pushed (#21):",
+      "",
+      ci.summary,
+      ci.url ? `\n${ci.url}` : "",
+    ].join("\n"),
+  };
+}
+
 /**
  * Fail the run if anything approved the pull request while the loop held it.
  *
@@ -513,6 +617,10 @@ export async function runLoop({
   checks,
   commit,
   diff,
+  // #21. Null means "do not dispatch CI", which is what every test that is
+  // not about CI wants and what a local run has no credential for. `main()`
+  // wires the real one.
+  ci = null,
   changedPaths = async () => [],
   docs = "",
   reviewerOnlyDocs = "",
@@ -766,6 +874,20 @@ export async function runLoop({
       if (newHead) currentHead = newHead;
       checkResult = await checks();
 
+      // #21: the push above raised no workflow run, because GitHub starts
+      // none from an event `GITHUB_TOKEN` raised. Dispatch CI on the head
+      // that push created and wait for it, so `ready` is never published
+      // over a head no CI has ever seen. Only when there IS a new head:
+      // a Writer turn that changed nothing pushed nothing, and the head
+      // already carries whatever CI the human's own push produced.
+      if (ci && newHead) {
+        checkResult = withCiVerdict(
+          checkResult,
+          await ci({ branch, headSha: currentHead }),
+        );
+        log(`CI on ${currentHead}: ${checkResult.ci.conclusion}`);
+      }
+
       state = {
         ...state,
         round: state.round + 1,
@@ -987,6 +1109,16 @@ async function main() {
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: () => changedPathsOf(git, worktree),
+      // #21. Thin by design: everything worth asserting is in
+      // `awaitCiOnHead`, which is driven by fakes in the tests. `main()` is
+      // wiring and is not otherwise covered.
+      ci: ({ branch: pushedTo, headSha }) =>
+        awaitCiOnHead({
+          gh,
+          branch: pushedTo,
+          headSha,
+          log: console.log,
+        }),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;

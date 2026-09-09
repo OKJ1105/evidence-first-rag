@@ -10,10 +10,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "./test-kit.mjs";
 import {
+  awaitCiOnHead,
   checksManifestPath,
+  ciWorkflowFile,
   loadChecksManifest,
   modelFor,
   runChecks,
+  withCiVerdict,
 } from "./run.mjs";
 
 function tempRepo(manifestBody) {
@@ -287,5 +290,153 @@ describe("modelFor pins the model per role", () => {
     expect(modelFor("auditor", { CI_AGENT_MODEL: "claude-opus-5" })).toBe(
       "claude-opus-5",
     );
+  });
+});
+
+// #21. The loop's Writer pushes with GITHUB_TOKEN, and GitHub starts no
+// workflow from an event that token raised. So `repository-checks` never ran
+// on a loop-fixed head and the loop labelled it ready anyway — observed on
+// #18, head `03ba0c4`, zero check runs. These drive the dispatch-and-wait
+// with a fake client, a fake clock and a fake sleep, so every branch is
+// exercised without a network.
+
+function fakeActions({ runs = [], dispatchError = null, listError = null } = {}) {
+  const calls = { dispatched: [], listed: 0 };
+  const pages = Array.isArray(runs[0]) ? [...runs] : [runs];
+  return {
+    calls,
+    dispatchWorkflow: async (file, ref) => {
+      calls.dispatched.push({ file, ref });
+      if (dispatchError) throw new Error(dispatchError);
+      return null;
+    },
+    listWorkflowRuns: async () => {
+      calls.listed += 1;
+      if (listError && calls.listed === 1) throw new Error(listError);
+      const page = pages.length > 1 ? pages.shift() : pages[0];
+      return { workflow_runs: page };
+    },
+  };
+}
+
+const fastClock = () => {
+  let t = 0;
+  return { now: () => t, sleep: async (ms) => { t += ms; } };
+};
+
+const completed = (sha, conclusion) => ({
+  head_sha: sha,
+  status: "completed",
+  conclusion,
+  html_url: `https://example/run/${conclusion}`,
+});
+
+describe("awaitCiOnHead dispatches CI and waits for its verdict", () => {
+  it("dispatches the CI workflow on the branch that was pushed to", async () => {
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    await awaitCiOnHead({ gh, branch: "agent/1-x", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched).toEqual([
+      { file: ciWorkflowFile, ref: "agent/1-x" },
+    ]);
+  });
+
+  it("passes when the run on that exact head concludes success", async () => {
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(true);
+    expect(r.conclusion).toBe("success");
+    expect(r.url).toBe("https://example/run/success");
+  });
+
+  it("fails when that run concludes anything else", async () => {
+    const gh = fakeActions({ runs: [completed("headsha", "failure")] });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("failure");
+  });
+
+  it("ignores a completed run on a different head", async () => {
+    // The stale-evidence mistake BF2 exists to stop. A green run on the
+    // previous commit says nothing about the one about to be labelled.
+    const gh = fakeActions({ runs: [completed("an-older-head", "success")] });
+    const r = await awaitCiOnHead({
+      gh, branch: "b", headSha: "headsha", timeoutMs: 60_000, pollMs: 15_000, ...fastClock(),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("timed_out");
+    expect(r.summary).toMatch(/no run appeared on this head/);
+  });
+
+  it("keeps waiting while the run is still in progress, then takes its verdict", async () => {
+    const gh = fakeActions({
+      runs: [
+        [{ head_sha: "headsha", status: "in_progress", conclusion: null }],
+        [completed("headsha", "success")],
+      ],
+    });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(true);
+    expect(gh.calls.listed).toBe(2);
+  });
+
+  it("reports a run that starts but never finishes as a timeout, not a pass", async () => {
+    const gh = fakeActions({
+      runs: [{ head_sha: "headsha", status: "in_progress", conclusion: null, html_url: "u" }],
+    });
+    const r = await awaitCiOnHead({
+      gh, branch: "b", headSha: "headsha", timeoutMs: 60_000, pollMs: 15_000, ...fastClock(),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("timed_out");
+    expect(r.summary).toMatch(/did not finish/);
+  });
+
+  it("reports a dispatch it could not raise, rather than passing silently", async () => {
+    // The failure mode the Issue is about: an unchecked head reaching a ready
+    // label. A swallowed dispatch error would recreate it exactly.
+    const gh = fakeActions({ dispatchError: "403 Resource not accessible" });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("not_dispatched");
+    expect(r.summary).toMatch(/403 Resource not accessible/);
+  });
+
+  it("retries a failed poll rather than giving up on the run", async () => {
+    const gh = fakeActions({
+      listError: "502 Bad Gateway",
+      runs: [completed("headsha", "success")],
+    });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(true);
+    expect(gh.calls.listed).toBe(2);
+  });
+});
+
+describe("withCiVerdict folds CI into the verdict the state machine reads", () => {
+  const passing = { ok: true, summary: "All checks passed." };
+
+  it("keeps a pass a pass when CI passed", () => {
+    const r = withCiVerdict(passing, { ok: true, conclusion: "success", url: null, summary: "- ci: pass" });
+    expect(r.ok).toBe(true);
+  });
+
+  it("turns a pass into a failure when CI failed", () => {
+    // The whole point: `nextStep` concludes needs-human on `checks.ok === false`,
+    // so a red CI can no longer be labelled ready.
+    const r = withCiVerdict(passing, { ok: false, conclusion: "failure", url: null, summary: "- ci: FAIL" });
+    expect(r.ok).toBe(false);
+  });
+
+  it("keeps the two summaries apart", () => {
+    // "the loop's checks passed and CI failed" and "a check failed" are
+    // different facts and the owner acts differently on them.
+    const r = withCiVerdict(passing, { ok: false, conclusion: "failure", url: "https://example/run/1", summary: "- ci: FAIL" });
+    expect(r.summary).toContain("All checks passed.");
+    expect(r.summary).toContain("- ci: FAIL");
+    expect(r.summary).toContain("https://example/run/1");
+  });
+
+  it("leaves the verdict untouched when no CI verdict was taken", () => {
+    expect(withCiVerdict(passing, null)).toBe(passing);
   });
 });
