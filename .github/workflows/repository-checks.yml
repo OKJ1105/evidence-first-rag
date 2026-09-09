@@ -47,6 +47,18 @@ jobs:
         # from both sides.
         run: python3 scripts/checks/test_scan_sensitive_strings.py
 
+      - name: Scan the Git history for sensitive strings
+        # Charter Section 11 asks for the history as well as the tree. Needs
+        # the fetch-depth: 0 checkout above: on a shallow clone the scan
+        # reports CANNOT RUN rather than passing over a truncated history.
+        run: python3 scripts/checks/scan_history_sensitive_strings.py
+
+      - name: Sensitive-string history scan unit tests
+        # The negative cases: each builds a repository, puts one thing in its
+        # history, and asserts what the scan says — including the case the
+        # tree scan cannot see, a credential committed and then deleted.
+        run: python3 scripts/checks/test_scan_history_sensitive_strings.py
+
       - uses: actions/setup-python@v5
         with:
           python-version-file: .python-version
