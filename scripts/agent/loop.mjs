@@ -86,9 +86,11 @@ export function nextStep({
       reason:
         `The Writer's fix required editing ${fencedEdits.join(", ")}, which is behind the ` +
         "owner-decision fence. Amending an accepted contract is a recorded human decision " +
-        "under its Section 10, not a review-finding fix, so the edit was discarded and " +
-        "nothing was committed or pushed. This is the designed outcome for a contract-only " +
-        "change, not a failed run. The findings below stand and are the owner's to resolve.",
+        "under its Section 10, not a review-finding fix, so that edit was discarded and " +
+        "nothing from that Writer turn was committed or pushed. Whether the amendment was " +
+        "warranted is yours to judge, and earlier rounds of this run may already have moved " +
+        "the branch head. Reaching this fence is a designed outcome, not a failed run. The " +
+        "findings below stand and are the owner's to resolve.",
     };
   }
 

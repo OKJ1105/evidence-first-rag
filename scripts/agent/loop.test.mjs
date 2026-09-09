@@ -276,6 +276,21 @@ describe("the owner-decision fence concludes from the state machine (#82)", () =
     expect(step.reason).toMatch(/not a failed run/);
   });
 
+  it("claims only what the loop observed, not that the run committed nothing", () => {
+    // N4/N6 on #92. The first wording said "nothing was committed or pushed"
+    // and called the pull request "contract-only". The loop establishes
+    // neither: an earlier round may have committed and pushed an ordinary fix,
+    // moving the branch head, and the fence fires on any Writer turn that
+    // reaches `docs/contracts/` — including one amending a contract to
+    // authorise its own implementation branch, which is the #23 incident this
+    // fence exists for. An owner reading the old text concludes the branch is
+    // untouched and skips re-checking a head the loop moved.
+    const step = nextStep({ riskLevel: "L2", headSha: "h", fencedEdits: fenced });
+    expect(step.reason).toContain("nothing from that Writer turn was committed or pushed");
+    expect(step.reason).not.toContain("nothing was committed or pushed");
+    expect(step.reason).not.toContain("contract-only");
+  });
+
   it("names every fenced path, not just the first", () => {
     const step = nextStep({
       riskLevel: "L2",
@@ -312,4 +327,3 @@ describe("the owner-decision fence concludes from the state machine (#82)", () =
     expect(step.action).toBe(ACTIONS.review);
   });
 });
-

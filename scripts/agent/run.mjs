@@ -733,7 +733,7 @@ export async function runLoop({
           [
             `## Writer proposal — discarded at the owner-decision fence`,
             "",
-            `Head \`${currentHead}\` · nothing was committed or pushed`,
+            `Head \`${currentHead}\` · nothing from this turn was committed or pushed`,
             `Writer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
             "",
             `The Writer's fix reached ${needsOwner.map((p) => `\`${p}\``).join(", ")}, which is behind the owner-decision fence. ` +

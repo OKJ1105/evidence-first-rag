@@ -1258,8 +1258,21 @@ describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
     expect(all).toContain("docs/contracts/mvp-v0.1.md");
     expect(all).toContain("owner-decision fence");
     expect(all).toMatch(/Section 10/);
-    expect(all).toMatch(/nothing was committed or pushed/);
+    expect(all).toMatch(/nothing from that Writer turn was committed or pushed/);
     expect(all).toMatch(/not a failed run/);
+  });
+
+  it("makes no run-wide claim that nothing was committed (#92 N6)", async () => {
+    // The conclusion and the proposal comment are what the owner reads. An
+    // unqualified "nothing was committed or pushed" is false on a run whose
+    // earlier round pushed an ordinary fix, and "contract-only" is not
+    // something the loop determines — the fence fires on any Writer turn that
+    // reaches `docs/contracts/`.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const published = gh._.comments.map((c) => c.body).join("\n");
+    expect(published).not.toContain("nothing was committed or pushed");
+    expect(published).not.toContain("designed outcome for a contract-only change");
   });
 
   it("publishes the standing findings with the conclusion", async () => {
@@ -1306,7 +1319,7 @@ describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
       .find((b) => b.includes("Writer proposal"));
     expect(proposal).not.toBeUndefined();
     expect(proposal).toContain("discarded at the owner-decision fence");
-    expect(proposal).toContain("nothing was committed or pushed");
+    expect(proposal).toContain("nothing from this turn was committed or pushed");
     expect(proposal).toContain("amended the contract");
     expect(proposal).toContain("amended Section 4.2");
     expect(proposal).toContain("docs/contracts/mvp-v0.1.md");
