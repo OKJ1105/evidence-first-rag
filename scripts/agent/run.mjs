@@ -682,13 +682,34 @@ export async function runLoop({
       // `Accepted` contract is a recorded human decision under its Section 10,
       // which is not a Writer's to make. Reporting it under the message above
       // would state the wrong reason.
+      //
+      // It concludes rather than throws, and that is the whole of #82. BF7 is
+      // reached by a contract-only pull request doing exactly what it is
+      // supposed to do, so it is a designed terminus, not a crash. Every throw
+      // is labelled `agent:failed` by `main()`'s catch — this repository's
+      // word for a crash, and the one #68's queue teaches the owner to restart
+      // by re-adding `agent:run`. Restarting this case aborts identically
+      // every time, and the owner cannot tell the two apart from the label
+      // they read first.
+      //
+      // BF7 still holds in the part that matters: `commit()` is below this
+      // point and is never reached, so the Writer's edit to a fenced path is
+      // discarded with the runner rather than committed or pushed. The
+      // conclusion published here rests on the Reviewer's findings, not on
+      // that edit. The BF3 fence above keeps throwing, because a Writer
+      // reaching for the machinery is a crash and should read as one.
       const needsOwner = ownerDecisionEdits(changedNow);
       if (needsOwner.length > 0) {
-        throw new Error(
-          `The Writer edited paths that require a recorded human decision: ${needsOwner.join(", ")}. ` +
-            "Amending an accepted contract is the repository owner's decision, not a review-finding fix, " +
-            "so the run is aborted rather than publishing a conclusion built on one.",
-        );
+        concluded = {
+          action: ACTIONS.needsHuman,
+          reason:
+            `The Writer's fix required editing ${needsOwner.join(", ")}, which is behind the ` +
+            "owner-decision fence. Amending an accepted contract is a recorded human decision " +
+            "under its Section 10, not a review-finding fix, so the edit was discarded and " +
+            "nothing was committed or pushed. This is the designed outcome for a contract-only " +
+            "change, not a failed run. The findings below stand and are the owner's to resolve.",
+        };
+        break;
       }
 
       let responses = [];
