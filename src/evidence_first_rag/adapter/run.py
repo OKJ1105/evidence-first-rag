@@ -195,7 +195,15 @@ def raw_document(document: dict, calls) -> dict:
 
     `run_identifier` is the main artifact's, not a fresh one: the two files
     are halves of one run, and a reader who has the artifact needs to know
-    which raw file belongs to it. It is the only field the two share.
+    which raw file belongs to it. That is what ties the two halves together.
+
+    `usage_totals` appears in both on purpose rather than by oversight. The
+    raw file outlives nothing -- it is deleted with the Actions artifact --
+    but while it exists it has to be readable on its own, and a per-call
+    record with no total is a question rather than an answer. The main
+    artifact omits the key when nothing reported; this one carries `None`,
+    because a file whose whole subject is the calls should say that the
+    calls reported no usage rather than stay silent about it.
     """
     calls = tuple(calls)
     return {

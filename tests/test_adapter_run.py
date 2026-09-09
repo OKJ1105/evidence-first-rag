@@ -733,7 +733,7 @@ class TheSecondArtifactAndWhatTheFirstGainsFromIt(unittest.TestCase):
                 )
                 self.assertNotIn("usage_totals", document)
 
-    def test_the_raw_document_shares_the_run_identifier_and_nothing_else(self):
+    def test_the_raw_document_ties_itself_to_the_run(self):
         recorder = StubRecorder(StubCall("first", {"input_tokens": 2}), StubCall("second"))
         document = runner.perform(
             propose=perfect,
@@ -748,7 +748,11 @@ class TheSecondArtifactAndWhatTheFirstGainsFromIt(unittest.TestCase):
         self.assertEqual(raw["usage_totals"], {"input_tokens": 2})
         # The raw file carries no report, no judgement and no thresholds:
         # it is what the calls returned, not a second opinion on them.
+        # `usage_totals` is repeated from the main artifact on purpose, so
+        # this file is readable on its own; `run_identifier` is what ties
+        # the two halves together.
         self.assertEqual(sorted(raw), ["calls", "run_identifier", "usage_totals"])
+        self.assertEqual(raw["usage_totals"], document["usage_totals"])
 
     def test_the_raw_document_is_json(self):
         recorder = StubRecorder(StubCall("t", {"input_tokens": 1}))
@@ -781,13 +785,20 @@ class TheSecondArtifactAndWhatTheFirstGainsFromIt(unittest.TestCase):
         )
 
 
-class TheWorkflowUploadsBothFilesAndCommitsNeither(unittest.TestCase):
-    """The `path:` block, read as text so it needs no YAML dependency.
+class TheWorkflowUploadsBothFilesUnderSeparateNames(unittest.TestCase):
+    """Two artifacts, not one zip with two files in it.
 
-    `repository-checks` installs nothing, so a test that imported PyYAML
-    would be skipped in the one job that always runs. What can actually
-    drift is the filename: `run.py` derives it and the workflow names it,
-    and nothing else ties the two together.
+    Raised as N4 on #99: shipping both under the name `milestone-2-comparison`
+    means the writer who downloads "the artifact" to commit the acceptance
+    record unpacks the never-committed file into the checkout beside it,
+    where one `git add -A` commits it. Nothing mechanical catches that.
+    Separate names mean downloading the one you need cannot hand you the one
+    you must not commit.
+
+    Read as text rather than YAML because `repository-checks` installs
+    nothing, so a test importing PyYAML would skip in the one job that
+    always runs. What can actually drift is the filename -- `run.py` derives
+    it and the workflow names it, and nothing else ties the two together.
     """
 
     def setUp(self):
@@ -796,13 +807,11 @@ class TheWorkflowUploadsBothFilesAndCommitsNeither(unittest.TestCase):
     def test_the_upload_names_the_file_the_runner_actually_writes(self):
         written = runner.raw_path(runner.DEFAULT_ARTIFACT).name
         self.assertEqual(written, "milestone-2-comparison.raw.json")
-        self.assertIn(f"\n            {written}\n", self.text)
-        self.assertIn(f"\n            {runner.DEFAULT_ARTIFACT.name}\n", self.text)
+        self.assertIn(f"path: {written}\n", self.text)
+        self.assertIn(f"path: {runner.DEFAULT_ARTIFACT.name}\n", self.text)
 
     def test_the_dispatch_step_passes_the_artifact_the_paths_derive_from(self):
-        self.assertIn(
-            f"--artifact {runner.DEFAULT_ARTIFACT.name}", self.text
-        )
+        self.assertIn(f"--artifact {runner.DEFAULT_ARTIFACT.name}", self.text)
 
     def test_the_workflow_says_the_raw_file_is_never_committed(self):
         # Not decoration. The rule lives nowhere a check can enforce it, so
@@ -813,20 +822,33 @@ class TheWorkflowUploadsBothFilesAndCommitsNeither(unittest.TestCase):
     @unittest.skipUnless(
         importlib.util.find_spec("yaml") is not None, "PyYAML is not installed"
     )
-    def test_the_path_parses_as_two_entries(self):
-        # Confirms the two names are the `path:` block rather than text that
-        # merely appears in the file. Skipped where PyYAML is absent; the
-        # assertions above are the ones that always run.
+    def test_each_file_is_its_own_artifact(self):
+        # The assertion N4 is really about: not that both names appear, but
+        # that no single artifact carries both. Skipped where PyYAML is
+        # absent; the text assertions above always run.
         import yaml
 
         document = yaml.safe_load(self.text)
-        steps = document["jobs"]["comparison"]["steps"]
-        upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact"))
+        uploads = [
+            step
+            for step in document["jobs"]["comparison"]["steps"]
+            if str(step.get("uses", "")).startswith("actions/upload-artifact")
+        ]
+        self.assertEqual(len(uploads), 2)
+        by_name = {step["with"]["name"]: step["with"] for step in uploads}
         self.assertEqual(
-            upload["with"]["path"].split(),
-            [runner.DEFAULT_ARTIFACT.name, runner.raw_path(runner.DEFAULT_ARTIFACT).name],
+            by_name["milestone-2-comparison"]["path"].strip(),
+            runner.DEFAULT_ARTIFACT.name,
         )
-        self.assertEqual(upload["with"]["if-no-files-found"], "error")
+        self.assertEqual(
+            by_name["milestone-2-comparison-raw"]["path"].strip(),
+            runner.raw_path(runner.DEFAULT_ARTIFACT).name,
+        )
+        for settings in uploads:
+            self.assertEqual(settings["with"]["if-no-files-found"], "error")
+            # One file each. A `path:` that grew a second entry would put the
+            # never-committed file back in the acceptance download.
+            self.assertEqual(len(settings["with"]["path"].split()), 1)
 
 
 class TheModuleStaysImportableWithoutTheSdkOrTheDriver(unittest.TestCase):

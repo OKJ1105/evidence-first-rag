@@ -13,6 +13,7 @@ job -- which installs nothing -- has no SDK and no business failing over one.
 
 import importlib.util
 import json
+import pathlib
 import types
 import unittest
 
@@ -217,8 +218,6 @@ class ReadingAResponseNeverRaises(unittest.TestCase):
         self.assertEqual(proposal.route, "drop_tables")
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
 
 
 @unittest.skipUnless(HAS_SDK, "the adapter extra is not installed")
@@ -374,3 +373,33 @@ class EveryCallLeavesARecord(unittest.TestCase):
             ["max_tokens", "messages", "model", "output_config", "system", "thinking"],
         )
         self.assertEqual(sent["messages"], [{"role": "user", "content": REQUEST}])
+
+
+class NothingIsDefinedAfterTheMainGuard(unittest.TestCase):
+    """`unittest.main()` exits, so anything below it does not exist.
+
+    Eleven tests were appended after the guard in this file and
+    `python3 -m tests.test_adapter_client` reported 14 passing with no sign
+    that the class carrying #90's client-side evidence had never been
+    defined. `unittest discover` sets `__name__` to the module name, so the
+    guard is false and the class appears -- which is why every registered
+    check stayed green. Raised as N1 on #99 and reproduced before fixing.
+
+    #17 rule 9: this is the check, and the diff it was written against is
+    the failure it has been seen to catch.
+    """
+
+    def test_the_guard_is_the_last_thing_in_this_file(self):
+        lines = pathlib.Path(__file__).read_text().splitlines()
+        guards = [i for i, line in enumerate(lines) if line.startswith("if __name__ ==")]
+        self.assertEqual(len(guards), 1, "expected exactly one __main__ guard")
+        below = [
+            line
+            for line in lines[guards[0] + 1 :]
+            if line and not line.startswith((" ", "\t"))
+        ]
+        self.assertEqual(below, [], "these are silently undefined on a direct run")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
