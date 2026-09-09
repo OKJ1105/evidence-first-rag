@@ -286,10 +286,11 @@ A second fence, for a different reason, and it stops the run differently.
 Nothing below is executed and nothing carries a credential. Amending an
 accepted contract is a **recorded human decision** under its Section 10, and
 that is not yours to make or to record. If your edits touch any of these, the
-edit is **discarded** — nothing is committed or pushed — and the run **stops
-and hands the pull request to the owner**, which is where a contract-only
-change is supposed to end. That is not a failed run, and it is not the abort
-above:
+edit is **discarded** — nothing from your turn is committed or pushed — and
+the run **stops and hands the pull request to the owner** without your fix.
+Declining the finding, below, is the route you must take instead: tripping
+this fence loses the work of your turn and is the worse of the two. It is
+also not the abort above:
 
 ${ownerDecisionPaths.map((p) => `- \`${p}\``).join("\n")}
 
