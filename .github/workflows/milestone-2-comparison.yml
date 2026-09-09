@@ -90,11 +90,20 @@ jobs:
         run: python -m evidence_first_rag.adapter.run --artifact milestone-2-comparison.json
 
       # `if: always()` so an unjudged run's document is still inspectable.
+      #
+      # Two files. The first is the acceptance record and is committed to
+      # `docs/acceptance/` by #58. The second, `.raw.json`, carries the text
+      # each model call returned before anything parsed it, and is **never
+      # committed**: raw model text is unbounded and is exactly what the
+      # repository's SAMPLE_* convention cannot vouch for. It lives here, for
+      # the ninety days below, and nowhere else.
       - name: Upload the artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: milestone-2-comparison
-          path: milestone-2-comparison.json
+          path: |
+            milestone-2-comparison.json
+            milestone-2-comparison.raw.json
           retention-days: 90
           if-no-files-found: error

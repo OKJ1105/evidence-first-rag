@@ -16,6 +16,7 @@ import contextlib
 import io
 import re
 import tempfile
+import types
 import unittest
 import unittest.mock
 
@@ -39,12 +40,29 @@ from evidence_first_rag.status import OPENS_NO_CONNECTION, Status
 
 from .runtime_support import FakeDatabase, candidate_row, message_row
 
+WORKFLOW = (
+    pathlib.Path(__file__).resolve().parent.parent
+    / ".github"
+    / "workflows"
+    / "milestone-2-comparison.yml"
+)
+
 HAS_SDK = importlib.util.find_spec("anthropic") is not None
+# The driver is its own optional dependency and its own guard. One flag for
+# both would be a guess: `pip install evidence-first-rag[adapter]` -- which is
+# what a writer discharging this file's acceptance evidence runs -- installs
+# the SDK and not `psycopg`, and importing `runtime.connection` under
+# `HAS_SDK` alone then fails the whole module at load, taking every
+# unrelated test in it down. CI never saw it because both jobs have neither
+# and the dispatched workflow has both.
+HAS_DRIVER = importlib.util.find_spec("psycopg") is not None
 
 if HAS_SDK:
     from evidence_first_rag.adapter import client as adapter_client
     from evidence_first_rag.adapter.client import MODEL as REAL_MODEL
     from evidence_first_rag.adapter.client import Adapter
+
+if HAS_DRIVER:
     from evidence_first_rag.runtime import connection as runtime_connection
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
@@ -618,6 +636,199 @@ class TheRuntimeNeverRefusesWhatRevalidationAccepted(unittest.TestCase):
             self.assertIsNone(outcome.refusal_detail)
 
 
+class StubCall:
+    """A `Call` without the SDK, so the `run.py` half is testable everywhere.
+
+    `client.py` cannot be imported when the adapter extra is absent, and
+    `repository-checks` installs nothing. Gating every assertion about the
+    raw document on the SDK would leave the file that decides what gets
+    written -- and what deliberately does not -- covered only in a job that
+    spends a credential.
+    """
+
+    def __init__(self, text, usage=None, stop_reason="end_turn"):
+        self.text = text
+        self.usage = usage
+        self.stop_reason = stop_reason
+
+    def as_json(self):
+        return {"text": self.text, "stop_reason": self.stop_reason, "usage": self.usage}
+
+
+class StubRecorder:
+    def __init__(self, *calls):
+        self.calls = tuple(calls)
+
+
+class TheSecondArtifactAndWhatTheFirstGainsFromIt(unittest.TestCase):
+    """#90, on the `run.py` side. No SDK, no network, no database."""
+
+    def test_the_raw_path_sits_beside_the_artifact(self):
+        self.assertEqual(
+            runner.raw_path(pathlib.Path("milestone-2-comparison.json")).name,
+            "milestone-2-comparison.raw.json",
+        )
+        self.assertEqual(
+            runner.raw_path(pathlib.Path("/tmp/out/x.json")),
+            pathlib.Path("/tmp/out/x.raw.json"),
+        )
+        # Derived, not configured: the two files cannot be pointed at
+        # unrelated places, which is what makes the workflow's paths
+        # predictable from the one `--artifact` it passes.
+        self.assertEqual(
+            runner.raw_path(runner.DEFAULT_ARTIFACT).parent,
+            runner.DEFAULT_ARTIFACT.parent,
+        )
+
+    def test_usage_totals_sums_every_call(self):
+        recorder = StubRecorder(
+            StubCall("a", {"input_tokens": 10, "output_tokens": 3}),
+            StubCall("b", {"input_tokens": 5, "output_tokens": 2}),
+        )
+        self.assertEqual(
+            runner.usage_totals(recorder.calls),
+            {"input_tokens": 15, "output_tokens": 5},
+        )
+
+    def test_usage_totals_sums_only_what_adds_up(self):
+        # A usage payload may carry nested breakdowns beside its counts. A
+        # total is only meaningful for a number; the per-call records keep
+        # whatever the SDK returned, in full, so nothing is lost here.
+        totals = runner.usage_totals(
+            (
+                StubCall("a", {"input_tokens": 4, "cache_creation": {"x": 1}, "ok": True}),
+                StubCall("b", {"input_tokens": 6, "cache_creation": {"x": 2}}),
+            )
+        )
+        self.assertEqual(totals, {"input_tokens": 10})
+
+    def test_usage_totals_is_none_rather_than_zero_when_nothing_reported(self):
+        # A run that could not observe its cost has not observed a cost of
+        # zero -- the rule `Report.executed` applies to a run that touched no
+        # database.
+        self.assertIsNone(runner.usage_totals(()))
+        self.assertIsNone(runner.usage_totals((StubCall("a"), StubCall("b", {}))))
+
+    def test_the_main_artifact_gains_usage_totals_only_when_there_are_any(self):
+        with_usage = runner.perform(
+            propose=perfect,
+            runtime=empty_runtime(),
+            model="m",
+            decoding=DECODING,
+            recorder=StubRecorder(StubCall("a", {"input_tokens": 9})),
+        )
+        self.assertEqual(with_usage["usage_totals"], {"input_tokens": 9})
+
+        for label, recorder in (
+            ("no recorder", None),
+            ("no usage", StubRecorder(StubCall("a"))),
+        ):
+            with self.subTest(recorder=label):
+                document = runner.perform(
+                    propose=perfect,
+                    runtime=empty_runtime(),
+                    model="m",
+                    decoding=DECODING,
+                    recorder=recorder,
+                )
+                self.assertNotIn("usage_totals", document)
+
+    def test_the_raw_document_shares_the_run_identifier_and_nothing_else(self):
+        recorder = StubRecorder(StubCall("first", {"input_tokens": 2}), StubCall("second"))
+        document = runner.perform(
+            propose=perfect,
+            runtime=empty_runtime(),
+            model="m",
+            decoding=DECODING,
+            recorder=recorder,
+        )
+        raw = runner.raw_document(document, recorder.calls)
+        self.assertEqual(raw["run_identifier"], document["run_identifier"])
+        self.assertEqual([entry["text"] for entry in raw["calls"]], ["first", "second"])
+        self.assertEqual(raw["usage_totals"], {"input_tokens": 2})
+        # The raw file carries no report, no judgement and no thresholds:
+        # it is what the calls returned, not a second opinion on them.
+        self.assertEqual(sorted(raw), ["calls", "run_identifier", "usage_totals"])
+
+    def test_the_raw_document_is_json(self):
+        recorder = StubRecorder(StubCall("t", {"input_tokens": 1}))
+        document = runner.perform(
+            propose=perfect, runtime=empty_runtime(), model="m", decoding=DECODING,
+            recorder=recorder,
+        )
+        raw = runner.raw_document(document, recorder.calls)
+        self.assertEqual(json.loads(json.dumps(raw)), raw)
+
+    def test_the_report_and_the_outcomes_are_untouched_by_recording(self):
+        # #90 adds one key to the main artifact and nothing else. A recorder
+        # that changed a metric would change what the Section 8 gate reads.
+        without = runner.perform(
+            propose=perfect, runtime=empty_runtime(), model="m", decoding=DECODING
+        )
+        with_recorder = runner.perform(
+            propose=perfect, runtime=empty_runtime(), model="m", decoding=DECODING,
+            recorder=StubRecorder(StubCall("t", {"input_tokens": 1})),
+        )
+        # `started_at` is the wall clock and `run_identifier` is a fresh
+        # uuid; everything else in the report is a measurement and must be
+        # identical, recorder or not.
+        for document in (without, with_recorder):
+            document["report"].pop("started_at")
+        self.assertEqual(without["report"], with_recorder["report"])
+        self.assertEqual(without["judgement"], with_recorder["judgement"])
+        self.assertEqual(
+            sorted(set(with_recorder) - set(without)), ["usage_totals"]
+        )
+
+
+class TheWorkflowUploadsBothFilesAndCommitsNeither(unittest.TestCase):
+    """The `path:` block, read as text so it needs no YAML dependency.
+
+    `repository-checks` installs nothing, so a test that imported PyYAML
+    would be skipped in the one job that always runs. What can actually
+    drift is the filename: `run.py` derives it and the workflow names it,
+    and nothing else ties the two together.
+    """
+
+    def setUp(self):
+        self.text = WORKFLOW.read_text()
+
+    def test_the_upload_names_the_file_the_runner_actually_writes(self):
+        written = runner.raw_path(runner.DEFAULT_ARTIFACT).name
+        self.assertEqual(written, "milestone-2-comparison.raw.json")
+        self.assertIn(f"\n            {written}\n", self.text)
+        self.assertIn(f"\n            {runner.DEFAULT_ARTIFACT.name}\n", self.text)
+
+    def test_the_dispatch_step_passes_the_artifact_the_paths_derive_from(self):
+        self.assertIn(
+            f"--artifact {runner.DEFAULT_ARTIFACT.name}", self.text
+        )
+
+    def test_the_workflow_says_the_raw_file_is_never_committed(self):
+        # Not decoration. The rule lives nowhere a check can enforce it, so
+        # the next reader of this file has to be told by the file.
+        self.assertIn("never", self.text)
+        self.assertIn("committed", self.text)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("yaml") is not None, "PyYAML is not installed"
+    )
+    def test_the_path_parses_as_two_entries(self):
+        # Confirms the two names are the `path:` block rather than text that
+        # merely appears in the file. Skipped where PyYAML is absent; the
+        # assertions above are the ones that always run.
+        import yaml
+
+        document = yaml.safe_load(self.text)
+        steps = document["jobs"]["comparison"]["steps"]
+        upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact"))
+        self.assertEqual(
+            upload["with"]["path"].split(),
+            [runner.DEFAULT_ARTIFACT.name, runner.raw_path(runner.DEFAULT_ARTIFACT).name],
+        )
+        self.assertEqual(upload["with"]["if-no-files-found"], "error")
+
+
 class TheModuleStaysImportableWithoutTheSdkOrTheDriver(unittest.TestCase):
     def test_module_level_imports_name_neither(self):
         import ast
@@ -682,6 +893,172 @@ class TheAdapterPathNeverFallsBackToTheBaseline(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_SDK, "the adapter extra is not installed")
+class TheRealAdapterRecordsEveryCallOverTheWholeSet(unittest.TestCase):
+    """#90's acceptance evidence, end to end, against the real `Adapter`.
+
+    The client is a stub that echoes the request it was handed, so record
+    *n* is identifiably case *n*: 48 identical records would satisfy a count
+    and prove nothing about order. No credential is spent and no socket is
+    opened.
+    """
+
+    TOKENS = {"input_tokens": 10, "output_tokens": 3}
+
+    class EchoingUsage:
+        """The SDK returns a model object, not a mapping. So does this."""
+
+        def __init__(self, counts):
+            self._counts = counts
+
+        def model_dump(self):
+            return dict(self._counts)
+
+    def adapter(self, *, usage=True):
+        tokens = self.TOKENS
+
+        class Echoing:
+            def __init__(inner):
+                inner.messages = types.SimpleNamespace(create=inner._create)
+
+            def _create(inner, **keywords):
+                asked = keywords["messages"][0]["content"]
+                body = json.dumps({"route": "unsupported", "arguments": {}, "asked": asked})
+                fields = {
+                    "stop_reason": "end_turn",
+                    "content": [types.SimpleNamespace(type="text", text=body)],
+                }
+                if usage:
+                    # A `Mock` would be wrong here: it invents `usage` and
+                    # `model_dump` on demand, so the "SDK exposed nothing"
+                    # case could not be expressed at all.
+                    fields["usage"] = TheRealAdapterRecordsEveryCallOverTheWholeSet.EchoingUsage(
+                        tokens
+                    )
+                return types.SimpleNamespace(**fields)
+
+        return Adapter(client=Echoing())
+
+    def run_once(self, *, usage=True):
+        adapter = self.adapter(usage=usage)
+        document = runner.perform(
+            propose=adapter.propose,
+            runtime=empty_runtime(),
+            model=REAL_MODEL,
+            decoding=DECODING,
+            recorder=adapter,
+        )
+        return adapter, document
+
+    def test_one_record_per_case_in_registered_order_carrying_the_stubs_text(self):
+        adapter, document = self.run_once()
+        raw = runner.raw_document(document, adapter.calls)
+        self.assertEqual(len(raw["calls"]), 48)
+        self.assertEqual(len(EVALUATION_SET), 48)
+        for case, entry in zip(EVALUATION_SET, raw["calls"]):
+            self.assertEqual(json.loads(entry["text"])["asked"], case.text, case.identifier)
+            self.assertEqual(entry["stop_reason"], "end_turn")
+            self.assertEqual(entry["usage"], self.TOKENS)
+
+    def test_the_totals_are_the_sum_over_all_forty_eight_calls(self):
+        _, document = self.run_once()
+        self.assertEqual(
+            document["usage_totals"],
+            {"input_tokens": 10 * 48, "output_tokens": 3 * 48},
+        )
+
+    def test_a_stub_exposing_no_usage_leaves_the_key_out_and_raises_nothing(self):
+        adapter, document = self.run_once(usage=False)
+        self.assertNotIn("usage_totals", document)
+        raw = runner.raw_document(document, adapter.calls)
+        self.assertEqual(len(raw["calls"]), 48)
+        self.assertIsNone(raw["usage_totals"])
+        self.assertTrue(all(entry["usage"] is None for entry in raw["calls"]))
+
+    def test_the_baseline_makes_no_model_call(self):
+        # `compare` runs both resolvers. Only the adapter's is the model's,
+        # and 48 rather than 96 records is what says so.
+        adapter, _ = self.run_once()
+        self.assertEqual(len(adapter.calls), 48)
+
+
+@unittest.skipUnless(HAS_SDK, "the adapter extra is not installed")
+@unittest.skipUnless(HAS_DRIVER, "the database driver is not installed")
+class TheWiringWritesBothFilesAndHandsOverTheRecorder(unittest.TestCase):
+    """`main` is what a dispatched run executes, and #90 changes what it writes.
+
+    `TheWiringPassesTheRealPin` below watches the pin the same way. The
+    model and the database are replaced, so this spends no credential,
+    opens no connection and makes no network call.
+    """
+
+    def test_main_writes_the_artifact_and_the_raw_file_beside_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = pathlib.Path(directory) / "comparison.json"
+            with (
+                unittest.mock.patch.object(
+                    adapter_client.Adapter,
+                    "from_environment",
+                    classmethod(lambda cls: cls(client=object())),
+                ),
+                unittest.mock.patch.object(
+                    runtime_connection, "PsycopgDatabase", lambda **keywords: object()
+                ),
+                unittest.mock.patch.object(
+                    runner, "perform", lambda **keywords: self.document
+                ),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as printed:
+                    code = runner.main(["--artifact", str(artifact)])
+            self.assertEqual(code, 0)
+            raw = runner.raw_path(artifact)
+            self.assertTrue(artifact.exists(), "main did not write the artifact")
+            self.assertTrue(raw.exists(), "main did not write the raw record")
+            self.assertEqual(
+                json.loads(raw.read_text())["run_identifier"],
+                json.loads(artifact.read_text())["run_identifier"],
+            )
+            # The operator is told where the second file went and that it is
+            # not for committing.
+            self.assertIn(raw.name, printed.getvalue())
+            self.assertIn("not committed", printed.getvalue())
+
+    def test_main_hands_the_runner_the_adapter_as_the_recorder(self):
+        # The recorder has to be the *same* object whose `propose` ran, or
+        # the raw file records a different adapter's calls -- which is to
+        # say, none.
+        recorded = {}
+
+        def recording_perform(**keywords):
+            recorded.update(keywords)
+            return self.document
+
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = pathlib.Path(directory) / "artifact.json"
+            with (
+                unittest.mock.patch.object(runner, "perform", recording_perform),
+                unittest.mock.patch.object(
+                    adapter_client.Adapter,
+                    "from_environment",
+                    classmethod(lambda cls: cls(client=object())),
+                ),
+                unittest.mock.patch.object(
+                    runtime_connection, "PsycopgDatabase", lambda **keywords: object()
+                ),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    runner.main(["--artifact", str(artifact)])
+        recorder = recorded["recorder"]
+        self.assertIsInstance(recorder, Adapter)
+        self.assertIs(recorded["propose"].__self__, recorder)
+
+    def setUp(self):
+        self.document = runner.perform(
+            propose=perfect, runtime=empty_runtime(), model=REAL_MODEL, decoding=DECODING
+        )
+
+
+@unittest.skipUnless(HAS_SDK, "the adapter extra is not installed")
+@unittest.skipUnless(HAS_DRIVER, "the database driver is not installed")
 class TheWiringPassesTheRealPin(unittest.TestCase):
     """#77 gap 1. `main` is what the dispatched workflow runs, and until now
     nothing watched it.
