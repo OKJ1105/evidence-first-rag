@@ -24,9 +24,18 @@ from evidence_first_rag.adapter import Baseline, Proposal, Thresholds, measure
 from evidence_first_rag.adapter import run as runner
 from evidence_first_rag.adapter import vocabulary
 from evidence_first_rag.adapter.evaluation import CURATED, EVALUATION_SET, THRESHOLDS, family
-from evidence_first_rag.adapter.revalidation import _is_verbatim_token
+from evidence_first_rag.adapter.revalidation import _is_verbatim_token, answer
+from evidence_first_rag.conformance.normalize import normalize as normalize_result
+from evidence_first_rag.evidence import (
+    EvidenceBundle,
+    ProducingLayer,
+    ReadOnlySafeguards,
+    SourceTrace,
+)
 from evidence_first_rag.references import SCOPE_DIMENSIONS
+from evidence_first_rag.result import Result
 from evidence_first_rag.runtime import Runtime
+from evidence_first_rag.status import OPENS_NO_CONNECTION, Status
 
 from .runtime_support import FakeDatabase, candidate_row, message_row
 
@@ -60,6 +69,84 @@ def perfect(text):
             if len(values) == 2:
                 return Proposal(route="message_facts", arguments={dimension: values})
     return Proposal(route="unsupported", arguments={})
+
+
+# Section 5's three no-connection statuses, as the artifact spells them.
+NO_CONNECTION = frozenset(status.value for status in OPENS_NO_CONNECTION)
+
+# The `P` cases that route to `message_facts` with a `message_key`, which is
+# the shape both refusal families in the first Milestone 2 run took: a
+# required lookup key absent, or a value that is not in the request text.
+MESSAGE_KEY_CASES = tuple(
+    case
+    for case in EVALUATION_SET
+    if family(case) == "P"
+    and case.expected_route == "message_facts"
+    and "message_key" in case.expected_arguments
+)
+MESSAGE_KEY_IDENTIFIERS = frozenset(case.identifier for case in MESSAGE_KEY_CASES)
+
+# An identifier of the registered shape that appears in no request text.
+NOT_IN_ANY_REQUEST = "SAMPLE_MSG_NOWHERE_IN_THE_REQUEST"
+
+
+def without_the_message_key(text):
+    """`perfect`, except that it drops the one required lookup key.
+
+    The twenty-one-case refusal family from the first run: the route is
+    determined and the scope is complete, but no canonical reference can be
+    formed, so Section 5 makes the outcome terminal `needs_entity_discovery`.
+    """
+    case = BY_TEXT[text]
+    if case.identifier in MESSAGE_KEY_IDENTIFIERS:
+        arguments = {
+            name: value
+            for name, value in case.expected_arguments.items()
+            if name != "message_key"
+        }
+        return Proposal(route=case.expected_route, arguments=arguments)
+    return perfect(text)
+
+
+def inventing_the_message_key(text):
+    """`perfect`, except that the lookup key is not in the request text.
+
+    The twelve-case family: Section 4.6 lets the adapter extract only values
+    explicitly present in the request, and this is the check that stands
+    between a plausible identifier and a lookup that would return real facts
+    about the wrong thing.
+    """
+    case = BY_TEXT[text]
+    if case.identifier in MESSAGE_KEY_IDENTIFIERS:
+        return Proposal(
+            route=case.expected_route,
+            arguments=dict(case.expected_arguments) | {"message_key": NOT_IN_ANY_REQUEST},
+        )
+    return perfect(text)
+
+
+class RefusingRuntime:
+    """A runtime that refuses everything, including what revalidation passed.
+
+    Not a thing the real `Runtime` can be -- that is the point. It exists to
+    break `TheRuntimeNeverRefusesWhatRevalidationAccepted`, so that the
+    invariant is a check that has been seen to fail rather than a claim
+    (#17 rule 9).
+    """
+
+    fixture_provenance = ()
+
+    def execute(self, request):
+        return Result(
+            status=Status.UNSUPPORTED,
+            evidence_bundle=EvidenceBundle(
+                route="message_facts",
+                read_only_safeguards=ReadOnlySafeguards(
+                    role_name="", read_only_transaction=False, connection_opened=False
+                ),
+            ),
+            source_trace=SourceTrace(producing_layer=ProducingLayer.RUNTIME),
+        )
 
 
 def empty_runtime():
@@ -280,6 +367,255 @@ class TheGateReachesTheDocument(unittest.TestCase):
         line = runner.summary(document)
         self.assertIn("adoptable=True", line)
         self.assertNotRegex(line.lower(), r"\badopt\b")
+
+
+class TheOutcomeSaysWhatWasProposedAndWhyItWasRefused(unittest.TestCase):
+    """#89. The first Milestone 2 run refused all forty-eight proposals and
+    the artifact could not say what any of them had proposed or which check
+    stopped it.
+
+    Every assertion below reads `as_json` output through the written
+    document rather than the dataclass, because the artifact is what #58 is
+    decided on and a field that never reaches the JSON is not recorded.
+    """
+
+    def setUp(self):
+        self.document = runner.perform(
+            propose=perfect, runtime=empty_runtime(), model="claude-opus-5", decoding=DECODING
+        )
+        self.outcomes = {
+            outcome["identifier"]: outcome
+            for outcome in self.document["report"]["adapter_outcomes"]
+        }
+
+    def outcomes_for(self, resolve):
+        document = runner.perform(
+            propose=resolve, runtime=empty_runtime(), model="m", decoding=DECODING
+        )
+        return {
+            outcome["identifier"]: outcome
+            for outcome in document["report"]["adapter_outcomes"]
+        }
+
+    def test_every_positive_case_records_the_arguments_it_proposed(self):
+        seen = 0
+        for case in EVALUATION_SET:
+            if family(case) != "P":
+                continue
+            outcome = self.outcomes[case.identifier]
+            self.assertEqual(
+                outcome["proposed_arguments"], dict(case.expected_arguments), case.identifier
+            )
+            self.assertIsNone(outcome["refusal_detail"], case.identifier)
+            self.assertIsNone(outcome["producing_layer"], case.identifier)
+            seen += 1
+        self.assertEqual(seen, 33)
+
+    def test_a_positive_case_that_reached_the_empty_database_records_its_coverage_gap(self):
+        # #89's first acceptance bullet asks for `limitations` `[]` here. It
+        # cannot be: `empty_runtime()` holds no rows, so every accepted
+        # proposal resolves to `coverage_gap`, and Section 7 requires that
+        # status to carry a `coverage_not_established` entry -- `Result`
+        # refuses to construct without one. `[]` is the value when the field
+        # does not apply, which on this runtime is only the refused cases.
+        # Recorded rather than worked around: emptying it would discard the
+        # one thing the runtime said about the outcome.
+        outcome = self.outcomes["EV-P-FX-001-0"]
+        self.assertEqual(outcome["status"], "coverage_gap")
+        self.assertEqual(
+            [entry["kind"] for entry in outcome["limitations"]], ["coverage_not_established"]
+        )
+
+    def test_a_missing_lookup_key_is_needs_entity_discovery_and_names_the_key(self):
+        outcomes = self.outcomes_for(without_the_message_key)
+        for case in MESSAGE_KEY_CASES:
+            outcome = outcomes[case.identifier]
+            self.assertEqual(outcome["refused_as"], "needs_entity_discovery", case.identifier)
+            self.assertIn("message_key", outcome["refusal_detail"], case.identifier)
+            self.assertNotIn("message_key", outcome["proposed_arguments"], case.identifier)
+
+    def test_a_refused_needs_entity_discovery_outcome_carries_the_one_limitation(self):
+        outcomes = self.outcomes_for(without_the_message_key)
+        for case in MESSAGE_KEY_CASES:
+            outcome = outcomes[case.identifier]
+            self.assertEqual(
+                [entry["kind"] for entry in outcome["limitations"]],
+                ["entity_discovery_not_implemented"],
+                case.identifier,
+            )
+
+    def test_a_value_that_is_not_in_the_request_text_is_invalid_request(self):
+        outcomes = self.outcomes_for(inventing_the_message_key)
+        for case in MESSAGE_KEY_CASES:
+            outcome = outcomes[case.identifier]
+            self.assertEqual(outcome["refused_as"], "invalid_request", case.identifier)
+            self.assertIn("message_key", outcome["refusal_detail"], case.identifier)
+            self.assertEqual(
+                outcome["proposed_arguments"]["message_key"],
+                NOT_IN_ANY_REQUEST,
+                case.identifier,
+            )
+
+    def test_an_unsupported_outcome_records_the_layer_that_produced_it(self):
+        # Section 5: "the trace records whether the adapter or the runtime
+        # produced it". `perfect` emits the adapter's own `unsupported`
+        # literal for the `U` cases, so the layer is the adapter.
+        unsupported = [
+            self.outcomes[case.identifier]
+            for case in EVALUATION_SET
+            if family(case) == "U"
+        ]
+        self.assertEqual(len(unsupported), 6)
+        for outcome in unsupported:
+            self.assertEqual(outcome["producing_layer"], "adapter")
+
+    def test_a_contradictory_scope_survives_serialisation_as_the_two_values(self):
+        # FX-110's registered shape: the adapter proposed two values for one
+        # dimension, which arrive as a list inside one argument name. A
+        # `dict[str, str]` that dropped anything non-textual would erase the
+        # case the artifact is read to find.
+        contradictory = [
+            self.outcomes[case.identifier]
+            for case in EVALUATION_SET
+            if family(case) == "X"
+        ]
+        self.assertEqual(len(contradictory), 5)
+        for outcome in contradictory:
+            self.assertEqual(outcome["refused_as"], "invalid_request")
+            values = list(outcome["proposed_arguments"].values())
+            self.assertEqual(len(values), 1)
+            self.assertTrue(values[0].startswith("["), values[0])
+            for value in values:
+                self.assertIsInstance(value, str)
+
+    def test_a_run_without_a_runtime_leaves_the_two_runtime_fields_empty(self):
+        document = runner.perform(
+            propose=perfect, runtime=None, model="m", decoding=DECODING
+        )
+        for outcome in document["report"]["adapter_outcomes"]:
+            self.assertEqual(outcome["limitations"], [])
+            self.assertIsNone(outcome["producing_layer"])
+
+    def test_the_report_gains_nothing_at_the_top_level(self):
+        # #89: the new content belongs to an outcome, not to the report.
+        self.assertEqual(
+            sorted(self.document["report"]),
+            [
+                "adapter",
+                "adapter_outcomes",
+                "baseline",
+                "baseline_outcomes",
+                "decoding",
+                "executed_against_a_database",
+                "model",
+                "started_at",
+            ],
+        )
+        self.assertEqual(
+            sorted(self.document),
+            [
+                "contract_identifier",
+                "contract_version",
+                "decoding",
+                "judgement",
+                "model",
+                "prompt_digest",
+                "report",
+                "run_identifier",
+                "started_at",
+                "thresholds",
+            ],
+        )
+
+    def test_the_baseline_outcomes_carry_the_same_four_fields(self):
+        # `measure` is one function and both resolvers go through it, but the
+        # artifact records two lists and only one of them is read by default.
+        for outcome in self.document["report"]["baseline_outcomes"]:
+            for field in (
+                "proposed_arguments",
+                "refusal_detail",
+                "limitations",
+                "producing_layer",
+            ):
+                self.assertIn(field, outcome, outcome["identifier"])
+
+
+class TheLimitationShapeIsTheOneAlreadyRegistered(unittest.TestCase):
+    """`limitations` is serialised the way `conformance/normalize.py` does it.
+
+    #89: "using whatever serialisation `Limitation` already has; do not
+    invent one". That shape is the one check `A1` compares a result against,
+    and a comment asserting the two agree would not notice either moving.
+    """
+
+    def test_every_outcome_matches_the_registered_serialisation(self):
+        _, outcomes = measure(EVALUATION_SET, perfect, empty_runtime())
+        entries = 0
+        for case, outcome in zip(EVALUATION_SET, outcomes):
+            result = answer(empty_runtime(), perfect(case.text), case.text)
+            self.assertEqual(
+                outcome.as_json()["limitations"],
+                normalize_result(result)["limitations"],
+                case.identifier,
+            )
+            entries += len(outcome.limitations)
+        # 33 `coverage_gap` cases and 4 terminal `needs_entity_discovery`
+        # ones; the 5 `invalid_request` and 6 `unsupported` refusals carry
+        # none, which is what makes the comparison above non-vacuous.
+        self.assertEqual(entries, 37)
+
+    def test_the_comparison_discriminates(self):
+        # #17 rule 9. A limitation whose kind was written some other way
+        # fails the assertion above, so it is a check that can fail.
+        _, outcomes = measure(EVALUATION_SET, perfect, empty_runtime())
+        carrying = next(o for o in outcomes if o.limitations)
+        self.assertNotEqual(
+            [{"kind": limitation.kind.name, "detail": limitation.detail}
+             for limitation in carrying.limitations],
+            carrying.as_json()["limitations"],
+        )
+
+
+class TheRuntimeNeverRefusesWhatRevalidationAccepted(unittest.TestCase):
+    """Why `refusal_detail` has one source and not two.
+
+    #89's table asks for the detail of "the runtime's own refusal when
+    revalidation passed and the runtime refused". That combination cannot
+    occur on the adapter path: `answer` revalidates with the runtime's own
+    `runtime.request.validate`, then hands the *same* `Request` to the
+    runtime, which validates it again with the same pure function. So a
+    proposal that passed revalidation is never refused by the runtime, and
+    `Runtime.execute` swallows its `Refusal` into a `Result` besides, so
+    there would be no detail left to read.
+
+    That is an argument, and #17 rule 9 says an argument is not evidence.
+    This is the check.
+    """
+
+    RESOLVERS = (perfect, without_the_message_key, inventing_the_message_key)
+
+    def test_an_accepted_proposal_never_comes_back_refused(self):
+        for resolve in self.RESOLVERS:
+            _, outcomes = measure(EVALUATION_SET, resolve, empty_runtime())
+            for outcome in outcomes:
+                if outcome.accepted:
+                    self.assertNotIn(outcome.status, NO_CONNECTION, outcome.identifier)
+                    self.assertIsNone(outcome.refusal_detail, outcome.identifier)
+                else:
+                    self.assertIn(outcome.status, NO_CONNECTION, outcome.identifier)
+                    self.assertIsNotNone(outcome.refusal_detail, outcome.identifier)
+
+    def test_the_invariant_discriminates(self):
+        # A runtime that refuses what revalidation accepted is exactly the
+        # shape the unreachable branch would take. Under it the assertion
+        # above inverts, which is what makes the `None` above a finding
+        # rather than an omission.
+        _, outcomes = measure(EVALUATION_SET, perfect, RefusingRuntime())
+        accepted = [outcome for outcome in outcomes if outcome.accepted]
+        self.assertTrue(accepted)
+        for outcome in accepted:
+            self.assertIn(outcome.status, NO_CONNECTION)
+            self.assertIsNone(outcome.refusal_detail)
 
 
 class TheModuleStaysImportableWithoutTheSdkOrTheDriver(unittest.TestCase):

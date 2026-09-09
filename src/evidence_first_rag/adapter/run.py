@@ -21,6 +21,14 @@ artifact records what the client actually sends; and the SHA-256 of the
 fixed instructions and of the vocabulary payload, which Section 4.6 (0.6.0)
 requires recorded by digest -- a change to either reopens the comparison.
 
+**Model-emitted text in a committed artifact.** Each outcome now records the
+arguments the adapter proposed and the detail of the refusal that stopped
+them, so this document is the one place non-`SAMPLE_*` content could enter
+the tree when it is committed to `docs/acceptance/`; the pull request that
+commits it is gated by `scripts/checks/scan_sensitive_strings.py`, which is
+registered in `.github/agent-checks.json` and in CI and scans the whole
+working tree.
+
 `perform` is pure with respect to the model and the database: both arrive as
 arguments. `main` is the wiring that supplies the real ones, and it imports
 the SDK and the driver only there, so this module is importable -- and
