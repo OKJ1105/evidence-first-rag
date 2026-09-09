@@ -24,10 +24,18 @@ requires recorded by digest -- a change to either reopens the comparison.
 **Model-emitted text in a committed artifact.** Each outcome now records the
 arguments the adapter proposed and the detail of the refusal that stopped
 them, so this document is the one place non-`SAMPLE_*` content could enter
-the tree when it is committed to `docs/acceptance/`; the pull request that
+the tree when it is committed to `docs/acceptance/`. The pull request that
 commits it is gated by `scripts/checks/scan_sensitive_strings.py`, which is
 registered in `.github/agent-checks.json` and in CI and scans the whole
-working tree.
+working tree -- but only for what a scanner can decide: credentials,
+internal URLs, local machine paths and personal information. It says so
+itself, and the exception matters here: a real-world identifier is not
+recognisable from its shape, so a model that emits one into
+`proposed_arguments` passes that scan. `validate_fixtures.py` enforces the
+`SAMPLE_*` convention on `fixtures/` and does not read `docs/`. On this
+artifact the AGENTS.md "portable placeholder identifiers only" obligation
+is therefore discharged by the human review of the pull request that
+commits it, and by nothing mechanical.
 
 `perform` is pure with respect to the model and the database: both arrive as
 arguments. `main` is the wiring that supplies the real ones, and it imports

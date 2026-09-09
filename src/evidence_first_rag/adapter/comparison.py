@@ -130,7 +130,14 @@ class Outcome:
     # so the artifact shows *why* a no-route case counted, not only that it did.
     refused_as: str | None = None
     # What the proposal actually carried, untouched. `{}` when it carried no
-    # mapping at all, which is itself the refusal `refused_as` records.
+    # mapping at all -- and that is a blind spot rather than a record: a
+    # proposal whose `arguments` were a list and one that genuinely carried
+    # none both serialise to `{}` and both refuse as `invalid_request`, a
+    # status several unrelated causes share. `refusal_detail` recovers the
+    # *type* ("arguments must be a mapping, not list"); nothing recovers the
+    # content. Carrying it would mean widening this field beyond the
+    # `dict[str, str]` #89 registers, or widening the refusal detail in
+    # `runtime/request.py`, and both are outside this slice.
     proposed_arguments: object = dataclasses.field(default_factory=dict)
     # The refusal's own explanation -- the missing lookup key, or the argument
     # whose value is not in the request text. `None` when nothing refused.
@@ -189,7 +196,8 @@ def _arguments_as_json(value: object) -> dict[str, str]:
     """The proposal's arguments as a plain `dict[str, str]`.
 
     `{}` when the proposal carried no mapping, because there is then nothing
-    argument-shaped to record. Otherwise every name and value goes through
+    argument-shaped to record -- see the field's own comment for what that
+    loses. Otherwise every name and value goes through
     `_as_text`, which is what keeps the diagnostic that matters: Section
     8.1's `FX-110` is "the adapter proposed two `revision_label` values", and
     those two values arrive as a list inside one name. A serialisation that
