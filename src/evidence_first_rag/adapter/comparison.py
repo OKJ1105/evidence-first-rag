@@ -27,6 +27,7 @@ import datetime
 import types
 from collections.abc import Mapping
 
+from ..evidence import Limitation
 from ..routes import Route
 from ..runtime.request import Refusal
 from ..status import Status
@@ -95,7 +96,29 @@ class EvaluationCase:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Outcome:
-    """What one resolver did with one case."""
+    """What one resolver did with one case, and enough of why to diagnose it.
+
+    The first Milestone 2 comparison refused all forty-eight proposals and the
+    artifact could not say what any of them had proposed or which check
+    stopped it. `proposed_route`, `accepted` and `refused_as` name the shape
+    of the failure; the four fields below carry its content, which is what
+    turns "the adapter scored 0.1667" into a finding someone can act on.
+
+    `proposed_route` and `proposed_arguments` are both typed `object` for the
+    reason `Proposal` is: Section 4.6 makes adapter output untrusted input,
+    and a field that refused a malformed proposal here would raise where the
+    artifact needs to record what arrived. Serialisation, not construction, is
+    where they become text.
+
+    Recording the proposed arguments is not the thing Section 7 forbids. That
+    rule is about `bound_parameters` on a `Result` -- the arguments of a
+    rejected request "are never reported as such", because a result echoing
+    them would present a rejected proposal as a fact the runtime acted on.
+    This is not a `Result` and claims nothing about the runtime: it is the
+    measurement of what a model proposed, recorded beside the deterministic
+    layer's refusal of it, which is the separation Charter Section 9 asks the
+    Milestone 2 trace to show.
+    """
 
     identifier: str
     proposed_route: object
@@ -106,19 +129,84 @@ class Outcome:
     # The status revalidation refused with, or None when it accepted. Recorded
     # so the artifact shows *why* a no-route case counted, not only that it did.
     refused_as: str | None = None
+    # What the proposal actually carried, untouched. `{}` when it carried no
+    # mapping at all -- and that is a blind spot rather than a record: a
+    # proposal whose `arguments` were a list and one that genuinely carried
+    # none both serialise to `{}` and both refuse as `invalid_request`, a
+    # status several unrelated causes share. `refusal_detail` recovers the
+    # *type* ("arguments must be a mapping, not list"); nothing recovers the
+    # content. Carrying it would mean widening this field beyond the
+    # `dict[str, str]` #89 registers, or widening the refusal detail in
+    # `runtime/request.py`, and both are outside this slice.
+    proposed_arguments: object = dataclasses.field(default_factory=dict)
+    # The refusal's own explanation -- the missing lookup key, or the argument
+    # whose value is not in the request text. `None` when nothing refused.
+    #
+    # Only revalidation can fill this, and that is not a gap. `answer`
+    # revalidates with the runtime's own `validate` and then hands the *same*
+    # `Request` to the runtime, which validates it again with the same pure
+    # function: a proposal that passed revalidation cannot be refused by the
+    # runtime's validation, so there is no second detail to lose.
+    # `TheRuntimeNeverRefusesWhatRevalidationAccepted` in
+    # `tests/test_adapter_run.py` holds that invariant rather than leaving it
+    # as a claim in a comment.
+    refusal_detail: str | None = None
+    # The `Result`'s own `limitations`, which is where a terminal
+    # `needs_entity_discovery` says so. Empty when the run had no runtime.
+    limitations: tuple[Limitation, ...] = ()
+    # `source_trace.producing_layer`: Section 5's "the trace records whether
+    # the adapter or the runtime produced it", carried through to the artifact.
+    producing_layer: str | None = None
 
     def as_json(self) -> dict:
         return {
             "identifier": self.identifier,
-            "proposed_route": self.proposed_route
-            if isinstance(self.proposed_route, str)
-            else repr(self.proposed_route),
+            "proposed_route": _as_text(self.proposed_route),
+            "proposed_arguments": _arguments_as_json(self.proposed_arguments),
             "accepted": self.accepted,
             "correct": self.correct,
             "false_resolution": self.false_resolution,
             "refused_as": self.refused_as,
+            "refusal_detail": self.refusal_detail,
             "status": self.status,
+            "producing_layer": self.producing_layer,
+            # The shape `conformance/normalize.py` already writes a
+            # `Limitation` in, not a second one invented here.
+            # `TheLimitationShapeIsTheOneAlreadyRegistered` compares the two
+            # so they cannot drift.
+            "limitations": [
+                {"kind": limitation.kind.value, "detail": limitation.detail}
+                for limitation in self.limitations
+            ],
         }
+
+
+def _as_text(value: object) -> str:
+    """A proposal's field as the text the artifact records it in.
+
+    `repr` rather than `str` for anything that is not already text: the
+    artifact is read to find out what the model emitted, and `repr` keeps the
+    difference between the string `"None"` and `None`, and between one value
+    and a list of two.
+    """
+    return value if isinstance(value, str) else repr(value)
+
+
+def _arguments_as_json(value: object) -> dict[str, str]:
+    """The proposal's arguments as a plain `dict[str, str]`.
+
+    `{}` when the proposal carried no mapping, because there is then nothing
+    argument-shaped to record -- see the field's own comment for what that
+    loses. Otherwise every name and value goes through
+    `_as_text`, which is what keeps the diagnostic that matters: Section
+    8.1's `FX-110` is "the adapter proposed two `revision_label` values", and
+    those two values arrive as a list inside one name. A serialisation that
+    dropped anything that was not already a string would erase exactly the
+    case the artifact is being read to find.
+    """
+    if not isinstance(value, Mapping):
+        return {}
+    return {_as_text(name): _as_text(item) for name, item in value.items()}
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -183,22 +271,36 @@ def measure(cases, resolve, runtime=None) -> tuple[Metrics, tuple[Outcome, ...]]
     weakened = []
     for case in cases:
         proposal = resolve(case.text)
-        accepted, refused_as = _revalidated(proposal, case.text)
+        accepted, refused_as, refusal_detail = _revalidated(proposal, case.text)
         correct = _correct(proposal, case, refused_as)
         outcome_status = None
+        limitations: tuple[Limitation, ...] = ()
+        producing_layer = None
         if runtime is not None:
-            outcome_status = answer(runtime, proposal, case.text).status.value
+            # The whole `Result`, not only its status. `limitations` and
+            # `source_trace` were built to explain an outcome, and discarding
+            # them here is what left the first run's artifact unable to say
+            # why forty-eight proposals came to nothing.
+            result = answer(runtime, proposal, case.text)
+            outcome_status = result.status.value
+            limitations = result.limitations
+            if result.source_trace.producing_layer is not None:
+                producing_layer = result.source_trace.producing_layer.value
             if case.expected_status in NEGATIVE and outcome_status == Status.SUCCESS.value:
                 weakened.append(case.identifier)
         outcomes.append(
             Outcome(
                 identifier=case.identifier,
                 proposed_route=proposal.route,
+                proposed_arguments=proposal.arguments,
                 accepted=accepted,
                 correct=correct,
                 false_resolution=accepted and not correct,
                 status=outcome_status,
                 refused_as=refused_as,
+                refusal_detail=refusal_detail,
+                limitations=limitations,
+                producing_layer=producing_layer,
             )
         )
     return (
@@ -212,18 +314,27 @@ def measure(cases, resolve, runtime=None) -> tuple[Metrics, tuple[Outcome, ...]]
     )
 
 
-def _revalidated(proposal: Proposal, request_text: str) -> tuple[bool, str | None]:
+def _revalidated(
+    proposal: Proposal, request_text: str
+) -> tuple[bool, str | None, str | None]:
     """Whether revalidation lets this proposal reach the database, and if not,
-    the status it refused with.
+    the status it refused with and the detail that explains it.
 
-    One call answers both questions, so `accepted` and `_correct` can never
-    disagree about the same proposal.
+    One call answers all three, so `accepted`, `_correct` and the recorded
+    explanation can never disagree about the same proposal.
+
+    The detail is the part the artifact was missing. Every refusal here names
+    the specific thing that was wrong -- which lookup key is absent, which
+    argument carries a value the request text does not contain -- and the
+    first Milestone 2 run threw all forty-eight of them away, leaving twenty-
+    one `needs_entity_discovery` and twelve `invalid_request` refusals with no
+    way to tell which key or which value.
     """
     try:
         revalidate(proposal, request_text)
     except Refusal as refusal:
-        return False, refusal.status.value
-    return True, None
+        return False, refusal.status.value, refusal.detail
+    return True, None, None
 
 
 def _correct(proposal: Proposal, case: EvaluationCase, refused_as: str | None) -> bool:
