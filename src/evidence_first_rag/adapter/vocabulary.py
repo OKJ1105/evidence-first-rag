@@ -93,8 +93,17 @@ def payload() -> dict:
 # at `project_code`. The three names sorted before it -- `mapping_key`,
 # `message_key`, `network_name` -- were therefore unreachable once the object
 # had opened, and were emitted on 0 of 33 positive cases. Two of them are
-# required lookup keys, so every positive case refused. #91 carries the
-# reading and the independent adjudication.
+# required lookup keys, so every positive case refused.
+#
+# **Where to check that.** Not from this tree today: the run's artifact is
+# not committed yet and the per-call raw record never is, by design (see
+# `run.py`). The reading and an independent adjudication that recomputed
+# every figure from the primary data are on #91 -- the finding at
+# `issues/91#issuecomment-5611514697`, the adjudication at
+# `#issuecomment-5611662689`. The artifact itself lands under
+# `docs/acceptance/` when #58 commits it; until then #91 is the record, and
+# a reader deciding whether to re-close this enumeration should start there
+# rather than from the run identifier alone.
 #
 # Closing the names here was never the trust boundary and could not be one:
 # JSON Schema cannot express "the allowlist of whichever route you chose"
