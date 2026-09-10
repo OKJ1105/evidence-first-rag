@@ -251,8 +251,13 @@ def exit_code(document: dict) -> int:
     return 0 if document["judgement"]["judged"] else 2
 
 
+def artifact_text(document: dict) -> str:
+    """The one serialisation of a document: what `write` stores and `main` prints."""
+    return json.dumps(document, indent=2, sort_keys=False) + "\n"
+
+
 def write(path: pathlib.Path, document: dict) -> pathlib.Path:
-    path.write_text(json.dumps(document, indent=2, sort_keys=False) + "\n")
+    path.write_text(artifact_text(document))
     return path
 
 
@@ -307,6 +312,12 @@ def main(argv=None) -> int:
     raw = raw_path(arguments.artifact)
     write(raw, raw_document(document, adapter.calls))
     print(f"{summary(document)}\n  -> {arguments.artifact}\n  -> {raw} (not committed)")
+    # #117. The main document follows the summary on stdout, so a run can be
+    # read from its job log by a reader who cannot download the artifact.
+    # It is the same text `write` put in the artifact, and it is the *main*
+    # document only: the raw record is what the paragraphs above keep out of
+    # everything but its own artifact, and it is not printed.
+    print(artifact_text(document), end="")
     return exit_code(document)
 
 

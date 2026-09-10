@@ -1097,6 +1097,42 @@ class TheWiringWritesBothFilesAndHandsOverTheRecorder(unittest.TestCase):
             self.assertIn(raw.name, printed.getvalue())
             self.assertIn("not committed", printed.getvalue())
 
+    def test_main_prints_the_artifact_after_the_summary_and_never_the_raw_record(self):
+        # #117. The writer session that drives the comparison cannot download
+        # an Actions artifact, but it can read the job log. So the main
+        # document -- the one that is committed under `docs/acceptance/` when
+        # a run is adopted -- follows the summary on stdout, byte for byte
+        # what `write` stored. The raw record does not: it is an artifact
+        # and nothing else, for the reasons `run.py` gives.
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = pathlib.Path(directory) / "comparison.json"
+            with (
+                unittest.mock.patch.object(
+                    adapter_client.Adapter,
+                    "from_environment",
+                    classmethod(lambda cls: cls(client=object())),
+                ),
+                unittest.mock.patch.object(
+                    runtime_connection, "PsycopgDatabase", lambda **keywords: object()
+                ),
+                unittest.mock.patch.object(
+                    runner, "perform", lambda **keywords: self.document
+                ),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as printed:
+                    runner.main(["--artifact", str(artifact)])
+            output = printed.getvalue()
+            stored = artifact.read_text()
+            self.assertTrue(output.endswith(stored), "the artifact text is not the tail of stdout")
+            head = output[: -len(stored)]
+            self.assertIn("Comparison:", head)
+            self.assertIn("not committed", head)
+            # The tail parses back to exactly the written document.
+            self.assertEqual(json.loads(output[len(head):]), json.loads(stored))
+            raw = json.loads(runner.raw_path(artifact).read_text())
+            self.assertIn("calls", raw)
+            self.assertNotIn('"calls"', output)
+
     def test_main_hands_the_runner_the_adapter_as_the_recorder(self):
         # The recorder has to be the *same* object whose `propose` ran, or
         # the raw file records a different adapter's calls -- which is to
