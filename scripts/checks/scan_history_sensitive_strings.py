@@ -173,6 +173,25 @@ def contents(names):
     find nothing in the part it read, and report PASS. A security check that
     says "nothing found" when it did not look is the one failure this module
     exists to avoid, and it is the only one of these three that fails open.
+
+    The separator check after it closes the other half of that. A frame whose
+    declared size is *short* of what git wrote passes the length check — the
+    slice is exactly as long as the header claimed — and leaves `at` inside
+    the leftover content, where the parse reads file content as a header.
+    That does not raise: it ends in a body mapped to the wrong name, and the
+    path is what decides which rules apply to it, so content could be
+    exempted under a rule meant for a file it does not come from. Git writes
+    the separator after every frame, including the last and including a blob
+    whose own content does not end in a newline, so asserting it costs
+    nothing on any real stream.
+
+    **No diagnostic here prints what the stream carried.** Each reports a
+    position, a length, or a field count. A desynchronised parse is reading
+    blob content as a header, so the bytes at hand may be a file's contents
+    rather than git's framing — and this module masks every finding to four
+    characters and a length precisely so a credential is not published a
+    second time in a CI log. A diagnostic printed to the same log has no
+    licence to do otherwise.
     """
     if not names:
         return {}
@@ -190,25 +209,34 @@ def contents(names):
         end = stream.find(b"\n", at)
         if end == -1:
             raise RuntimeError(
-                f"git ended the batch stream mid-header for {name}: "
-                f"{stream[at:at + 60]!r}"
+                f"git ended the batch stream mid-header for {name} at offset "
+                f"{at}, with {len(stream) - at} bytes left"
             )
         header = stream[at:end].split()
         if len(header) < 3:
             # `<name> missing`. Cannot happen for a name git just listed, but
             # a silent mis-parse of the rest of the stream would be worse.
-            raise RuntimeError(f"git could not read {name}: {stream[at:end]!r}")
+            raise RuntimeError(
+                f"git could not read {name}: the header at offset {at} has "
+                f"{len(header)} fields rather than 3"
+            )
         try:
             size = int(header[2])
         except ValueError:
             raise RuntimeError(
-                f"git declared an unreadable size for {name}: {header[2]!r}"
+                f"git declared an unreadable size for {name}: the size field "
+                f"at offset {at} is {len(header[2])} bytes and is not a number"
             ) from None
         blob = stream[end + 1 : end + 1 + size]
         if len(blob) != size:
             raise RuntimeError(
                 f"git declared {size} bytes for {name} and wrote {len(blob)}; "
                 "the batch stream is truncated"
+            )
+        if stream[end + 1 + size : end + 2 + size] != b"\n":
+            raise RuntimeError(
+                f"git did not terminate the frame for {name} at offset "
+                f"{end + 1 + size}; the batch stream is misframed"
             )
         body[name] = blob
         at = end + 1 + size + 1

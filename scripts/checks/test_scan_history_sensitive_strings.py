@@ -515,6 +515,41 @@ class TestAMalformedBatchStream(HistoryCheck):
         self.batch_writes(self.framed(b"# Sample\n"))
         self.assertIn("PASS", self.assert_passes())
 
+    def test_a_frame_that_is_not_terminated_reports_cannot_run(self):
+        """O1 on #108. The last way this parse could desynchronise silently.
+
+        A frame whose declared size is *short* of what git wrote passes the
+        length check — the slice is exactly as long as the header claimed —
+        and leaves the cursor inside the leftover content, where the next
+        header is read out of file content. `test_a_blob_whose_content_looks
+        _like_a_batch_header_is_read_correctly` shows a blob can imitate one,
+        so that ends in a body mapped to the wrong name rather than in an
+        error, and the path is what decides which rules apply to it.
+        """
+        self.batch_writes(b"deadbeefdeadbeef blob 5\nabcdefghijklmnopqrst\n")
+        self.assertIn("misframed", self.assert_fails("CANNOT RUN"))
+
+    def test_no_diagnostic_echoes_what_the_stream_carried(self):
+        """N2 on #108. A diagnostic may not publish what a finding masks.
+
+        Every finding in this module is reduced to four characters and a
+        length, because a credential printed into a CI log is exposed a
+        second time. A diagnostic printed to the same log has no licence to
+        do otherwise — and a desynchronised parse is reading blob content as
+        a header, so each of these three paths can be reached with a
+        credential sitting where git's framing should be.
+        """
+        streams = {
+            "mid-header": b"id " + AWS_KEY.encode(),
+            "too few header fields": AWS_KEY.encode() + b"\nrest\n",
+            "unreadable size": b"deadbeef blob " + AWS_KEY.encode() + b"\nx\n",
+        }
+        for where, stream in streams.items():
+            with self.subTest(where=where):
+                self.batch_writes(stream)
+                output = self.assert_fails("CANNOT RUN")
+                self.assertNotIn(AWS_KEY, output)
+
 
 class TestWhatIsReported(HistoryCheck):
     def test_a_credential_is_not_printed_in_full(self):
