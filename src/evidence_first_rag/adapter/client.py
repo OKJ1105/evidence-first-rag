@@ -19,6 +19,11 @@ request parameter: the route enum is closed in the schema, so `route` comes
 back as one of the four permitted strings or the call fails, rather than as
 something revalidation has to recognise as wrong.
 
+The schema's `arguments` is a list of `{name, value}` pairs (see
+`vocabulary.py` for why an object could not be used); `read` folds it into
+the mapping revalidation expects before handing the proposal on, and that
+fold is the only shaping this file does.
+
 **What each call leaves behind.** `propose` used to return `self.read(response)`
 and drop the response, so the first Milestone 2 comparison could report that
 forty-eight proposals were refused without being able to show a single thing
@@ -74,6 +79,34 @@ def _keep_duplicates(pairs):
             [*existing, value] if isinstance(existing, list) else [existing, value]
         )
     return document
+
+def _as_mapping(arguments):
+    """Fold the schema's `[{name, value}]` list into the mapping revalidation reads.
+
+    Since #111 the schema carries `arguments` as a list of pairs rather than
+    an object, because the API's structured outputs require every object to
+    close its property names and a closed object is an *ordered* one -- the
+    order the `d2f08cb8` run showed the model locked into (`vocabulary.py`).
+    A list has no such order. But `runtime/request.py` reads a mapping, and
+    it is the deterministic layer's shape to keep, so the fold happens here,
+    at the edge, with the same rule `_keep_duplicates` applies to an object:
+    a name given twice becomes a list of its values, which revalidation
+    refuses as contradictory (`FX-110`). Nothing is dropped and nothing is
+    judged.
+
+    Anything that is not a list of `{name: str, ...}` elements is returned
+    as it came, so revalidation sees the wrong shape and refuses it, rather
+    than this layer deciding what the model meant.
+    """
+    if not isinstance(arguments, list):
+        return arguments
+    pairs = []
+    for element in arguments:
+        if not isinstance(element, Mapping) or not isinstance(element.get("name"), str):
+            return arguments
+        pairs.append((element["name"], element.get("value")))
+    return _keep_duplicates(pairs)
+
 
 # The decoding configuration Section 4.6 requires recorded. Frozen so that the
 # artifact records what ran and a change is visible in the diff.
@@ -256,7 +289,8 @@ class Adapter:
         # proposal, and an adapter that pre-filtered its own output would hide
         # the failures the Milestone 2 comparison exists to measure.
         return Proposal(
-            route=document.get("route"), arguments=document.get("arguments", {})
+            route=document.get("route"),
+            arguments=_as_mapping(document.get("arguments", {})),
         )
 
     @staticmethod

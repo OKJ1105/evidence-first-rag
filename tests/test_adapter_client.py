@@ -71,9 +71,10 @@ class Usage:
 
 
 def proposal_json(**overrides):
+    """A response in the shape the schema constrains: `arguments` is a list."""
     document = {
         "route": "message_facts",
-        "arguments": {"message_key": "SAMPLE_MSG_ENGINE_STATUS"},
+        "arguments": [{"name": "message_key", "value": "SAMPLE_MSG_ENGINE_STATUS"}],
     }
     document.update(overrides)
     return json.dumps(document)
@@ -116,7 +117,7 @@ class TheCallIsTheOneSection46Pins(unittest.TestCase):
             ["message_facts", "signal_facts", "signal_mapping", "unsupported"],
         )
 
-    def test_the_schema_that_is_sent_leaves_the_argument_names_open(self):
+    def test_the_schema_that_is_sent_carries_the_arguments_as_a_list(self):
         # #111 changed the schema; this asserts the change reaches the wire
         # rather than only `vocabulary.schema()`. `propose` rebuilds
         # `output_config` to join the schema to the pinned `effort`, so the
@@ -124,10 +125,22 @@ class TheCallIsTheOneSection46Pins(unittest.TestCase):
         call, _ = self.call()
         sent = call["output_config"]["format"]["schema"]
         self.assertEqual(sent, adapter_client.vocabulary.schema())
-        self.assertEqual(
-            sent["properties"]["arguments"],
-            {"type": "object", "additionalProperties": {"type": "string"}},
-        )
+        self.assertEqual(sent["properties"]["arguments"]["type"], "array")
+        # What the API refused on run 34486993111 (#91): an object whose
+        # `additionalProperties` is anything but `false`. Every object in
+        # the schema that is sent closes its names.
+        def objects(node):
+            if isinstance(node, dict):
+                if node.get("type") == "object":
+                    yield node
+                for child in node.values():
+                    yield from objects(child)
+            elif isinstance(node, list):
+                for child in node:
+                    yield from objects(child)
+
+        closed = [node["additionalProperties"] for node in objects(sent)]
+        self.assertEqual(closed, [False, False])
         # The pinned decoding still travels in the same object.
         self.assertEqual(
             call["output_config"]["effort"],
@@ -171,14 +184,49 @@ class ReadingAResponseNeverRaises(unittest.TestCase):
                     adapter_client.Adapter.read(response(text)).route, "unsupported"
                 )
 
-    def test_a_repeated_key_survives_as_a_contradiction(self):
+    def test_a_repeated_name_in_the_list_survives_as_a_contradiction(self):
         # Section 8.1 registers `FX-110` as "two different `revision_label`
-        # values". Plain `json.loads` keeps the last and drops the first, so
-        # the contradiction disappeared before revalidation could see it and
-        # `FX-110` was unreachable through the adapter -- found by an external
-        # review, and reproduced. A Python mapping cannot hold one key twice,
-        # so the two values are kept as a list, which the runtime already
-        # refuses as contradictory.
+        # values". Since #111 the schema's `arguments` is a list, so the
+        # model can say it twice without repeating a JSON key; the fold into
+        # a mapping keeps both as a list, which the runtime already refuses
+        # as contradictory. Nothing is dropped, nothing is judged here.
+        raw = (
+            '{"route":"message_facts","arguments":['
+            '{"name":"revision_label","value":"SAMPLE_REV_A"},'
+            '{"name":"revision_label","value":"SAMPLE_REV_B"},'
+            '{"name":"message_key","value":"SAMPLE_MSG_ENGINE_STATUS"}]}'
+        )
+        proposal = adapter_client.Adapter.read(response(raw))
+        self.assertEqual(
+            dict(proposal.arguments),
+            {
+                "revision_label": ["SAMPLE_REV_A", "SAMPLE_REV_B"],
+                "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            },
+        )
+
+    def test_a_list_that_is_not_pairs_is_passed_on_as_it_came(self):
+        # The fold shapes what the schema promised and nothing else. A list
+        # the schema would never have produced reaches revalidation as a
+        # list, and `_arguments` there refuses a non-mapping as
+        # `invalid_request` -- the adapter does not guess what was meant.
+        for raw_arguments in ('[1, 2]', '["message_key"]', '[{"value":"x"}]', '[{"name":1,"value":"x"}]'):
+            with self.subTest(arguments=raw_arguments):
+                raw = '{"route":"message_facts","arguments":' + raw_arguments + "}"
+                proposal = adapter_client.Adapter.read(response(raw))
+                self.assertEqual(proposal.arguments, json.loads(raw_arguments))
+
+    def test_an_element_without_a_value_folds_to_none_not_to_a_guess(self):
+        proposal = adapter_client.Adapter.read(
+            response('{"route":"message_facts","arguments":[{"name":"message_key"}]}')
+        )
+        self.assertEqual(dict(proposal.arguments), {"message_key": None})
+
+    def test_a_repeated_key_in_an_object_still_survives_as_a_contradiction(self):
+        # The object form is no longer what the schema produces, but the
+        # guard against last-wins parsing stays: `read` is deliberately
+        # unvalidated beyond shape, and a mapping that arrives is read the
+        # same way it was before #111.
         raw = (
             '{"route":"message_facts","arguments":{'
             '"revision_label":"SAMPLE_REV_A",'
@@ -209,12 +257,12 @@ class ReadingAResponseNeverRaises(unittest.TestCase):
         from evidence_first_rag import Status
         from .runtime_support import BASE, FakeDatabase
 
-        raw = (
-            '{"route":"message_facts","arguments":{'
-            + ",".join(f'"{k}":"{v}"' for k, v in BASE.items())
-            + ',"revision_label":"SAMPLE_REV_B"'
-            ',"message_key":"SAMPLE_MSG_ENGINE_STATUS"}}'
-        )
+        pairs = [*BASE.items(), ("revision_label", "SAMPLE_REV_B"),
+                 ("message_key", "SAMPLE_MSG_ENGINE_STATUS")]
+        raw = json.dumps({
+            "route": "message_facts",
+            "arguments": [{"name": k, "value": v} for k, v in pairs],
+        })
         proposal = adapter_client.Adapter.read(response(raw))
         database = FakeDatabase({})
         result = answer(

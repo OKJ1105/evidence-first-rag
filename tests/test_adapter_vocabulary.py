@@ -100,34 +100,40 @@ class TheSchemaClosesWhatItCan(unittest.TestCase):
             [route.value for route in Route] + [UNSUPPORTED_ROUTE],
         )
 
-    def test_the_argument_names_are_open_and_enumerate_nothing(self):
+    def test_the_arguments_are_a_list_of_pairs_with_no_order_to_be_locked_out_of(self):
         # #111. The enumeration was an ordered mapping, and the model could
         # not emit a key sorted before one it had already written -- which
         # made `message_key` and `network_name` unreachable on every positive
-        # case of the `d2f08cb8` run. An open object has no order to be
-        # locked out of.
+        # case of the `d2f08cb8` run. The API refuses an object with open
+        # names (every object must carry `additionalProperties: false`), so
+        # the names live in a list, whose elements have no order among them.
         arguments = vocabulary.schema()["properties"]["arguments"]
-        self.assertNotIn("properties", arguments)
-        self.assertEqual(arguments["additionalProperties"], {"type": "string"})
-        self.assertEqual(arguments["type"], "object")
-        # Exactly two keys: nothing reintroduces an enumeration under another
-        # name (`patternProperties`, `propertyNames`, `required`).
-        self.assertEqual(sorted(arguments), ["additionalProperties", "type"])
+        self.assertEqual(arguments["type"], "array")
+        # Nothing on the array itself reintroduces an ordering or a count.
+        self.assertEqual(sorted(arguments), ["items", "type"])
+        item = arguments["items"]
+        self.assertEqual(item["type"], "object")
+        self.assertIs(item["additionalProperties"], False)
+        self.assertEqual(item["required"], ["name", "value"])
+        self.assertEqual(sorted(item["properties"]), ["name", "value"])
+        self.assertEqual(item["properties"]["value"], {"type": "string"})
 
-    def test_the_schema_carries_no_per_route_allowlist_at_all(self):
-        # Same purpose as the test this replaces: nobody should read the
-        # schema as the enforcement. It used to make the point by showing
-        # `signal_key` accepted on `message_facts`; now the point is stronger,
-        # because no argument name appears in the schema at all. Section 4.6
-        # puts the check in deterministic revalidation, and
-        # `tests/test_adapter_revalidation.py` asserts the refusal.
-        text = json.dumps(vocabulary.schema())
-        for route in Route:
-            for name in allowed_parameters(route):
-                self.assertNotIn(name, text, f"{name} is named in the schema")
-        # The route enum is the one thing the schema does close, and it is
-        # still there -- this test must not pass by the schema being empty.
-        self.assertIn(Route.MESSAGE_FACTS.value, text)
+    def test_the_name_enum_is_the_union_of_the_allowlists_not_a_per_route_one(self):
+        # The seven names are closed at the schema again, as they were
+        # before #111 -- but as an enum on a list element, not as ordered
+        # properties. It is the *union*: `signal_key` is accepted on
+        # `message_facts` here, and nobody should read the schema as the
+        # per-route enforcement. Section 4.6 puts that in deterministic
+        # revalidation, and `tests/test_adapter_revalidation.py` asserts the
+        # refusal.
+        name = vocabulary.schema()["properties"]["arguments"]["items"]["properties"]["name"]
+        union = sorted({n for route in Route for n in allowed_parameters(route)})
+        self.assertEqual(name, {"type": "string", "enum": union})
+        self.assertIn("signal_key", name["enum"])
+        self.assertNotIn("signal_key", allowed_parameters(Route.MESSAGE_FACTS))
+        # Sorted, so the enum text is stable and the schema digest with it;
+        # an enum's order constrains nothing the model emits.
+        self.assertEqual(name["enum"], sorted(name["enum"]))
 
 
 if __name__ == "__main__":
