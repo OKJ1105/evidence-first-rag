@@ -469,10 +469,24 @@ class TestAMalformedBatchStream(HistoryCheck):
             run=run, CalledProcessError=subprocess.CalledProcessError
         )
 
+    def object_name(self):
+        """The one blob this repository holds, as git names it."""
+        return self.repository.git("rev-parse", "HEAD:README.md").strip()
+
     def framed(self, body):
         """A well-formed frame for `body`, sized the way git sizes one."""
-        name = self.repository.git("rev-parse", "HEAD:README.md").strip()
-        return f"{name} blob {len(body)}\n".encode() + body + b"\n"
+        return f"{self.object_name()} blob {len(body)}\n".encode() + body + b"\n"
+
+    def headed(self, size_field, rest):
+        """A frame whose header names the object actually requested.
+
+        The name guard is the earliest of the five and subsumes every later
+        one when the header names something else, so a test aimed at a later
+        guard has to get the name right or it silently stops testing what it
+        says it does. That happened to three tests here when #110 added the
+        guard, and this is what keeps it from happening again.
+        """
+        return f"{self.object_name()} blob {size_field}\n".encode() + rest
 
     def test_a_header_that_never_ends_reports_cannot_run(self):
         # `stream.index` raised ValueError here, which no handler caught, so
@@ -482,7 +496,7 @@ class TestAMalformedBatchStream(HistoryCheck):
 
     def test_a_size_that_is_not_a_number_reports_cannot_run(self):
         # The second ValueError, from `int(header[2])`.
-        self.batch_writes(b"deadbeefdeadbeef blob xyz\nhello\n")
+        self.batch_writes(self.headed("xyz", b"hello\n"))
         self.assertIn("unreadable size", self.assert_fails("CANNOT RUN"))
 
     def test_a_body_shorter_than_its_header_declares_reports_cannot_run(self):
@@ -494,7 +508,7 @@ class TestAMalformedBatchStream(HistoryCheck):
         and printed PASS. Verified before the fix — it exited 0 on exactly
         this stream.
         """
-        self.batch_writes(b"deadbeefdeadbeef blob 99999\nshort")
+        self.batch_writes(self.headed(99999, b"short"))
         output = self.assert_fails("CANNOT RUN")
         self.assertIn("truncated", output)
         self.assertIn("wrote 5", output)
@@ -526,8 +540,31 @@ class TestAMalformedBatchStream(HistoryCheck):
         so that ends in a body mapped to the wrong name rather than in an
         error, and the path is what decides which rules apply to it.
         """
-        self.batch_writes(b"deadbeefdeadbeef blob 5\nabcdefghijklmnopqrst\n")
+        self.batch_writes(self.headed(5, b"abcdefghijklmnopqrst\n"))
         self.assertIn("misframed", self.assert_fails("CANNOT RUN"))
+
+    def test_a_frame_answering_for_another_object_reports_cannot_run(self):
+        """#110. The definitive desynchronisation guard.
+
+        The separator check before it is probabilistic: it catches a
+        desynchronised cursor only when the leftover bytes fail to look like
+        a frame, and `test_a_blob_whose_content_looks_like_a_batch_header_is
+        _read_correctly` commits a blob proving they can. Whatever they
+        resemble, they do not begin with the name that was asked for.
+        """
+        self.batch_writes(b"0" * 40 + b" blob 5\nabcde\n")
+        self.assertIn("desynchronised", self.assert_fails("CANNOT RUN"))
+
+    def test_the_name_guard_does_not_fire_on_the_name_it_asked_for(self):
+        """The guard has to be seen not to reject git's real answer.
+
+        `framed()` builds the header from the object git actually holds, so
+        this passes only if the comparison accepts a name git echoed back.
+        Every other test in this file that runs the real `contents()` is the
+        same assertion at scale.
+        """
+        self.batch_writes(self.framed(b"# Sample\n"))
+        self.assertIn("PASS", self.assert_passes())
 
     def test_no_diagnostic_echoes_what_the_stream_carried(self):
         """N2 on #108. A diagnostic may not publish what a finding masks.
@@ -542,7 +579,8 @@ class TestAMalformedBatchStream(HistoryCheck):
         streams = {
             "mid-header": b"id " + AWS_KEY.encode(),
             "too few header fields": AWS_KEY.encode() + b"\nrest\n",
-            "unreadable size": b"deadbeef blob " + AWS_KEY.encode() + b"\nx\n",
+            "unreadable size": self.headed(AWS_KEY, b"x\n"),
+            "wrong object": b"0" * 40 + b" blob 24\nid " + AWS_KEY.encode() + b"\n",
         }
         for where, stream in streams.items():
             with self.subTest(where=where):

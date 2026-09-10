@@ -174,16 +174,25 @@ def contents(names):
     says "nothing found" when it did not look is the one failure this module
     exists to avoid, and it is the only one of these three that fails open.
 
-    The separator check after it closes the other half of that. A frame whose
-    declared size is *short* of what git wrote passes the length check — the
-    slice is exactly as long as the header claimed — and leaves `at` inside
-    the leftover content, where the parse reads file content as a header.
-    That does not raise: it ends in a body mapped to the wrong name, and the
-    path is what decides which rules apply to it, so content could be
-    exempted under a rule meant for a file it does not come from. Git writes
-    the separator after every frame, including the last and including a blob
-    whose own content does not end in a newline, so asserting it costs
-    nothing on any real stream.
+    The other half of that is a frame whose declared size is *short* of what
+    git wrote. It passes the length check — the slice is exactly as long as
+    the header claimed — and leaves `at` inside the leftover content, where
+    the parse reads file content as a header. That does not raise: it ends
+    in a body mapped to the wrong name, and the path is what decides which
+    rules apply to it, so content could be exempted under a rule meant for a
+    file it does not come from.
+
+    **Two checks close that, and only together.** The separator check is the
+    cheap one: git writes its separator after every frame, including the last
+    and including a blob whose own content does not end in a newline, so
+    asserting it costs nothing on any real stream. But it is *probabilistic*
+    — it catches a desynchronised cursor only when the leftover bytes fail to
+    look like a frame, and they can look like one. This suite commits a blob
+    whose content is a batch header repeated, for exactly that reason. The
+    name check is the *definitive* one: whatever the leftover bytes resemble,
+    they do not begin with the object name that was asked for. #110 added it
+    after #108 shipped the separator check alone and said, wrongly, that the
+    separator closed this.
 
     **No diagnostic here prints what the stream carried.** Each reports a
     position, a length, or a field count. A desynchronised parse is reading
@@ -219,6 +228,16 @@ def contents(names):
             raise RuntimeError(
                 f"git could not read {name}: the header at offset {at} has "
                 f"{len(header)} fields rather than 3"
+            )
+        # Safe only because every element of `names` is a full object name
+        # read from `git ls-tree`, which `--batch` echoes back verbatim. An
+        # abbreviated name or a rev expression would come back resolved and
+        # turn this guard into a false failure, so a caller passing anything
+        # else has to revisit it.
+        if header[0].decode() != name:
+            raise RuntimeError(
+                f"git answered for a different object than {name} at offset "
+                f"{at}; the batch stream is desynchronised"
             )
         try:
             size = int(header[2])
