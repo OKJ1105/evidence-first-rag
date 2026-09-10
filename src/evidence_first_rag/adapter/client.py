@@ -18,11 +18,26 @@ prose. That is Section 4.6's "schema-constrained structured object" as a
 request parameter: the route enum is closed in the schema, so `route` comes
 back as one of the four permitted strings or the call fails, rather than as
 something revalidation has to recognise as wrong.
+
+**What each call leaves behind.** `propose` used to return `self.read(response)`
+and drop the response, so the first Milestone 2 comparison could report that
+forty-eight proposals were refused without being able to show a single thing
+the model wrote. Every call now appends a `Call` to the adapter: the text
+block `read` parsed, the `stop_reason`, and `usage` when the SDK exposes it.
+That is a record of what came *back*; **nothing new is sent**, so Charter
+Section 3.3 and Section 4.6's list of what the adapter may be told are
+untouched, and `tests/test_adapter_vocabulary.py` still holds the request
+side.
+
+The records are the adapter's, not the artifact's, and `run.py` decides where
+they go -- into a second file that is never committed, because raw model text
+is unbounded and is exactly what the `SAMPLE_*` convention cannot vouch for.
 """
 
 import dataclasses
 import json
 import types
+from collections.abc import Mapping
 
 import anthropic
 
@@ -80,10 +95,91 @@ DECODING = types.MappingProxyType(
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class Call:
+    """What one model call returned, before anything parsed it.
+
+    Three fields, and each answers a question the first comparison could not.
+    `text` is what `read` parsed, so a proposal that came back `unsupported`
+    can be told apart from a model that wrote nothing and one that wrote
+    something unparseable. `stop_reason` separates a refusal from a length
+    cut. `usage` is what the call cost.
+
+    `usage` is `None` rather than an empty mapping when the SDK exposed
+    nothing: a run that could not observe its own cost must not report zero,
+    the way `Report.executed` refuses to treat "no database" as "nothing
+    weakened".
+    """
+
+    text: str
+    stop_reason: str | None
+    usage: dict | None
+
+    def as_json(self) -> dict:
+        return {
+            "text": self.text,
+            "stop_reason": self.stop_reason,
+            "usage": self.usage,
+        }
+
+
+def _first_text(response) -> str:
+    """The first `text` block, or `""`. The one place this is decided.
+
+    `read` parses it and `Call` records it, and they must be the same string
+    or the raw file would explain a proposal that was never parsed from it.
+    """
+    return next((block.text for block in response.content if block.type == "text"), "")
+
+
+def _usage_as_json(response) -> dict | None:
+    """`response.usage` as a plain mapping, or `None` when there is none.
+
+    The SDK returns a model object; `model_dump()` gives plain Python types
+    that survive `json.dumps`. A stub in a test may hand back a mapping, or an
+    object with neither -- and this must not raise on any of them, because a
+    run that failed to record its own token count is still a run whose
+    proposals are the point.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    if isinstance(usage, Mapping):
+        return dict(usage)
+    for name in ("model_dump", "to_dict"):
+        method = getattr(usage, name, None)
+        if not callable(method):
+            continue
+        try:
+            dumped = method()
+        except Exception:  # noqa: BLE001 -- see the docstring
+            return None
+        if isinstance(dumped, Mapping):
+            return dict(dumped)
+        # A `model_dump` that returned something else is not usage. Falling
+        # through rather than raising is the docstring's promise: the token
+        # count is the least important thing this run produces.
+        return None
+    attributes = getattr(usage, "__dict__", None)
+    return dict(attributes) if isinstance(attributes, Mapping) else None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class Adapter:
     """Section 4.6's Thin LLM Adapter. Proposes; never decides."""
 
     client: object
+    # Per-call records, in call order. A list inside a frozen dataclass: the
+    # frozen-ness is about the client and the pinned configuration, and
+    # appending here rebinds nothing. Excluded from comparison so that adding
+    # a record does not change what an `Adapter` equals.
+    _records: list = dataclasses.field(
+        default_factory=list, repr=False, compare=False
+    )
+
+    @property
+    def calls(self) -> tuple[Call, ...]:
+        """What every call so far returned, in the order they were made."""
+        return tuple(self._records)
 
     @classmethod
     def from_environment(cls) -> "Adapter":
@@ -129,6 +225,13 @@ class Adapter:
             ],
             messages=[{"role": "user", "content": request_text}],
         )
+        self._records.append(
+            Call(
+                text=_first_text(response),
+                stop_reason=getattr(response, "stop_reason", None),
+                usage=_usage_as_json(response),
+            )
+        )
         return self.read(response)
 
     @staticmethod
@@ -142,9 +245,7 @@ class Adapter:
         """
         if getattr(response, "stop_reason", None) == "refusal":
             return Proposal(route=vocabulary.UNSUPPORTED_ROUTE, arguments={})
-        text = next(
-            (block.text for block in response.content if block.type == "text"), ""
-        )
+        text = _first_text(response)
         try:
             document = json.loads(text, object_pairs_hook=_keep_duplicates)
         except json.JSONDecodeError:

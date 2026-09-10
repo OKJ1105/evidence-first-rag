@@ -90,11 +90,38 @@ jobs:
         run: python -m evidence_first_rag.adapter.run --artifact milestone-2-comparison.json
 
       # `if: always()` so an unjudged run's document is still inspectable.
+      #
+      # This is the acceptance record, and the only one of the two files that
+      # is ever committed: #58 puts it in `docs/acceptance/`.
       - name: Upload the artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: milestone-2-comparison
           path: milestone-2-comparison.json
+          retention-days: 90
+          if-no-files-found: error
+
+      # A separate artifact, deliberately, and not a second `path:` under the
+      # one above. The `.raw.json` file carries the text each model call
+      # returned before anything parsed it, and is **never committed**: raw
+      # model text is unbounded and is exactly what the repository's SAMPLE_*
+      # convention cannot vouch for. It lives here, for the ninety days
+      # below, and nowhere else.
+      #
+      # Shipping both in one zip would mean the writer who downloads "the
+      # artifact" to commit the acceptance record unpacks this file into the
+      # checkout beside it, where one `git add -A` commits it. Nothing
+      # mechanical would catch that -- `scan_sensitive_strings.py` decides
+      # credentials, URLs, paths and personal information, not whether an
+      # emitted identifier is real -- so the rule would rest entirely on a
+      # reviewer noticing a filename. Two artifacts means downloading the one
+      # you need cannot hand you the one you must not commit.
+      - name: Upload the raw record, which is never committed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: milestone-2-comparison-raw
+          path: milestone-2-comparison.raw.json
           retention-days: 90
           if-no-files-found: error
