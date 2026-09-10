@@ -225,6 +225,34 @@ class TheArtifact(unittest.TestCase):
         for value in digest.values():
             self.assertTrue(re.fullmatch(r"[0-9a-f]{64}", value))
 
+    def test_it_records_the_output_schema_by_digest(self):
+        # #111. The schema travels inside `output_config`, the same object
+        # whose `effort` Section 4.6 pins, and until now it was in neither
+        # `DECODING` nor `prompt_digest` -- so two runs sent different
+        # schemas and recorded identical digests. That is how the `d2f08cb8`
+        # comparison was decided by an input nothing recorded.
+        digest = self.document["schema_digest"]
+        self.assertEqual(
+            digest,
+            hashlib.sha256(
+                vocabulary.as_text(vocabulary.schema()).encode("utf-8")
+            ).hexdigest(),
+        )
+        self.assertEqual(digest, runner.schema_digest())
+        self.assertTrue(re.fullmatch(r"[0-9a-f]{64}", digest))
+
+    def test_the_schema_digest_moves_when_the_schema_does(self):
+        # Rule 9 as a permanent probe rather than a one-off mutation: a
+        # digest that did not change with its subject would record nothing.
+        before = runner.schema_digest()
+        real = vocabulary.schema
+        try:
+            vocabulary.schema = lambda: {**real(), "x": 1}
+            self.assertNotEqual(runner.schema_digest(), before)
+        finally:
+            vocabulary.schema = real
+        self.assertEqual(runner.schema_digest(), before)
+
     def test_it_carries_every_case_in_registered_order_and_ran_against_a_database(self):
         outcomes = self.document["report"]["adapter_outcomes"]
         self.assertEqual([o["identifier"] for o in outcomes], [c.identifier for c in EVALUATION_SET])
@@ -546,6 +574,7 @@ class TheOutcomeSaysWhatWasProposedAndWhyItWasRefused(unittest.TestCase):
                 "prompt_digest",
                 "report",
                 "run_identifier",
+                "schema_digest",
                 "started_at",
                 "thresholds",
             ],

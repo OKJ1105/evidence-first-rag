@@ -83,12 +83,45 @@ def payload() -> dict:
 # only the parameter names that route allows."
 #
 # The route enum is closed here, so an unknown route cannot be returned at all.
-# The argument names are *not* closed to a per-route set, because JSON Schema
-# cannot express "the allowlist of whichever route you chose" without a
-# oneOf per route, and a schema that enumerated every route's arguments
-# together would accept `signal_key` on `message_facts`. Revalidation refuses
-# that case (Section 4.6 requires it to, schema or not), and
-# `tests/test_adapter_revalidation.py` is where the refusal is asserted.
+#
+# **`arguments` is a list of `{name, value}` pairs, not an object.** It was an
+# object whose seven names were enumerated as `properties` until #111, and
+# the enumeration cost a whole Milestone 2 comparison run. `properties` is an
+# ordered mapping, and the second run (`d2f08cb8`) shows all 41
+# argument-bearing calls emitting keys in ascending property order, starting
+# at `project_code`. The three names sorted before it -- `mapping_key`,
+# `message_key`, `network_name` -- were therefore unreachable once the object
+# had opened, and were emitted on 0 of 33 positive cases. Two of them are
+# required lookup keys, so every positive case refused.
+#
+# The first repair, an object with no `properties` at all, is not accepted by
+# the API: structured outputs require `additionalProperties: false` on every
+# object (`#issuecomment-5620046154` on #91 quotes the 400). A list has no
+# property order to be locked out of, and each element is a closed object
+# the API does accept. `name` is an enum of the union of the route
+# allowlists -- the same seven names the old enumeration listed, closed at
+# the schema again, but without an order among them.
+#
+# **Where to check that.** Not from this tree today: the run's artifact is
+# not committed yet and the per-call raw record never is, by design (see
+# `run.py`). The reading and an independent adjudication that recomputed
+# every figure from the primary data are on #91 -- the finding at
+# `issues/91#issuecomment-5611514697`, the adjudication at
+# `#issuecomment-5611662689`. The artifact itself lands under
+# `docs/acceptance/` when #58 commits it; until then #91 is the record, and
+# a reader deciding whether to put the names back into an object should
+# start there rather than from the run identifier alone.
+#
+# The union enum is not a per-route allowlist and does not pretend to be:
+# JSON Schema cannot express "the allowlist of whichever route you chose"
+# without a oneOf per route, so `signal_key` is accepted on `message_facts`
+# here exactly as it was before. Section 4.6 puts that check where it
+# belongs -- adapter output is untrusted, and `runtime/request.py`
+# `validate()` refuses an argument name outside the route's allowlist as
+# `invalid_request` before any SQL. `tests/test_adapter_revalidation.py`
+# asserts that refusal. `client.py` `Adapter.read` folds the list back into
+# the mapping revalidation reads, and keeps a repeated name as a list so a
+# contradiction (`FX-110`) is still visible to it.
 def schema() -> dict:
     every_argument = sorted(
         {name for route in Route for name in allowed_parameters(route)}
@@ -103,9 +136,16 @@ def schema() -> dict:
                 "enum": [route.value for route in Route] + [UNSUPPORTED_ROUTE],
             },
             "arguments": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {name: {"type": "string"} for name in every_argument},
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["name", "value"],
+                    "properties": {
+                        "name": {"type": "string", "enum": every_argument},
+                        "value": {"type": "string"},
+                    },
+                },
             },
         },
     }
