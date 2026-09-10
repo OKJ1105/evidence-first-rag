@@ -166,13 +166,14 @@ def contents(names):
     on, and keeps `main()` from catching some unrelated `ValueError` under a
     message about git.
 
-    The length check is the one that matters most, and it is the only one of
-    the three whose absence is silent. A short final frame leaves Python's
-    slice quietly returning fewer bytes than the header declared, with no
-    exception anywhere: the scan would then read part of a file version,
-    find nothing in the part it read, and report PASS. A security check that
-    says "nothing found" when it did not look is the one failure this module
-    exists to avoid, and it is the only one of these three that fails open.
+    The length check is the one that matters most: of every guard here it is
+    the only one whose absence is *silent*. A short final frame leaves
+    Python's slice quietly returning fewer bytes than the header declared,
+    with no exception anywhere: the scan would then read part of a file
+    version, find nothing in the part it read, and report PASS. A security
+    check that says "nothing found" when it did not look is the one failure
+    this module exists to avoid. Every other guard here fails loud; this is
+    the one that would fail open.
 
     The other half of that is a frame whose declared size is *short* of what
     git wrote. It passes the length check — the slice is exactly as long as
@@ -229,12 +230,20 @@ def contents(names):
                 f"git could not read {name}: the header at offset {at} has "
                 f"{len(header)} fields rather than 3"
             )
+        # Compared as bytes, never decoded. In the case this guard exists
+        # for, `header[0]` is blob content, and this scan deliberately reads
+        # binary history — `node_modules`, build output, anything committed —
+        # so decoding it raises `UnicodeDecodeError`, which is a `ValueError`
+        # and would escape `main()` as the traceback every other guard here
+        # exists to avoid. `name` is hex ASCII from `git ls-tree`, so the
+        # byte comparison is exactly equivalent on anything well-formed.
+        #
         # Safe only because every element of `names` is a full object name
         # read from `git ls-tree`, which `--batch` echoes back verbatim. An
         # abbreviated name or a rev expression would come back resolved and
         # turn this guard into a false failure, so a caller passing anything
         # else has to revisit it.
-        if header[0].decode() != name:
+        if header[0] != name.encode():
             raise RuntimeError(
                 f"git answered for a different object than {name} at offset "
                 f"{at}; the batch stream is desynchronised"

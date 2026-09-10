@@ -480,11 +480,13 @@ class TestAMalformedBatchStream(HistoryCheck):
     def headed(self, size_field, rest):
         """A frame whose header names the object actually requested.
 
-        The name guard is the earliest of the five and subsumes every later
-        one when the header names something else, so a test aimed at a later
-        guard has to get the name right or it silently stops testing what it
-        says it does. That happened to three tests here when #110 added the
-        guard, and this is what keeps it from happening again.
+        The name guard fires earlier than the size, length and separator
+        guards and subsumes all three when the header names something else,
+        so a test aimed at any of them has to get the name right or it
+        silently stops testing what it says it does. That happened to three
+        tests here when #110 added the guard, and this is what keeps it from
+        happening again. (Two guards do precede it — mid-header and field
+        count — so it is not the earliest of all of them.)
         """
         return f"{self.object_name()} blob {size_field}\n".encode() + rest
 
@@ -555,16 +557,50 @@ class TestAMalformedBatchStream(HistoryCheck):
         self.batch_writes(b"0" * 40 + b" blob 5\nabcde\n")
         self.assertIn("desynchronised", self.assert_fails("CANNOT RUN"))
 
-    def test_the_name_guard_does_not_fire_on_the_name_it_asked_for(self):
-        """The guard has to be seen not to reject git's real answer.
+    def test_two_whole_frames_are_read_in_the_order_they_were_requested(self):
+        """The guard must not reject git's real answer — over more than one
+        frame, which is the only version of that claim worth making.
 
-        `framed()` builds the header from the object git actually holds, so
-        this passes only if the comparison accepts a name git echoed back.
-        Every other test in this file that runs the real `contents()` is the
-        same assertion at scale.
+        A one-frame version of this test asserted nothing that
+        `test_a_whole_frame_carrying_nothing_sensitive_still_passes` did not
+        already assert: byte-for-byte the same body, so no mutation could
+        fail one without failing the other. Round 1 on #114 found that, and
+        it was the third test in this slice to name something it did not
+        test.
+
+        Two frames make it earn the name. It fails if the guard rejects a
+        name git echoed back, and it fails if the arithmetic after the first
+        body lands the cursor anywhere but on the second header — which is
+        the property the name guard is there to detect and which one frame
+        cannot exercise at all.
         """
-        self.batch_writes(self.framed(b"# Sample\n"))
+        self.repository.commit("second", **{"notes.md": "nothing\n"})
+        bodies = {
+            self.repository.git("rev-parse", "HEAD:README.md").strip(): b"# Sample\n",
+            self.repository.git("rev-parse", "HEAD:notes.md").strip(): b"nothing\n",
+        }
+        # `contents()` requests `sorted({name ...})`, and the stream has to
+        # answer in that order or the parse is reading the wrong frame.
+        self.batch_writes(
+            b"".join(
+                f"{name} blob {len(body)}\n".encode() + body + b"\n"
+                for name, body in sorted(bodies.items())
+            )
+        )
         self.assertIn("PASS", self.assert_passes())
+
+    def test_a_header_name_that_is_not_utf_8_reports_cannot_run(self):
+        """B1 on #114. The guard read `header[0]` as strict UTF-8.
+
+        In the case it exists for, `header[0]` is blob content, and this scan
+        deliberately reads binary history rather than skipping it — so the
+        decode raised `UnicodeDecodeError`, a `ValueError` that no handler in
+        `main()` catches. The operator got a traceback from the one guard
+        added to stop exactly that. Verified before the fix: it escaped
+        `main()` and `sys.exit` never ran.
+        """
+        self.batch_writes(b"\xff\xfe\xfd blob 5\nabcde\n")
+        self.assertIn("desynchronised", self.assert_fails("CANNOT RUN"))
 
     def test_no_diagnostic_echoes_what_the_stream_carried(self):
         """N2 on #108. A diagnostic may not publish what a finding masks.
