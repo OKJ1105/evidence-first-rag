@@ -9,15 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "./test-kit.mjs";
-import {
-  awaitCiOnHead,
-  checksManifestPath,
-  ciWorkflowFile,
-  loadChecksManifest,
-  modelFor,
-  runChecks,
-  withCiVerdict,
-} from "./run.mjs";
+import { awaitCiOnHead, checksManifestPath, ciBudgetMs, ciRunner, ciWorkflowFile, loadChecksManifest, modelFor, runChecks, withCiVerdict } from "./run.mjs";
 
 function tempRepo(manifestBody) {
   const dir = mkdtempSync(join(tmpdir(), "agent-checks-"));
@@ -503,5 +495,81 @@ describe("withCiVerdict folds CI into the verdict the state machine reads", () =
 
   it("leaves the verdict untouched when no CI verdict was taken", () => {
     expect(withCiVerdict(passing, null)).toBe(passing);
+  });
+});
+
+// N3 on #113. The CI wait is the one step long enough to cross the job's
+// ceiling on its own, and a job that hits `timeout-minutes` is cancelled rather
+// than failed — so it publishes nothing at all. Capping the wait by what is
+// actually left is what stops the wait from being the cause.
+
+describe("the CI wait is bounded by the job's remaining time (#113 N3)", () => {
+  const t0 = "2026-01-01T00:00:00Z";
+  const at = (min) => Date.parse(t0) + min * 60_000;
+
+  it("asks for the full wait early in the job", () => {
+    expect(ciBudgetMs({ startedAt: t0, now: at(1) })).toBe(10 * 60_000);
+  });
+
+  it("shortens the wait once the ceiling is close", () => {
+    // 60 minute ceiling, 53 spent, 2 reserved for the conclusion -> 5 left.
+    expect(ciBudgetMs({ startedAt: t0, now: at(53) })).toBe(5 * 60_000);
+  });
+
+  it("never returns a negative wait", () => {
+    // A run already past its budget asks for no wait and takes whatever
+    // verdict is already on the head.
+    expect(ciBudgetMs({ startedAt: t0, now: at(75) })).toBe(0);
+  });
+
+  it("keeps a reserve, so the wait is never the whole of what is left", () => {
+    // Without it the wait could end exactly at the ceiling, leaving no time to
+    // write the conclusion the run exists to publish.
+    const left = 60 * 60_000 - 58 * 60_000;
+    expect(ciBudgetMs({ startedAt: t0, now: at(58) })).toBe(0);
+    expect(left > 0).toBe(true);
+  });
+
+  it("falls back to the requested wait when the start time is unreadable", () => {
+    // A malformed marker should not silently mean "do not wait for CI".
+    expect(ciBudgetMs({ startedAt: "not a date" })).toBe(10 * 60_000);
+  });
+});
+
+describe("the ci dependency main() wires in carries the bound (#113 N3)", () => {
+  // `main()` is wiring and is not otherwise covered. #30 made `agentRunner` a
+  // factory for exactly this reason, after an unpinned model was read and never
+  // set; a bound computed and never passed is the same defect one slice over.
+
+  it("passes the budgeted timeout, not the raw default", () => {
+    let got = null;
+    const run = ciRunner({
+      gh: {},
+      startedAt: new Date(Date.now() - 53 * 60_000).toISOString(),
+      awaitCi: async (args) => {
+        got = args;
+        return { ok: true };
+      },
+    });
+    return run({ branch: "b", headSha: "h" }).then(() => {
+      expect(got.timeoutMs <= 5 * 60_000).toBe(true);
+      expect(got.timeoutMs > 0).toBe(true);
+    });
+  });
+
+  it("passes the branch and head it was asked about", () => {
+    let got = null;
+    const run = ciRunner({
+      gh: {},
+      startedAt: new Date().toISOString(),
+      awaitCi: async (args) => {
+        got = args;
+        return { ok: true };
+      },
+    });
+    return run({ branch: "agent/1-x", headSha: "sha" }).then(() => {
+      expect(got.branch).toBe("agent/1-x");
+      expect(got.headSha).toBe("sha");
+    });
   });
 });

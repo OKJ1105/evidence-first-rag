@@ -476,6 +476,62 @@ async function setOutcomeLabel(gh, prNumber, label) {
 export const ciWorkflowFile = "repository-checks.yml";
 
 /**
+ * The `timeout-minutes` on the loop job, mirrored here so the CI wait can be
+ * bounded by it. `workflow.test.mjs` asserts the two agree; a value that drifts
+ * from the workflow would make the bound below meaningless in the one direction
+ * that matters.
+ */
+export const jobBudgetMs = 60 * 60_000;
+
+/**
+ * How long the CI wait may take without being the thing that crosses the
+ * ceiling (#113 N3).
+ *
+ * A job that hits `timeout-minutes` is cancelled rather than failed, and a
+ * cancelled job publishes no conclusion. The wait is the one step long enough
+ * to cause that on its own, so it is capped at the time actually left, minus a
+ * reserve for the conclusion the run still has to write. Never negative: a run
+ * already past its budget asks for no wait at all and takes whatever verdict is
+ * already on the head.
+ *
+ * @returns {number} milliseconds, never below zero
+ */
+/**
+ * The `ci` dependency `runLoop` calls, with the wait already bounded.
+ *
+ * A factory rather than an inline closure in `main()`, for the reason #30 gave
+ * for `agentRunner`: `main()` is wiring and is not otherwise covered, and a
+ * bound nothing checks is how a cap comes to be computed and never passed. A
+ * mutation that dropped `timeoutMs` from an inline closure failed no test.
+ *
+ * @param {{gh: object, startedAt: string, log?: Function, awaitCi?: Function}} deps
+ */
+export function ciRunner({ gh, startedAt, log = () => {}, awaitCi = awaitCiOnHead }) {
+  return ({ branch, headSha }) =>
+    awaitCi({
+      gh,
+      branch,
+      headSha,
+      // #113 N3: never let the wait be what crosses the job ceiling.
+      timeoutMs: ciBudgetMs({ startedAt }),
+      log,
+    });
+}
+
+export function ciBudgetMs({
+  startedAt,
+  now = Date.now(),
+  ceilingMs = jobBudgetMs,
+  reserveMs = 2 * 60_000,
+  requestedMs = 10 * 60_000,
+}) {
+  const spent = now - Date.parse(startedAt);
+  const left = ceilingMs - spent - reserveMs;
+  if (!Number.isFinite(left)) return requestedMs;
+  return Math.max(0, Math.min(requestedMs, left));
+}
+
+/**
  * Resolve CI's verdict on one head, dispatching a run only if none exists yet.
  *
  * #21: the Writer pushes with `GITHUB_TOKEN`, and GitHub starts no workflow
@@ -584,7 +640,7 @@ export function withCiVerdict(checkResult, ci) {
     summary: [
       checkResult.summary,
       "",
-      "CI on the head this run pushed (#21):",
+      "CI on the head this run is concluding on (#21):",
       "",
       ci.summary,
       ci.url ? `\n${ci.url}` : "",
@@ -1141,13 +1197,7 @@ async function main() {
       // #21. Thin by design: everything worth asserting is in
       // `awaitCiOnHead`, which is driven by fakes in the tests. `main()` is
       // wiring and is not otherwise covered.
-      ci: ({ branch: pushedTo, headSha }) =>
-        awaitCiOnHead({
-          gh,
-          branch: pushedTo,
-          headSha,
-          log: console.log,
-        }),
+      ci: ciRunner({ gh, startedAt, log: console.log }),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;

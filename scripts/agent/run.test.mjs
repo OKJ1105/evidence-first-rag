@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
 import {
   LABELS,
@@ -1141,6 +1142,32 @@ describe("BF6 - the record is not overwritten", () => {
   });
 });
 
+// `main()` is the one function here that is never executed by a test: it opens
+// a worktree, spawns the CLI and holds the token. #30 answered that by moving
+// the model resolution into `agentRunner`, and #113 N3 moved the CI bound into
+// `ciRunner` for the same reason — but a factory only helps if `main()` calls
+// it, and a mutation that inlined the raw dependency again failed nothing.
+//
+// This is a text assertion about wiring, not a behavioural one. It cannot say
+// the arguments are right; the describes below do that. It says only that the
+// covered path is the one `main()` takes, which is the half no other test sees.
+// `workflow.test.mjs` reads module source the same way and for the same reason.
+
+describe("main() wires the covered factories rather than inlining them", () => {
+  const source = readFileSync("scripts/agent/run.mjs", "utf8");
+  const mainBody = source.slice(source.indexOf("\nasync function main("));
+
+  it("takes its agent through agentRunner (#30)", () => {
+    expect(mainBody).toMatch(/agent: agentRunner\(/);
+  });
+
+  it("takes its CI verdict through ciRunner, which carries the budget (#113 N3)", () => {
+    expect(mainBody).toMatch(/ci: ciRunner\(/);
+    // The bound has to reach it: `ciRunner` needs `startedAt` to compute one.
+    expect(mainBody).toMatch(/ci: ciRunner\(\{[^}]*startedAt/);
+  });
+});
+
 describe("agentRunner resolves the model per role and publishes what it asked for", () => {
   // `main()` is wiring and is otherwise uncovered, which is how CI_AGENT_MODEL
   // came to be read and never set. This is the seam: the model handed to the
@@ -1426,7 +1453,12 @@ describe("CI on a loop-pushed head gates the verdict (#21)", () => {
     await result;
     const all = gh._.comments.map((c) => c.body).join("\n");
     expect(all).toContain("- ci: **failure**");
-    expect(all).toMatch(/CI on the head this run pushed/);
+    expect(all).toMatch(/CI on the head this run is concluding on/);
+    // N4 on #113. After B2 most verdicts are taken on heads this run did not
+    // push — a fresh pull request's opening review, a resumed `check`, a Writer
+    // turn that committed nothing. Claiming a push tells the owner the loop
+    // created the commit CI ran on, and on a resumed run that head is theirs.
+    expect(all).not.toMatch(/CI on the head this run pushed/);
   });
 
   it("still takes a CI verdict when the Writer pushed nothing (#113 B2)", async () => {

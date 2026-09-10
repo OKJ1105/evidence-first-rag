@@ -116,8 +116,12 @@ jobs:
     # `getIssue` is the only Issue-scoped call the loop makes, and every other
     # call in `github.mjs` is passed the pull request number.
     #
-    # Notably absent: `actions`, `checks`, `id-token`, and anything
-    # administrative.
+    # Notably absent: `checks`, `id-token`, and anything administrative.
+    # `actions` IS granted below, and only for the #21 dispatch -- see the
+    # comment on it. This list said `actions` was absent for nineteen lines
+    # above the line granting it (#113 B3), which is the same defect shape as
+    # the header above: a comment in the security-relevant surface telling an
+    # auditor the opposite of what the block does.
     permissions:
       contents: write
       pull-requests: write
@@ -239,7 +243,13 @@ jobs:
       - name: Report a crashed run
         # The orchestrator reports its own failures. This covers the case where
         # it could not start at all, so the pull request never goes silent.
-        if: failure()
+        #
+        # `cancelled()` as well as `failure()` (#113 N3): a job that hits
+        # `timeout-minutes` above is CANCELLED, not failed, so a `failure()`
+        # guard alone skips this step and leaves the pull request carrying
+        # `agent:running` with no conclusion and no `agent:failed` -- the one
+        # label state this loop otherwise never leaves behind.
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ needs.gate.outputs.pr }}

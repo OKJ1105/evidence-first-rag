@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
-import { governingDocs, reviewerDocs } from "./run.mjs";
+import { governingDocs, jobBudgetMs, reviewerDocs } from "./run.mjs";
 import { deniedTools } from "./claude.mjs";
 
 // The workflow grants permissions; `github.mjs` spends them. Nothing connects
@@ -182,6 +182,40 @@ describe("the loop can dispatch CI, and CI can be dispatched (#21)", () => {
     expect(existsSync(".github/workflows/ci.yml")).toBe(false);
     expect(workflow).not.toMatch(/`ci\.yml`/);
     expect(workflow).toMatch(/dispatches `repository-checks\.yml`/);
+  });
+
+  it("does not list a permission as absent that the same block grants (#113 B3)", () => {
+    // B1's defect, one block lower and inside the security-relevant surface:
+    // the "notably absent" list named `actions` nineteen lines above
+    // `actions: write`. Someone auditing what the loop holds reads that list.
+    // Scoped to the "notably absent" SENTENCE, not the whole comment block:
+    // prose around it may name a permission precisely to say it IS granted,
+    // and forbidding that would push the explanation out of the file.
+    const loopBlock = workflow.slice(workflow.indexOf("\n  loop:"));
+    const absent = loopBlock.match(/# Notably absent:[^.]*\./);
+    expect(absent).not.toBe(null);
+    for (const granted of permissionsOf("loop").matchAll(/^ {6}([a-z-]+):/gm)) {
+      expect(absent[0].includes(`\`${granted[1]}\``)).toBe(false);
+    }
+  });
+
+  it("reports a crashed run on cancellation as well as failure (#113 N3)", () => {
+    // A job that hits `timeout-minutes` is CANCELLED, not failed. Guarded on
+    // `failure()` alone, the reporter is skipped and the pull request is left
+    // carrying `agent:running` with no conclusion — the one label state this
+    // loop otherwise never leaves behind.
+    const reporter = workflow.slice(workflow.indexOf("- name: Report a crashed run"));
+    expect(reporter).toMatch(/if: failure\(\) \|\| cancelled\(\)/);
+  });
+
+  it("mirrors the loop job's timeout into the code that bounds the CI wait", () => {
+    // `ciBudgetMs` caps the wait by what is left of this budget. A constant
+    // that drifted from the workflow would make the cap wrong in the one
+    // direction that matters — too generous, so the wait crosses the ceiling.
+    const loopBlock = workflow.slice(workflow.indexOf("\n  loop:"));
+    const declared = loopBlock.match(/\n {4}timeout-minutes: (\d+)/);
+    expect(declared).not.toBe(null);
+    expect(Number(declared[1]) * 60_000).toBe(jobBudgetMs);
   });
 
   it("gives repository-checks a workflow_dispatch trigger", () => {
