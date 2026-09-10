@@ -1043,6 +1043,13 @@ export async function runLoop({
         ? "No blocking findings remain and the checks pass. **Merging is the owner's act; nothing here approves or merges.**"
         : "The loop stopped without clearing every blocking finding. The comments above are the record the owner decides from.",
       "",
+      // #113 N6: the verdict has to reach the owner from here too. A run that
+      // concludes through the `check` action posts no review and no Writer
+      // response, so this is its only comment — and since #21 the verdict it
+      // carries includes CI, whose run URL and whose distinction between a red
+      // build and a timeout are exactly what the owner needs to act. Without
+      // this they are told only that "the checks are failing".
+      ...(checkResult ? [checkResult.summary, ""] : []),
       ...(state.lastReview ? [renderFindings(state.lastReview.findings)] : []),
     ].join("\n"),
   );

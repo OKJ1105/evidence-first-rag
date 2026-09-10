@@ -1562,6 +1562,102 @@ describe("CI on a loop-pushed head gates the verdict (#21)", () => {
     expect(gh._.labels.has(LABELS.ready)).toBe(false);
   });
 
+  it("concludes without a verdict line when no checks ran at all (#113 N6)", async () => {
+    // The guard on the new summary line is load-bearing, and the path that
+    // needs it is reachable: a resumed run already at its round cap with
+    // blocking findings standing at the same head concludes straight from
+    // `nextStep` — `blocking.length === 0` is false, so the branch that would
+    // have run the checks is never entered and `checkResult` is still null.
+    // Interpolating it unguarded would crash the one comment that tells the
+    // owner why the loop stopped.
+    const spent = {
+      round: 2,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "one left", findings: [blocking("still broken")] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(spent) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    let checksRan = 0;
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: async () => {
+        checksRan += 1;
+        return { ok: true, summary: "All checks passed." };
+      },
+      commit: async () => null,
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(checksRan).toBe(0);
+    expect(concluded.action).toBe("needs-human");
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("still broken");
+  });
+
+  it("publishes the CI verdict from the conclusion on the `check` path (#113 N6)", async () => {
+    // That path posts no review and no Writer response, so the conclusion is
+    // its only comment. Before this it carried `concluded.reason` alone — "the
+    // repository checks are failing" — which does not say the failure was CI
+    // rather than the manifest, does not distinguish a red build from a
+    // timeout, and carries no run URL.
+    const interrupted = {
+      round: 1,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "clean", findings: [] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(interrupted) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ci: async () => ({
+        ok: false,
+        conclusion: "timed_out",
+        url: "https://example/run/9",
+        summary: "- `repository-checks` on `shaSAME`: no run appeared on this head",
+      }),
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("no run appeared on this head");
+    // No review or Writer comment exists to carry it instead.
+    // No review or Writer comment exists to carry it instead. Matched on the
+    // heading, not the body: the state marker's own text mentions Writer
+    // responses, and a looser filter picks it up.
+    const headings = gh._.comments.map((c) => c.body.split("\n")[0]);
+    expect(headings).toEqual(["## Agent loop state", "## Stopped — a human is needed"]);
+  });
+
   it("asks CI once for a head reached by two different paths (#113 B2)", async () => {
     // The memo has to key on the head, not on the call site. A Writer turn
     // that pushes nothing leaves the head unmoved, so the fix path and the
