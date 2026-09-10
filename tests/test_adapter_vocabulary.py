@@ -100,23 +100,34 @@ class TheSchemaClosesWhatItCan(unittest.TestCase):
             [route.value for route in Route] + [UNSUPPORTED_ROUTE],
         )
 
-    def test_no_argument_outside_the_union_of_the_allowlists_is_accepted(self):
-        schema = vocabulary.schema()
-        self.assertFalse(schema["properties"]["arguments"]["additionalProperties"])
-        self.assertEqual(
-            sorted(schema["properties"]["arguments"]["properties"]),
-            sorted({name for route in Route for name in allowed_parameters(route)}),
-        )
+    def test_the_argument_names_are_open_and_enumerate_nothing(self):
+        # #111. The enumeration was an ordered mapping, and the model could
+        # not emit a key sorted before one it had already written -- which
+        # made `message_key` and `network_name` unreachable on every positive
+        # case of the `d2f08cb8` run. An open object has no order to be
+        # locked out of.
+        arguments = vocabulary.schema()["properties"]["arguments"]
+        self.assertNotIn("properties", arguments)
+        self.assertEqual(arguments["additionalProperties"], {"type": "string"})
+        self.assertEqual(arguments["type"], "object")
+        # Exactly two keys: nothing reintroduces an enumeration under another
+        # name (`patternProperties`, `propertyNames`, `required`).
+        self.assertEqual(sorted(arguments), ["additionalProperties", "type"])
 
-    def test_the_schema_cannot_express_the_per_route_allowlist(self):
-        # Recorded rather than hidden: `signal_key` is a valid property here
-        # even for `message_facts`, because one flat object cannot say "the
-        # allowlist of whichever route you chose". Revalidation refuses that
-        # case, and `tests/test_adapter_revalidation.py` asserts the refusal --
-        # this test exists so nobody reads the schema as the enforcement.
-        arguments = vocabulary.schema()["properties"]["arguments"]["properties"]
-        self.assertIn("signal_key", arguments)
-        self.assertNotIn("signal_key", allowed_parameters(Route.MESSAGE_FACTS))
+    def test_the_schema_carries_no_per_route_allowlist_at_all(self):
+        # Same purpose as the test this replaces: nobody should read the
+        # schema as the enforcement. It used to make the point by showing
+        # `signal_key` accepted on `message_facts`; now the point is stronger,
+        # because no argument name appears in the schema at all. Section 4.6
+        # puts the check in deterministic revalidation, and
+        # `tests/test_adapter_revalidation.py` asserts the refusal.
+        text = json.dumps(vocabulary.schema())
+        for route in Route:
+            for name in allowed_parameters(route):
+                self.assertNotIn(name, text, f"{name} is named in the schema")
+        # The route enum is the one thing the schema does close, and it is
+        # still there -- this test must not pass by the schema being empty.
+        self.assertIn(Route.MESSAGE_FACTS.value, text)
 
 
 if __name__ == "__main__":

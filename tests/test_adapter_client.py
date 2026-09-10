@@ -116,6 +116,24 @@ class TheCallIsTheOneSection46Pins(unittest.TestCase):
             ["message_facts", "signal_facts", "signal_mapping", "unsupported"],
         )
 
+    def test_the_schema_that_is_sent_leaves_the_argument_names_open(self):
+        # #111 changed the schema; this asserts the change reaches the wire
+        # rather than only `vocabulary.schema()`. `propose` rebuilds
+        # `output_config` to join the schema to the pinned `effort`, so the
+        # object the model sees is assembled here and nowhere else.
+        call, _ = self.call()
+        sent = call["output_config"]["format"]["schema"]
+        self.assertEqual(sent, adapter_client.vocabulary.schema())
+        self.assertEqual(
+            sent["properties"]["arguments"],
+            {"type": "object", "additionalProperties": {"type": "string"}},
+        )
+        # The pinned decoding still travels in the same object.
+        self.assertEqual(
+            call["output_config"]["effort"],
+            adapter_client.Adapter.configuration()["output_config"]["effort"],
+        )
+
     def test_the_request_text_is_the_only_thing_after_the_cached_prefix(self):
         call, _ = self.call()
         self.assertEqual(call["messages"], [{"role": "user", "content": REQUEST}])

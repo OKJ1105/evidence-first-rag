@@ -102,6 +102,25 @@ def prompt_digest() -> dict:
     }
 
 
+def schema_digest() -> str:
+    """The output schema, recorded beside the prompt it is sent with.
+
+    Not required by Section 4.6, which names the model and the decoding
+    configuration; the schema is in neither, and the owner's disposition on
+    #91 records that reading. It is pinned anyway because this incident is
+    the demonstration of what an unpinned input costs: the schema travels
+    inside `output_config`, the same object whose `effort` the contract does
+    pin, and a change to it decided a whole comparison while leaving every
+    recorded digest identical. Two runs with the same `prompt_digest` were
+    not the same experiment.
+
+    A digest rather than the schema itself, for the reason Section 4.6 gives
+    for the prompt: what matters is that a reader can tell two runs apart,
+    not that the artifact carries a copy.
+    """
+    return _sha256(vocabulary.as_text(vocabulary.schema()))
+
+
 def perform(
     *,
     propose,
@@ -153,6 +172,7 @@ def perform(
         "model": model,
         "decoding": decoding,
         "prompt_digest": prompt_digest(),
+        "schema_digest": schema_digest(),
         "thresholds": thresholds.as_json() if thresholds is not None else None,
         "report": report.as_json(),
         "judgement": judgement.as_json(),
