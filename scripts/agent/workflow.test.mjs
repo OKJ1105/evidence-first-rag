@@ -208,6 +208,17 @@ describe("the loop can dispatch CI, and CI can be dispatched (#21)", () => {
     expect(reporter).toMatch(/if: failure\(\) \|\| cancelled\(\)/);
   });
 
+  it("keeps the two whitespace-range mechanisms in separate paragraphs (#113 O7)", () => {
+    // My own O3 edit ran them together, so "Without this" read as attributing
+    // the fallback's purpose to `fetch-depth: 0`. That is the same
+    // misleading-comment defect B1 and B3 raised as blocking against the loop
+    // workflow, left behind in the file this slice had just edited.
+    const step = ci.slice(ci.indexOf("- name: Check changed lines for whitespace"));
+    const comment = step.slice(0, step.indexOf("\n        env:"));
+    expect(comment).not.toMatch(/true\. `fetch-depth: 0`/);
+    expect(comment).toMatch(/`:-` fallbacks are what keep the step/);
+  });
+
   it("records the job's start before anything else runs (#113 N8)", () => {
     // The budget subtracts from the job's ceiling, so it has to measure from
     // the job's start. This must be the FIRST step: every step before it is

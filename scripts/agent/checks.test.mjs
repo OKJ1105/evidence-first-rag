@@ -356,6 +356,46 @@ describe("awaitCiOnHead dispatches CI and waits for its verdict", () => {
     expect(gh.calls.dispatched).toEqual([]);
   });
 
+  it("says the budget ran out rather than that no run appeared (#113 N9)", async () => {
+    // Two different things for the owner to do. "No run appeared" is the
+    // stale-branch diagnosis `docs/agent-loop.md` teaches; an exhausted budget
+    // means CI was dispatched and is running normally, and the pull request's
+    // own checks will say so a minute later. Reporting the second as the first
+    // sends the owner to rebase a branch that is fine.
+    const gh = fakeActions({ runs: [] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 0,
+      pollMs: 15_000,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("budget_exhausted");
+    expect(r.summary).toContain("no job time left");
+    expect(r.summary).not.toContain("no run appeared");
+    // The dispatch still happened, so CI posts its own status to the head.
+    expect(gh.calls.dispatched.length).toBe(1);
+  });
+
+  it("still waits when the budget is merely small, not gone (#113 N9)", async () => {
+    // The boundary matters: a budget shorter than one poll cannot observe
+    // anything, but anything longer should still be spent looking.
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 60_000,
+      pollMs: 15_000,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(r.conclusion).toBe("success");
+  });
+
   it("retries a listing that throws DURING the wait, not only before it (#113 O6)", async () => {
     // The gap this closes was mine twice over: the retry branch inside the poll
     // loop had no test, and my own mutation pass never mutated it either — both

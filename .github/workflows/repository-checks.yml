@@ -38,10 +38,16 @@ jobs:
         # fail it. The direction is safe -- the range is never narrower, so
         # nothing passes that should not -- and every pull request in this
         # repository currently targets `main`. Resolving the base from the pull
-        # request associated with the ref is the fix if that stops being true. `fetch-depth: 0` above is what makes that range
-        # available. Without this the step would run `git diff --check "..."`
-        # on two empty strings and fail for a reason that has nothing to do
-        # with whitespace.
+        # request associated with the ref is the fix if that stops being true.
+        #
+        # `fetch-depth: 0` above is what makes either range available at all,
+        # and the `:-` fallbacks are what keep the step from running
+        # `git diff --check "..."` on two empty strings when there is no pull
+        # request event -- failing for a reason that has nothing to do with
+        # whitespace. Two mechanisms, kept in separate paragraphs (#113 O7):
+        # my own #113 O3 edit ran them together, so "without this" read as
+        # `fetch-depth: 0`, which is exactly the misleading-comment defect that
+        # B1 and B3 raised as BLOCKING against the neighbouring workflow file.
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}

@@ -610,6 +610,22 @@ export async function awaitCiOnHead({
     }
   }
 
+  // #113 N9: out of job time is a different answer from "nothing ever
+  // appeared", and the owner acts on them differently. With no budget left the
+  // poll below never runs, and falling through to the timeout message would
+  // publish `no run appeared on this head within 0 minutes` -- the exact
+  // sentence `docs/agent-loop.md` teaches the owner to read as "this branch
+  // predates the trigger, rebase it". The dispatch above has already happened,
+  // so CI is running and will post its own status; what ran out was the loop.
+  if (timeoutMs < pollMs) {
+    return say(
+      "budget_exhausted",
+      false,
+      "was dispatched, but this run had no job time left to wait for it",
+      seen?.html_url ?? null,
+    );
+  }
+
   const deadline = now() + timeoutMs;
   while (now() < deadline) {
     await sleep(pollMs);
