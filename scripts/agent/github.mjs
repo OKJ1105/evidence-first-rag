@@ -98,10 +98,6 @@ export function createClient({ owner, repo }) {
     },
 
     /**
-     * Reviews on the pull request. Read-only, and used by the guard in
-     * `run.mjs` that fails the run if anything approved on its watch.
-     */
-    /**
      * Start a workflow run on `ref` (#21).
      *
      * The loop's Writer pushes with `GITHUB_TOKEN`, and GitHub starts no
@@ -136,6 +132,10 @@ export function createClient({ owner, repo }) {
           `?branch=${encodeURIComponent(branch)}&per_page=${perPage}`,
       ),
 
+    /**
+     * Reviews on the pull request. Read-only, and used by the guard in
+     * `run.mjs` that fails the run if anything approved on its watch.
+     */
     listReviews: (number) =>
       request("GET", `${base}/pulls/${number}/reviews?per_page=100`),
   };

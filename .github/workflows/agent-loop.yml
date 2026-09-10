@@ -8,9 +8,20 @@
 # loop hands the pull request back with a label. The owner merges.
 #
 # Deliberately NOT triggered by `push`. The Writer pushes inside the run, and a
-# push trigger here would restart the loop on its own output. `ci.yml` still
-# runs on those pushes and stays authoritative for merge; the loop's own check
-# subset exists to give the Reviewer something to review against.
+# push trigger here would restart the loop on its own output.
+#
+# That push also raises no CI of its own: it uses `GITHUB_TOKEN`, and GitHub
+# starts no workflow from an event that token raised. Until #21 this comment
+# claimed the opposite, and named a workflow file this repository has never
+# had. Both were wrong, and #18's loop-pushed head `03ba0c4` was labelled ready
+# with zero check runs because of it -- the defect was in a comment before it
+# was in the code.
+#
+# The orchestrator now dispatches `repository-checks.yml` on whichever head it
+# is about to conclude on, and waits for the conclusion before labelling (#21).
+# That dispatch is what `actions: write` below is for. `repository-checks`
+# stays authoritative for merge, and the loop's own check subset exists to give
+# the Reviewer something to review against.
 #
 # TWO CHECKOUTS, and the split is the point (BF4). `base/` holds the loop's own
 # code and the governing documents, taken from the base branch. `head/` is the

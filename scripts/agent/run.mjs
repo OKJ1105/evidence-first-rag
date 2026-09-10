@@ -476,7 +476,7 @@ async function setOutcomeLabel(gh, prNumber, label) {
 export const ciWorkflowFile = "repository-checks.yml";
 
 /**
- * Dispatch CI on the head the Writer just pushed, and wait for its verdict.
+ * Resolve CI's verdict on one head, dispatching a run only if none exists yet.
  *
  * #21: the Writer pushes with `GITHUB_TOKEN`, and GitHub starts no workflow
  * from an event that token raised. So `repository-checks` — which
@@ -489,6 +489,17 @@ export const ciWorkflowFile = "repository-checks.yml";
  * base branch by design (BF4), so they are exactly the checks that cannot
  * cover what the branch changed about checking.
  *
+ * **It looks before it dispatches (B2 on #113).** The question this answers is
+ * "did CI pass on this commit", and a `pull_request` run already on the head
+ * answers it — which is why `listWorkflowRuns` is deliberately unfiltered by
+ * event. Dispatching anyway would burn a second runner on every human-pushed
+ * head for no new information. The caller is therefore free to ask about any
+ * head it is about to conclude on, not only one this run pushed, and that is
+ * what makes the verdict a property of the head rather than of the push.
+ *
+ * A listing that throws is not read as "no run": it falls through to the
+ * dispatch, because not knowing is not a reason to skip the check.
+ *
  * Everything is injected so the whole wait is testable without a network: a
  * fake client, a fake clock and a fake sleep drive every branch below.
  *
@@ -499,7 +510,7 @@ export async function awaitCiOnHead({
   branch,
   headSha,
   workflowFile = ciWorkflowFile,
-  timeoutMs = 15 * 60_000,
+  timeoutMs = 10 * 60_000,
   pollMs = 15_000,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   now = () => Date.now(),
@@ -511,36 +522,49 @@ export async function awaitCiOnHead({
     url,
     summary: `- \`${workflowFile}\` on \`${headSha}\`: ${detail}`,
   });
+  const runOnHead = async () => {
+    const runs = await gh.listWorkflowRuns(workflowFile, branch);
+    return (runs?.workflow_runs ?? []).find((r) => r.head_sha === headSha) ?? null;
+  };
+  const verdictOf = (run) =>
+    say(
+      run.conclusion ?? "unknown",
+      run.conclusion === "success",
+      `**${run.conclusion}**`,
+      run.html_url ?? null,
+    );
 
+  // Look first. An existing run on this head — dispatched or raised by the
+  // pull request — is the answer, and a second one would add nothing.
+  let seen = null;
+  let existed = false;
   try {
-    await gh.dispatchWorkflow(workflowFile, branch);
+    seen = await runOnHead();
+    existed = seen !== null;
+    if (seen?.status === "completed") return verdictOf(seen);
   } catch (err) {
-    // A dispatch this run could not raise is reported, never swallowed. The
-    // whole point of the Issue is that a silently unchecked head reaches a
-    // ready label; failing to dispatch and saying nothing would recreate it.
-    return say("not_dispatched", false, `could not be dispatched — ${err.message}`);
+    log(`CI listing failed before dispatch, dispatching anyway: ${err.message}`);
+  }
+
+  if (!existed) {
+    try {
+      await gh.dispatchWorkflow(workflowFile, branch);
+    } catch (err) {
+      return say("not_dispatched", false, `could not be dispatched — ${err.message}`);
+    }
   }
 
   const deadline = now() + timeoutMs;
-  let seen = null;
   while (now() < deadline) {
     await sleep(pollMs);
-    let runs;
     try {
-      runs = await gh.listWorkflowRuns(workflowFile, branch);
+      seen = await runOnHead();
     } catch (err) {
       log(`CI poll failed, retrying: ${err.message}`);
       continue;
     }
-    // Only a run on the exact head matters. A run on an earlier commit is the
-    // stale-evidence mistake BF2 exists to stop.
-    seen = (runs?.workflow_runs ?? []).find((r) => r.head_sha === headSha) ?? null;
-    if (seen?.status === "completed") {
-      const ok = seen.conclusion === "success";
-      return say(seen.conclusion ?? "unknown", ok, `**${seen.conclusion}**`, seen.html_url ?? null);
-    }
+    if (seen?.status === "completed") return verdictOf(seen);
   }
-
   return say(
     "timed_out",
     false,
@@ -551,14 +575,6 @@ export async function awaitCiOnHead({
   );
 }
 
-/**
- * Fold a CI verdict into the manifest checks' verdict.
- *
- * One `ok` is what the state machine reads, so they are combined — but the
- * summary keeps them apart, because "the loop's checks passed and CI failed"
- * and "a check failed" are different facts and the owner acts differently on
- * them.
- */
 export function withCiVerdict(checkResult, ci) {
   if (!ci) return checkResult;
   return {
@@ -652,6 +668,27 @@ export async function runLoop({
   // BF2: never seeded from state. A verdict recorded on a previous run belongs
   // to a different commit, and reusing it let the loop call a red head ready.
   let checkResult = null;
+
+  // B2 on #113: the CI verdict is a property of the head the loop is about to
+  // conclude on, not of "this run pushed something". Folding it in only on the
+  // fix path left a hole: if the job is cut off during the CI wait, the marker
+  // still records the pre-fix head, and the next run re-reviews the pushed head
+  // through the review path — which took no CI verdict — and can conclude
+  // `ready` over a head no CI has ever seen. That is the defect #21 exists to
+  // remove, so every path that produces a verdict folds CI in.
+  //
+  // Memoised per head, because CI's conclusion on a given commit is a fixed
+  // fact once it completes. Re-asking would re-spend the wait for the same
+  // answer; `awaitCiOnHead` looks before dispatching, so the second ask would
+  // not even start a run.
+  const ciByHead = new Map();
+  const withCi = async (result, head) => {
+    if (!ci) return result;
+    if (!ciByHead.has(head)) ciByHead.set(head, await ci({ branch, headSha: head }));
+    const verdict = ciByHead.get(head);
+    log(`CI on ${head}: ${verdict.conclusion}`);
+    return withCiVerdict(result, verdict);
+  };
   let concluded = null;
   let currentHead = pr.head.sha;
   // #82 / N1 on #92: what the Writer touched behind the owner-decision fence,
@@ -700,14 +737,14 @@ export async function runLoop({
     // The state machine asked for a verdict before it will conclude. Running
     // the checks is the whole step; the next iteration decides on the result.
     if (step.action === ACTIONS.check) {
-      checkResult = await checks();
+      checkResult = await withCi(await checks(), currentHead);
       log(`checks: ${checkResult.ok ? "pass" : "FAIL"}`);
       continue;
     }
 
     if (step.action === ACTIONS.review) {
       if (checkResult === null) {
-        checkResult = await checks();
+        checkResult = await withCi(await checks(), currentHead);
         // Whether the checks ran, and what they said, is otherwise invisible
         // in the run log — `runChecks` captures output rather than streaming
         // it, so a failure after this point gives no way to tell.
@@ -872,21 +909,13 @@ export async function runLoop({
             .join("\n"),
       );
       if (newHead) currentHead = newHead;
-      checkResult = await checks();
-
-      // #21: the push above raised no workflow run, because GitHub starts
-      // none from an event `GITHUB_TOKEN` raised. Dispatch CI on the head
-      // that push created and wait for it, so `ready` is never published
-      // over a head no CI has ever seen. Only when there IS a new head:
-      // a Writer turn that changed nothing pushed nothing, and the head
-      // already carries whatever CI the human's own push produced.
-      if (ci && newHead) {
-        checkResult = withCiVerdict(
-          checkResult,
-          await ci({ branch, headSha: currentHead }),
-        );
-        log(`CI on ${currentHead}: ${checkResult.ci.conclusion}`);
-      }
+      // #21: the push above raised no workflow run, because GitHub starts none
+      // from an event `GITHUB_TOKEN` raised. `withCi` dispatches on the pushed
+      // head and waits, so `ready` is never published over a head no CI has
+      // seen. It is no longer gated on there being a new head: a Writer turn
+      // that changed nothing still concludes on this head, and asking about a
+      // head CI already ran on costs one listing and starts nothing.
+      checkResult = await withCi(await checks(), currentHead);
 
       state = {
         ...state,

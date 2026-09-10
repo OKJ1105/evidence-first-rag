@@ -333,11 +333,76 @@ const completed = (sha, conclusion) => ({
 
 describe("awaitCiOnHead dispatches CI and waits for its verdict", () => {
   it("dispatches the CI workflow on the branch that was pushed to", async () => {
-    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    // No run exists on this head yet, which is the loop-pushed case: the push
+    // used `GITHUB_TOKEN` and raised nothing.
+    const gh = fakeActions({ runs: [] });
     await awaitCiOnHead({ gh, branch: "agent/1-x", headSha: "headsha", ...fastClock() });
     expect(gh.calls.dispatched).toEqual([
       { file: ciWorkflowFile, ref: "agent/1-x" },
     ]);
+  });
+
+  it("does not dispatch when a run already exists on that head (#113 B2)", async () => {
+    // A `pull_request` run on the head answers the same question, which is why
+    // `listWorkflowRuns` is unfiltered by event. Dispatching anyway would burn
+    // a second runner on every human-pushed head for no new information — and
+    // looking first is what lets the caller ask about any head it concludes on,
+    // not only one this run pushed.
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not dispatch when a run is already in progress on that head (#113 B2)", async () => {
+    // The case the completed-run test cannot reach: a run exists but has not
+    // finished. Dispatching a second one would race it and prove nothing.
+    const gh = fakeActions({
+      runs: [{ head_sha: "headsha", status: "in_progress", conclusion: null }],
+    });
+    await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched).toEqual([]);
+  });
+
+  it("answers from an existing completed run without waiting at all (#113 B2)", async () => {
+    // The look-first path has to be a shortcut, not just a different route to
+    // the same poll loop: the wait is minutes, and re-entering it for a run
+    // that has already concluded spends them for an answer already in hand.
+    let slept = 0;
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 60_000,
+      pollMs: 1_000,
+      sleep: async () => {
+        slept += 1;
+      },
+      now: () => 0,
+    });
+    expect(slept).toBe(0);
+    expect(r.ok).toBe(true);
+  });
+
+  it("dispatches anyway when the listing throws, rather than reading it as no run", async () => {
+    // Not knowing is not a reason to skip the check.
+    let first = true;
+    const inner = fakeActions({ runs: [completed("headsha", "success")] });
+    const gh = {
+      calls: inner.calls,
+      dispatchWorkflow: inner.dispatchWorkflow,
+      listWorkflowRuns: async (...args) => {
+        if (first) {
+          first = false;
+          throw new Error("502");
+        }
+        return inner.listWorkflowRuns(...args);
+      },
+    };
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched.length).toBe(1);
+    expect(r.ok).toBe(true);
   });
 
   it("passes when the run on that exact head concludes success", async () => {

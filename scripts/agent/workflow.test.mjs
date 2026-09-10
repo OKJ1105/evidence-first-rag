@@ -165,6 +165,25 @@ describe("the loop can dispatch CI, and CI can be dispatched (#21)", () => {
     expect(granted).not.toMatch(/^ {6}administration:/m);
   });
 
+  it("does not tell its reader that CI runs on the Writer's push (#113 B1)", () => {
+    // The loop's own header comment asserted the falsehood #21 was opened
+    // about — "`ci.yml` still runs on those pushes" — and after the rest of
+    // this slice it also contradicted `docs/agent-loop.md`, which now says the
+    // opposite. The file that *is* the loop is the worst place to leave it: a
+    // reader, or a future agent turn, opens it and is told the thing that
+    // caused the defect.
+    expect(workflow).not.toMatch(/still\s+runs on those pushes/);
+    expect(workflow).toMatch(/raises no CI of its own/);
+  });
+
+  it("does not name a workflow file this repository does not have (#113 B1)", () => {
+    // The same sentence named `ci.yml`. There is no such file; CI is
+    // `repository-checks.yml`, which is what the dispatch actually targets.
+    expect(existsSync(".github/workflows/ci.yml")).toBe(false);
+    expect(workflow).not.toMatch(/`ci\.yml`/);
+    expect(workflow).toMatch(/dispatches `repository-checks\.yml`/);
+  });
+
   it("gives repository-checks a workflow_dispatch trigger", () => {
     expect(ci).toMatch(/\n {2}workflow_dispatch:/);
   });
