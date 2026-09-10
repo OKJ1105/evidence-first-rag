@@ -65,5 +65,5 @@ Artifact `model: claude-opus-5` and `decoding: {"model": "claude-opus-5", "max_t
 
 - Contract Section 8.2's two deferred rows — Section 4.6 adapter adoption and the Section 4.7 baseline comparison — are discharged by this record, where Section 8.2 says they are. No amendment is needed.
 - `needs_entity_discovery` stays terminal. Milestone 3 is not opened by this decision.
-- `README.md`'s status table gains nothing new; this record is what turns the Section 4.6 and 4.7 rows from implemented into adopted.
+- `README.md`'s Section 4.6 and 4.7 status rows gain nothing new; this record is what turns them from implemented into adopted. Two other statements there did need correcting and are corrected in this pull request: the Section 8.3 row read `Contracted` although `adapter/evaluation.py` registers the curated request set and the thresholds, and the status prose said no comparison had been run. Both were true before the run this record rests on and are false after it.
 - The instruction text, schema and decoding this record describes are pinned by digest in the committed artifact; a later change reopens the gate rather than inheriting it.
