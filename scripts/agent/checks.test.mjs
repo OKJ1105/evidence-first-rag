@@ -356,6 +356,32 @@ describe("awaitCiOnHead dispatches CI and waits for its verdict", () => {
     expect(gh.calls.dispatched).toEqual([]);
   });
 
+  it("retries a listing that throws DURING the wait, not only before it (#113 O6)", async () => {
+    // The gap this closes was mine twice over: the retry branch inside the poll
+    // loop had no test, and my own mutation pass never mutated it either — both
+    // existing listing-failure cases throw on the first call, which is the
+    // pre-dispatch look, so the `catch { log; continue }` in the wait was never
+    // entered. A transient 502 mid-wait would then have turned a head whose CI
+    // passed into `timed_out` → `needs-human`.
+    let n = 0;
+    const gh = {
+      calls: { dispatched: [] },
+      dispatchWorkflow: async (file, ref) => {
+        gh.calls.dispatched.push({ file, ref });
+      },
+      listWorkflowRuns: async () => {
+        n += 1;
+        if (n === 1) return { workflow_runs: [] };
+        if (n === 2) throw new Error("502 Bad Gateway");
+        return { workflow_runs: [completed("headsha", "success")] };
+      },
+    };
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(n).toBe(3);
+    expect(r.ok).toBe(true);
+    expect(r.conclusion).toBe("success");
+  });
+
   it("answers from an existing completed run without waiting at all (#113 B2)", async () => {
     // The look-first path has to be a shortcut, not just a different route to
     // the same poll loop: the wait is minutes, and re-entering it for a run
@@ -528,6 +554,21 @@ describe("the CI wait is bounded by the job's remaining time (#113 N3)", () => {
     const left = 60 * 60_000 - 58 * 60_000;
     expect(ciBudgetMs({ startedAt: t0, now: at(58) })).toBe(0);
     expect(left > 0).toBe(true);
+  });
+
+  it("is computed from the job's start, so setup time is not counted as spare", () => {
+    // #113 N8. The ceiling is the job's `timeout-minutes`, measured from job
+    // start; the orchestrator only learns the time once it begins, after the
+    // checkouts, toolchain setup and CLI install. Budgeting from process start
+    // is optimistic by exactly that setup, and the guarantee this cap exists to
+    // give — that the wait is never what crosses the ceiling — does not hold.
+    const jobStart = "2026-01-01T00:00:00Z";
+    const processStart = "2026-01-01T00:04:00Z";
+    const now = Date.parse(jobStart) + 53 * 60_000;
+    // From the job's start there are 5 minutes left after the reserve.
+    expect(ciBudgetMs({ startedAt: jobStart, now })).toBe(5 * 60_000);
+    // From the process's start it looks like 9, which would run 4 minutes past.
+    expect(ciBudgetMs({ startedAt: processStart, now })).toBe(9 * 60_000);
   });
 
   it("falls back to the requested wait when the start time is unreadable", () => {

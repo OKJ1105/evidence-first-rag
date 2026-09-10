@@ -141,6 +141,18 @@ jobs:
       # needed a Secret, and it is not the option chosen.
       actions: write
     steps:
+      - name: Record when this job started
+        # #113 N8. `run.mjs` caps the CI wait by what is left of the
+        # `timeout-minutes` above, and that ceiling is measured from the JOB's
+        # start -- but the orchestrator only learns the time when it itself
+        # begins, after this job's checkouts, toolchain setup and CLI install.
+        # Budgeting from process start is optimistic by exactly that setup, so
+        # the cap could still let the wait cross the ceiling it exists to
+        # protect. First step in the job, so it is as close to the real start
+        # as a step can get; `run.mjs` falls back to process start when it is
+        # absent, which is what happens when it is driven outside Actions.
+        run: echo "CI_AGENT_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Resolve the pull request branch
         id: pr
         env:

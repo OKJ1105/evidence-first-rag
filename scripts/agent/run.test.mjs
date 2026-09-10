@@ -1163,8 +1163,22 @@ describe("main() wires the covered factories rather than inlining them", () => {
 
   it("takes its CI verdict through ciRunner, which carries the budget (#113 N3)", () => {
     expect(mainBody).toMatch(/ci: ciRunner\(/);
-    // The bound has to reach it: `ciRunner` needs `startedAt` to compute one.
+    // The bound has to reach it: `ciRunner` needs a start time to compute one.
     expect(mainBody).toMatch(/ci: ciRunner\(\{[^}]*startedAt/);
+  });
+
+  it("budgets that verdict from the job's start, not this process's (#113 N8)", () => {
+    // `startedAt` is `new Date()` inside `main()`, which is minutes after the
+    // job began. The ceiling the budget subtracts from is the job's, so the
+    // wiring has to prefer the recorded job start and fall back only when it
+    // is absent — outside Actions, where there is no job.
+    expect(mainBody).toMatch(
+      /ci: ciRunner\(\{[^}]*startedAt: process\.env\.CI_AGENT_JOB_STARTED_AT \|\| startedAt/,
+    );
+    // Only the CI budget switches. `startedAt` itself is unchanged and still
+    // reaches `runLoop`, where `assertNothingApproved` uses it — that is about
+    // when the loop took custody, not about the job's budget.
+    expect(mainBody).toMatch(/startedAt,\s*\n?\s*(reset|runUrl|prNumber)/);
   });
 });
 

@@ -1204,7 +1204,16 @@ async function main() {
       // #21. Thin by design: everything worth asserting is in
       // `awaitCiOnHead`, which is driven by fakes in the tests. `main()` is
       // wiring and is not otherwise covered.
-      ci: ciRunner({ gh, startedAt, log: console.log }),
+      // #113 N8: budget from the JOB's start, not this process's. The ceiling
+      // `ciBudgetMs` subtracts from is the job's `timeout-minutes`, and this
+      // process begins after the job's checkouts, setup and CLI install.
+      // `startedAt` stays as it is for `assertNothingApproved`, which is about
+      // when the loop took custody rather than about the job's budget.
+      ci: ciRunner({
+        gh,
+        startedAt: process.env.CI_AGENT_JOB_STARTED_AT || startedAt,
+        log: console.log,
+      }),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;

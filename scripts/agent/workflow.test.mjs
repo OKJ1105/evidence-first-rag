@@ -208,6 +208,17 @@ describe("the loop can dispatch CI, and CI can be dispatched (#21)", () => {
     expect(reporter).toMatch(/if: failure\(\) \|\| cancelled\(\)/);
   });
 
+  it("records the job's start before anything else runs (#113 N8)", () => {
+    // The budget subtracts from the job's ceiling, so it has to measure from
+    // the job's start. This must be the FIRST step: every step before it is
+    // setup time the orchestrator would otherwise count as spare.
+    const loopBlock = workflow.slice(workflow.indexOf("\n  loop:"));
+    const firstStep = loopBlock.slice(loopBlock.indexOf("\n    steps:"));
+    expect(firstStep).toMatch(/steps:\n {6}- name: Record when this job started/);
+    expect(firstStep).toMatch(/CI_AGENT_JOB_STARTED_AT=/);
+    expect(firstStep).toMatch(/>> "\$GITHUB_ENV"/);
+  });
+
   it("mirrors the loop job's timeout into the code that bounds the CI wait", () => {
     // `ciBudgetMs` caps the wait by what is left of this budget. A constant
     // that drifted from the workflow would make the cap wrong in the one
