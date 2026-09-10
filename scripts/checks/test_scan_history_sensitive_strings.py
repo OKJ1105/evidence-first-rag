@@ -580,7 +580,13 @@ class TestAMalformedBatchStream(HistoryCheck):
             "mid-header": b"id " + AWS_KEY.encode(),
             "too few header fields": AWS_KEY.encode() + b"\nrest\n",
             "unreadable size": self.headed(AWS_KEY, b"x\n"),
-            "wrong object": b"0" * 40 + b" blob 24\nid " + AWS_KEY.encode() + b"\n",
+            # The credential sits in the *name* field, which is where a
+            # desynchronised cursor puts file content: the guard reads
+            # `header[0]`, so that is the token a diagnostic would leak.
+            # An earlier version of this entry put a placeholder name
+            # there and a credential in the body, and asserted nothing —
+            # the mutation probe caught it.
+            "wrong object": AWS_KEY.encode() + b" blob 5\nabcde\n",
         }
         for where, stream in streams.items():
             with self.subTest(where=where):
