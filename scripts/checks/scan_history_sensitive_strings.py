@@ -156,6 +156,23 @@ def contents(names):
     The stream is `<name> <type> <size>\\n<size bytes>\\n` per request. It is
     parsed by the declared size rather than by looking for the next header,
     because a blob's own content can contain a line that looks like one.
+
+    Every way the stream can disappoint that parse is turned into a
+    `RuntimeError` here rather than left to escape as whatever the arithmetic
+    happened to raise, because `main()` answers a `RuntimeError` with
+    `CANNOT RUN` and that is the true answer in all of them: git exited 0 and
+    what it wrote could not be read. Converting at the source rather than
+    widening the handler keeps the reason attached to the object it happened
+    on, and keeps `main()` from catching some unrelated `ValueError` under a
+    message about git.
+
+    The length check is the one that matters most, and it is the only one of
+    the three whose absence is silent. A short final frame leaves Python's
+    slice quietly returning fewer bytes than the header declared, with no
+    exception anywhere: the scan would then read part of a file version,
+    find nothing in the part it read, and report PASS. A security check that
+    says "nothing found" when it did not look is the one failure this module
+    exists to avoid, and it is the only one of these three that fails open.
     """
     if not names:
         return {}
@@ -170,14 +187,30 @@ def contents(names):
     body = {}
     at = 0
     for name in names:
-        end = stream.index(b"\n", at)
+        end = stream.find(b"\n", at)
+        if end == -1:
+            raise RuntimeError(
+                f"git ended the batch stream mid-header for {name}: "
+                f"{stream[at:at + 60]!r}"
+            )
         header = stream[at:end].split()
         if len(header) < 3:
             # `<name> missing`. Cannot happen for a name git just listed, but
             # a silent mis-parse of the rest of the stream would be worse.
             raise RuntimeError(f"git could not read {name}: {stream[at:end]!r}")
-        size = int(header[2])
-        body[name] = stream[end + 1 : end + 1 + size]
+        try:
+            size = int(header[2])
+        except ValueError:
+            raise RuntimeError(
+                f"git declared an unreadable size for {name}: {header[2]!r}"
+            ) from None
+        blob = stream[end + 1 : end + 1 + size]
+        if len(blob) != size:
+            raise RuntimeError(
+                f"git declared {size} bytes for {name} and wrote {len(blob)}; "
+                "the batch stream is truncated"
+            )
+        body[name] = blob
         at = end + 1 + size + 1
     return body
 
