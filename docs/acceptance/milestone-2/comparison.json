@@ -1,8 +1,8 @@
 {
   "contract_identifier": "mvp-v0.1",
   "contract_version": "0.6.0",
-  "run_identifier": "69f20dff-691f-42e0-9dbb-059ad75c6c5b",
-  "started_at": "2026-09-10T14:42:02.737997+00:00",
+  "run_identifier": "cbe70f96-2209-4f1a-8823-1a27dceda627",
+  "started_at": "2026-09-10T14:48:58.765845+00:00",
   "model": "claude-opus-5",
   "decoding": {
     "model": "claude-opus-5",
@@ -15,7 +15,7 @@
     }
   },
   "prompt_digest": {
-    "instructions_sha256": "7ad13b73f912a367b216fb0cc3beee6d526eae13dda9d39233b7572ff5245cf6",
+    "instructions_sha256": "d158022655f168fe9eb5a8961f103abbcb584725de2d2e3a806612b03df10142",
     "payload_sha256": "638e2287a01bb107a103a74e47d33e0fad30f93d0a1936e0020b8318e685cf22"
   },
   "schema_digest": "d3dd40a9e9f961fc0dbdb77f3858122cb673602809fd89b38c64143059aa4702",
@@ -26,7 +26,7 @@
     "contract_version": "0.6.0"
   },
   "report": {
-    "started_at": "2026-09-10T14:42:02.737997+00:00",
+    "started_at": "2026-09-10T14:48:58.765845+00:00",
     "model": "claude-opus-5",
     "decoding": {
       "model": "claude-opus-5",
@@ -41,9 +41,9 @@
     "executed_against_a_database": true,
     "adapter": {
       "total": 48,
-      "correct": 47,
+      "correct": 48,
       "false_resolutions": 0,
-      "task_coverage": 0.9791666666666666,
+      "task_coverage": 1.0,
       "false_resolution": 0.0,
       "weakened_negatives": []
     },
@@ -489,10 +489,10 @@
         "identifier": "EV-P-FX-105-0",
         "proposed_route": "message_facts",
         "proposed_arguments": {
-          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
           "project_code": "SAMPLE_PROJECT_ALPHA",
           "revision_label": "SAMPLE_REV_A",
-          "network_name": "SAMPLE_NET_POWERTRAIN"
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
         },
         "accepted": true,
         "correct": true,
@@ -507,10 +507,10 @@
         "identifier": "EV-P-FX-105-1",
         "proposed_route": "message_facts",
         "proposed_arguments": {
-          "project_code": "SAMPLE_PROJECT_ALPHA",
-          "revision_label": "SAMPLE_REV_A",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
           "network_name": "SAMPLE_NET_POWERTRAIN",
-          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A"
         },
         "accepted": true,
         "correct": true,
@@ -724,16 +724,26 @@
       },
       {
         "identifier": "EV-D-1",
-        "proposed_route": "unsupported",
-        "proposed_arguments": {},
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
         "accepted": false,
-        "correct": false,
+        "correct": true,
         "false_resolution": false,
-        "refused_as": "unsupported",
-        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
-        "status": "unsupported",
-        "producing_layer": "adapter",
-        "limitations": []
+        "refused_as": "needs_entity_discovery",
+        "refusal_detail": "route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+        "status": "needs_entity_discovery",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "entity_discovery_not_implemented",
+            "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)"
+          }
+        ]
       },
       {
         "identifier": "EV-D-2",
@@ -869,9 +879,9 @@
           "project_code": "SAMPLE_PROJECT_ALPHA",
           "network_name": "SAMPLE_NET_CHASSIS",
           "snapshot_label": "SAMPLE_SNAP_BASE",
-          "revision_label": "['SAMPLE_REV_A', 'SAMPLE_REV_B']",
           "message_key": "SAMPLE_MSG_WHEEL_SPEED",
-          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL",
+          "revision_label": "['SAMPLE_REV_A', 'SAMPLE_REV_B']"
         },
         "accepted": false,
         "correct": true,
@@ -1699,9 +1709,9 @@
     }
   },
   "usage_totals": {
-    "cache_creation_input_tokens": 1473,
-    "cache_read_input_tokens": 69231,
+    "cache_creation_input_tokens": 1526,
+    "cache_read_input_tokens": 71722,
     "input_tokens": 5031,
-    "output_tokens": 8027
+    "output_tokens": 8073
   }
 }
