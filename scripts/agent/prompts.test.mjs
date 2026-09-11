@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
 import { issueDiscussion, reviewerPrompt, writerPrompt } from "./prompts.mjs";
 
@@ -364,5 +365,164 @@ describe("issueDiscussion on an Issue with no comments", () => {
   it("treats a non-array as no comments at all", () => {
     expect(issueDiscussion(undefined)).toContain("The Issue has no comments");
     expect(issueDiscussion(null)).toContain("The Issue has no comments");
+  });
+});
+
+// #126 round 1, finding B1. The read is non-fatal by design, and the first
+// version of it collapsed a failed fetch into the empty case: both rendered
+// "None. The Issue has no comments." That is the one thing the loop must not
+// say on this path — a decision recorded in a comment is exactly what the read
+// exists for, so a 502 was reaching both agents as an affirmative claim that
+// nothing had been recorded.
+
+describe("an unread discussion is not an empty one (#126 B1)", () => {
+  const unread = issueDiscussion([], { unread: "502 Bad Gateway" });
+
+  it("says the comments could not be read", () => {
+    expect(unread).toContain("could not be read");
+  });
+
+  it("names the reason, so the failure is diagnosable", () => {
+    expect(unread).toContain("502 Bad Gateway");
+  });
+
+  it("never renders the affirmative claim that there are none", () => {
+    expect(unread).not.toContain("The Issue has no comments");
+  });
+
+  it("tells the reader to treat it as unknown rather than as nothing", () => {
+    expect(unread).toContain("unknown, not as none");
+  });
+
+  it("takes precedence over comments that did arrive", () => {
+    // A partial read that then threw must not be presented as the discussion.
+    // Unknown is the honest state whenever the fetch did not complete.
+    const partial = issueDiscussion([{ body: "half of it" }], {
+      unread: "connection reset",
+    });
+    expect(partial).toContain("could not be read");
+    expect(partial).not.toContain("half of it");
+  });
+
+  it("renders differently from an Issue that genuinely has none", () => {
+    expect(unread).not.toBe(issueDiscussion([]));
+  });
+
+  it("says nothing about an unread read when there was none", () => {
+    expect(issueDiscussion([])).not.toContain("could not be read");
+    expect(issueDiscussion([{ body: "x" }])).not.toContain("could not be read");
+  });
+
+  it("makes the empty case say it is the read succeeding", () => {
+    // Otherwise the two states are told apart only by the failed one being
+    // louder, and a reader who sees the empty text has no way to know a
+    // different text exists for the case where nothing was read at all.
+    expect(issueDiscussion([])).toContain("read succeeding and finding");
+  });
+
+  it("reaches both roles, not the Reviewer alone", () => {
+    // The role that reverted the amendment on #32 was the Writer.
+    const base = {
+      issueNumber: 42,
+      issueBody: "B",
+      issueComments: [],
+      issueCommentsUnread: "502 Bad Gateway",
+      riskLevel: "L2",
+      branch: "b",
+      checks: { summary: "ok" },
+      docs: [],
+    };
+    const r = reviewerPrompt({ ...base, diff: "d", round: 1, priorFindings: [] });
+    const w = writerPrompt({
+      ...base,
+      findings: [],
+      round: 1,
+      cap: 2,
+      protectedPaths: ["scripts/"],
+      ownerDecisionPaths: ["docs/contracts/"],
+    });
+    expect(r).toContain("could not be read");
+    expect(w).toContain("could not be read");
+  });
+
+  it("stops the field of view promising a view the run did not get", () => {
+    // The section used to assert "The Issue's body **and its comments** are
+    // both below", which a failed read makes false at the very moment the
+    // reader most needs it to be true.
+    const r = reviewerPrompt({
+      issueNumber: 42,
+      issueBody: "B",
+      issueComments: [],
+      riskLevel: "L2",
+      branch: "b",
+      diff: "d",
+      checks: { summary: "ok" },
+      round: 1,
+      priorFindings: [],
+      docs: [],
+    });
+    expect(r).toContain("only if the loop could read");
+    expect(r).not.toContain("**and its comments** are both below");
+  });
+});
+
+// #126 round 1, finding O1. The field-of-view section exists to keep the
+// Reviewer from asserting more than it saw; a sentence in it that is itself
+// untrue is the failure it was written to prevent.
+
+describe("the field of view admits its own round-2 exception (#126 O1)", () => {
+  const prompt = (priorFindings) =>
+    reviewerPrompt({
+      issueNumber: 42,
+      issueBody: "B",
+      issueComments: [],
+      riskLevel: "L2",
+      branch: "b",
+      diff: "d",
+      checks: { summary: "ok" },
+      round: priorFindings.length ? 2 : 1,
+      priorFindings,
+      docs: [],
+    });
+
+  it("does not claim every pull request comment is out of view, flatly", () => {
+    // In round 2 the prompt reproduces the Reviewer's own earlier findings,
+    // which are pull request comments. A Reviewer applying the old sentence
+    // literally would distrust a block it was deliberately given.
+    expect(prompt([])).toContain("except the earlier findings reproduced below");
+  });
+
+  it("still says nothing else from the pull request reaches it", () => {
+    expect(prompt([])).toContain("nothing\nelse from this pull request reaches you");
+  });
+
+  it("names the exception in the same prompt that carries it", () => {
+    const round2 = prompt([{ id: "B1", severity: "blocking", summary: "s" }]);
+    expect(round2).toContain("Findings you raised earlier on this pull request");
+    expect(round2).toContain("except the earlier findings reproduced below");
+  });
+});
+
+// #126 round 1, finding N1. `issueDiscussion` was inserted between the #29
+// rationale and the function it documents, so the block explaining what the
+// Reviewer can and cannot observe came to sit on the wrong function and
+// `fieldOfView` — the one that rationale is about — was left undocumented.
+// Nothing catches a docstring drifting off its function, so this does.
+
+describe("each JSDoc block sits on the function it documents", () => {
+  const source = readFileSync("scripts/agent/prompts.mjs", "utf8");
+
+  it("keeps the #29 rationale directly above `fieldOfView`", () => {
+    const marker = "What the Reviewer can and cannot observe (#29).";
+    const at = source.indexOf(marker);
+    expect(at).toBeGreaterThan(-1);
+    const after = source.slice(at);
+    const closes = after.indexOf("\n */\n");
+    expect(closes).toBeGreaterThan(-1);
+    // Whatever follows the closing `*/` must be the function itself, with no
+    // other declaration slipped in between.
+    expect(after.slice(closes + " */\n".length + 1)).toMatch(
+      /^function fieldOfView\(/,
+    );
   });
 });

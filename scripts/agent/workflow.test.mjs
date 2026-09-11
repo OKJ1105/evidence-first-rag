@@ -268,3 +268,47 @@ describe("CRLF tolerance", () => {
     expect(normalize(crlf)).toBe("\n    permissions:\n      contents: read\n");
   });
 });
+
+// #126 round 1, finding N2. The independence table and the loop diagram are
+// what an owner answers "what does the Reviewer see, and where could a Writer's
+// own narrative reach it" from. They enumerated Issue + diff + check results
+// and went on saying that after the Issue's comments started reaching both
+// prompts. The document names this drift shape as a real defect itself.
+
+describe("the loop document enumerates what each role actually sees", () => {
+  const doc = readFileSync("docs/agent-loop.md", "utf8");
+  const property3 = /\| 3\. Recorded order of exposure \|[^|]*\|/.exec(doc);
+
+  it("has the property-3 row", () => {
+    expect(property3).not.toBeNull();
+  });
+
+  it("names the Issue's comments as an input, in that row", () => {
+    expect(property3[0]).toContain("the Issue's own comments");
+  });
+
+  it("says the Writer gets them too, not the Reviewer alone", () => {
+    expect(property3[0]).toContain("Writer prompt carries the Issue and its comments");
+  });
+
+  it("still says the pull request's own body and comments reach neither", () => {
+    // BF2. Widening the row must not quietly drop what it already guaranteed.
+    expect(property3[0]).toContain("reach neither prompt");
+    expect(property3[0]).toContain("BF2");
+  });
+
+  it("names the round-2 exception rather than overstating the rule", () => {
+    expect(property3[0]).toContain("earlier findings");
+  });
+
+  it("says what a failed read renders as", () => {
+    expect(property3[0]).toContain("could not read them");
+  });
+
+  it("puts the comments in the diagram too", () => {
+    const diagram = doc.slice(doc.indexOf("owner comments /agent-loop"));
+    expect(diagram.slice(0, diagram.indexOf("```"))).toContain(
+      "Issue + its comments + diff",
+    );
+  });
+});
