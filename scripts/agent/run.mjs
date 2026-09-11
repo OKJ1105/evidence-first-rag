@@ -748,8 +748,18 @@ export async function runLoop({
   try {
     issueComments = await gh.listComments(issueNumber);
   } catch (err) {
-    issueCommentsUnread = err.message;
-    log(`Could not read Issue #${issueNumber}'s comments: ${err.message}`);
+    // #134: the flag is what `issueDiscussion` branches on, so it has to be
+    // truthy on every path that reaches here. Keying it on `err.message` made
+    // it depend on a property of the thrown value that nothing guarantees:
+    // `new Error("").message` is `""` and a non-Error throw has no `.message`
+    // at all, and either one collapses back to the empty branch — publishing
+    // "None. The Issue has no comments." on a run where the read failed, which
+    // is the #126 B1 claim verbatim. A guard must not be disarmed by the shape
+    // of the failure it exists to report.
+    issueCommentsUnread = err?.message || String(err) || "unknown error";
+    log(
+      `Could not read Issue #${issueNumber}'s comments: ${issueCommentsUnread}`,
+    );
   }
 
   // The owner reads the pull request, not the Actions log. A run whose agents

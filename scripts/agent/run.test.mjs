@@ -2151,6 +2151,57 @@ describe("the loop reads the Issue's comments, not only its body (#33)", () => {
     expect(conclusion).toContain("could not be read");
   });
 
+  // #134. The guard `issueDiscussion` branches on was `err.message`, which is a
+  // property of the thrown value and not of the failure. `new Error("").message`
+  // is `""`; a non-Error throw has no `.message` at all. Either one made the
+  // flag falsy, dropped the run back into the empty branch, and published
+  // "None. The Issue has no comments." on a run where the read failed — the
+  // #126 B1 claim verbatim, reintroduced through the guard added to remove it.
+
+  const throwingValue = (value) => {
+    const gh = fakeGitHub();
+    gh.listComments = async (number) => {
+      if (number === gh._.issue.number) throw value;
+      return gh._.comments;
+    };
+    return gh;
+  };
+
+  for (const [label, value, shown] of [
+    ["an Error with an empty message", new Error(""), "Error"],
+    ["a thrown string", "boom", "boom"],
+    ["a thrown object with no message", { code: 500 }, "[object Object]"],
+    ["a thrown undefined", undefined, "undefined"],
+    ["a thrown empty string", "", "unknown error"],
+  ]) {
+    it(`still reports unread on ${label}`, async () => {
+      const { prompts } = await driveWith(throwingValue(value));
+      expect(prompts[0].prompt).toContain("could not be read");
+      expect(prompts[0].prompt).not.toContain("The Issue has no comments");
+      expect(prompts[0].prompt).toContain(shown);
+    });
+  }
+
+  it("prefers the error's own message over its stringified form", async () => {
+    // Falling back is for when there is nothing better. Reaching for the
+    // fallback first would put "Error: " in front of every reason the owner
+    // reads, which is noise where the notice has one job: name the cause.
+    const gh = throwingGitHub("502 Bad Gateway");
+    await driveWith(gh);
+    const published = gh._.comments.map((c) => c.body).join("\n\n");
+    expect(published).toContain("could not be read** (502 Bad Gateway)");
+    expect(published).not.toContain("Error: 502 Bad Gateway");
+  });
+
+  it("never leaves the reason blank, whatever was thrown", async () => {
+    // A notice that names no reason is barely better than no notice: the owner
+    // cannot tell a rate limit from a bug from a refusal.
+    const gh = throwingValue("");
+    await driveWith(gh);
+    const published = gh._.comments.map((c) => c.body).join("\n\n");
+    expect(published).toContain("could not be read** (unknown error)");
+  });
+
   it("tells the Writer the read failed, not the Reviewer alone", async () => {
     // The role that reverted the amendment on #32 was the Writer, and a run
     // with no blocking finding never spawns one — so the earlier tests here
