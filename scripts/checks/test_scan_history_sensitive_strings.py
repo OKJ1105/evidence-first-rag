@@ -546,13 +546,16 @@ class TestAMalformedBatchStream(HistoryCheck):
         self.assertIn("misframed", self.assert_fails("CANNOT RUN"))
 
     def test_a_frame_answering_for_another_object_reports_cannot_run(self):
-        """#110. The definitive desynchronisation guard.
+        """#110. What a desynchronised parse has to reproduce to get past it.
 
-        The separator check before it is probabilistic: it catches a
-        desynchronised cursor only when the leftover bytes fail to look like
-        a frame, and `test_a_blob_whose_content_looks_like_a_batch_header_is
-        _read_correctly` commits a blob proving they can. Whatever they
-        resemble, they do not begin with the name that was asked for.
+        The separator check before it demands only a newline at a computed
+        offset, and `test_a_blob_whose_content_looks_like_a_batch_header_is
+        _read_correctly` commits a blob proving leftover content can supply
+        one. This guard demands the exact object name being requested, at
+        exactly the offset the cursor landed on. **That narrows a bypass; it
+        does not close it** — `contents()` says why, and an earlier version
+        of this docstring called the guard "definitive", which was the same
+        overclaim Issue #115 exists to retract.
         """
         self.batch_writes(b"0" * 40 + b" blob 5\nabcde\n")
         self.assertIn("desynchronised", self.assert_fails("CANNOT RUN"))
