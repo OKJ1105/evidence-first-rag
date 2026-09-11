@@ -1,0 +1,1717 @@
+{
+  "contract_identifier": "mvp-v0.1",
+  "contract_version": "0.6.0",
+  "run_identifier": "18b6a524-c2a0-4894-8fdb-d931658a29a3",
+  "started_at": "2026-09-10T14:57:09.526347+00:00",
+  "model": "claude-opus-5",
+  "decoding": {
+    "model": "claude-opus-5",
+    "max_tokens": 4096,
+    "output_config": {
+      "effort": "low"
+    },
+    "thinking": {
+      "type": "adaptive"
+    }
+  },
+  "prompt_digest": {
+    "instructions_sha256": "d158022655f168fe9eb5a8961f103abbcb584725de2d2e3a806612b03df10142",
+    "payload_sha256": "638e2287a01bb107a103a74e47d33e0fad30f93d0a1936e0020b8318e685cf22"
+  },
+  "schema_digest": "d3dd40a9e9f961fc0dbdb77f3858122cb673602809fd89b38c64143059aa4702",
+  "thresholds": {
+    "task_coverage": 0.9,
+    "false_resolution": 0.0,
+    "registered_at": "2026-09-07T09:32:37Z",
+    "contract_version": "0.6.0"
+  },
+  "report": {
+    "started_at": "2026-09-10T14:57:09.526347+00:00",
+    "model": "claude-opus-5",
+    "decoding": {
+      "model": "claude-opus-5",
+      "max_tokens": 4096,
+      "output_config": {
+        "effort": "low"
+      },
+      "thinking": {
+        "type": "adaptive"
+      }
+    },
+    "executed_against_a_database": true,
+    "adapter": {
+      "total": 48,
+      "correct": 48,
+      "false_resolutions": 0,
+      "task_coverage": 1.0,
+      "false_resolution": 0.0,
+      "weakened_negatives": []
+    },
+    "baseline": {
+      "total": 48,
+      "correct": 22,
+      "false_resolutions": 0,
+      "task_coverage": 0.4583333333333333,
+      "false_resolution": 0.0,
+      "weakened_negatives": []
+    },
+    "adapter_outcomes": [
+      {
+        "identifier": "EV-P-FX-001-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-001-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-001-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-002-0",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-002-1",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-002-2",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-003-0",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-003-1",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-003-2",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-101-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_REVISED",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-101-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_REVISED",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-101-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_REVISED",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-102-0",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-102-1",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-102-2",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-103-0",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-103-1",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-103-2",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-104-0",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "superseded_snapshot",
+            "detail": "SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_B / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-104-1",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "superseded_snapshot",
+            "detail": "SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_B / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-104-2",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "superseded_snapshot",
+            "detail": "SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_B / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-105-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-105-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-105-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-106-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_BODY",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "coverage_gap",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "coverage_not_established",
+            "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_BODY, snapshot_label=SAMPLE_SNAP_BASE, so the coverage this request needs could not be established (Sections 4.2 and 5)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-106-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_BODY",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "coverage_gap",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "coverage_not_established",
+            "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_BODY, snapshot_label=SAMPLE_SNAP_BASE, so the coverage this request needs could not be established (Sections 4.2 and 5)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-106-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_BODY",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "coverage_gap",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "coverage_not_established",
+            "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_BODY, snapshot_label=SAMPLE_SNAP_BASE, so the coverage this request needs could not be established (Sections 4.2 and 5)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-107-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ABSENT"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-107-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ABSENT"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-107-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ABSENT"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-113-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-113-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-113-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-D-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "needs_entity_discovery",
+        "refusal_detail": "route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+        "status": "needs_entity_discovery",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "entity_discovery_not_implemented",
+            "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)"
+          }
+        ]
+      },
+      {
+        "identifier": "EV-D-2",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_REVISED"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "needs_entity_discovery",
+        "refusal_detail": "route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+        "status": "needs_entity_discovery",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "entity_discovery_not_implemented",
+            "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)"
+          }
+        ]
+      },
+      {
+        "identifier": "EV-D-3",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "needs_entity_discovery",
+        "refusal_detail": "route 'signal_mapping' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+        "status": "needs_entity_discovery",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "entity_discovery_not_implemented",
+            "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_mapping' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)"
+          }
+        ]
+      },
+      {
+        "identifier": "EV-D-4",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "needs_entity_discovery",
+        "refusal_detail": "route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+        "status": "needs_entity_discovery",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "entity_discovery_not_implemented",
+            "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)"
+          }
+        ]
+      },
+      {
+        "identifier": "EV-X-1",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "['SAMPLE_REV_A', 'SAMPLE_REV_B']",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "invalid_request",
+        "refusal_detail": "argument 'revision_label' carries 2 values ['SAMPLE_REV_A', 'SAMPLE_REV_B']; a canonical reference names one (Section 4.2)",
+        "status": "invalid_request",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-2",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "['SAMPLE_SNAP_BASE', 'SAMPLE_SNAP_REVISED']",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "invalid_request",
+        "refusal_detail": "argument 'snapshot_label' carries 2 values ['SAMPLE_SNAP_BASE', 'SAMPLE_SNAP_REVISED']; a canonical reference names one (Section 4.2)",
+        "status": "invalid_request",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-3",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "['SAMPLE_NET_POWERTRAIN', 'SAMPLE_NET_CHASSIS']",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "invalid_request",
+        "refusal_detail": "argument 'network_name' carries 2 values ['SAMPLE_NET_POWERTRAIN', 'SAMPLE_NET_CHASSIS']; a canonical reference names one (Section 4.2)",
+        "status": "invalid_request",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-4",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL",
+          "revision_label": "['SAMPLE_REV_A', 'SAMPLE_REV_B']"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "invalid_request",
+        "refusal_detail": "argument 'revision_label' carries 2 values ['SAMPLE_REV_A', 'SAMPLE_REV_B']; a canonical reference names one (Section 4.2)",
+        "status": "invalid_request",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-5",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "['SAMPLE_SNAP_BASE', 'SAMPLE_SNAP_REVISED']",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "invalid_request",
+        "refusal_detail": "argument 'snapshot_label' carries 2 values ['SAMPLE_SNAP_BASE', 'SAMPLE_SNAP_REVISED']; a canonical reference names one (Section 4.2)",
+        "status": "invalid_request",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-3",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-4",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-5",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-6",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      }
+    ],
+    "baseline_outcomes": [
+      {
+        "identifier": "EV-P-FX-001-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-001-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-001-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-002-0",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-002-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-002-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-003-0",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-003-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-003-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-101-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_REVISED",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-101-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-101-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-102-0",
+        "proposed_route": "signal_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-102-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-102-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-103-0",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-103-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-103-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-104-0",
+        "proposed_route": "signal_mapping",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "success",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "superseded_snapshot",
+            "detail": "SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_B / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-104-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-104-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-105-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-105-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-105-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-106-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_BODY",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "coverage_gap",
+        "producing_layer": null,
+        "limitations": [
+          {
+            "kind": "coverage_not_established",
+            "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_BODY, snapshot_label=SAMPLE_SNAP_BASE, so the coverage this request needs could not be established (Sections 4.2 and 5)."
+          }
+        ]
+      },
+      {
+        "identifier": "EV-P-FX-106-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-106-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-107-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ABSENT"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "not_found",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-107-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-107-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-113-0",
+        "proposed_route": "message_facts",
+        "proposed_arguments": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+        },
+        "accepted": true,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": null,
+        "refusal_detail": null,
+        "status": "ambiguous",
+        "producing_layer": null,
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-113-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-P-FX-113-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-D-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-D-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-D-3",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-D-4",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": false,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-3",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-4",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-X-5",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-1",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-2",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-3",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-4",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-5",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      },
+      {
+        "identifier": "EV-U-6",
+        "proposed_route": "unsupported",
+        "proposed_arguments": {},
+        "accepted": false,
+        "correct": true,
+        "false_resolution": false,
+        "refused_as": "unsupported",
+        "refusal_detail": "'unsupported' is not one of the three routes Section 4.5 approves: ['message_facts', 'signal_facts', 'signal_mapping']",
+        "status": "unsupported",
+        "producing_layer": "adapter",
+        "limitations": []
+      }
+    ]
+  },
+  "judgement": {
+    "adoptable": true,
+    "judged": true,
+    "reasons": [],
+    "thresholds": {
+      "task_coverage": 0.9,
+      "false_resolution": 0.0,
+      "registered_at": "2026-09-07T09:32:37Z",
+      "contract_version": "0.6.0"
+    }
+  },
+  "usage_totals": {
+    "cache_creation_input_tokens": 1526,
+    "cache_read_input_tokens": 71722,
+    "input_tokens": 5031,
+    "output_tokens": 8081
+  }
+}

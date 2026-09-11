@@ -21,6 +21,14 @@ artifact records what the client actually sends; and the SHA-256 of the
 fixed instructions and of the vocabulary payload, which Section 4.6 (0.6.0)
 requires recorded by digest -- a change to either reopens the comparison.
 
+Since #111, also `schema_digest`: the SHA-256 of the output schema. Section
+4.6 does not require it, and the owner's disposition on #91 records the
+schema as a code concern rather than a pin. It is recorded because the
+schema travels inside `output_config` beside the `effort` the contract does
+pin, and until #111 a change to it moved no recorded digest -- two runs that
+sent different schemas were indistinguishable in the artifact, which is how
+an unrecorded input decided a comparison. See `schema_digest()` below.
+
 **Model-emitted text in a committed artifact.** Each outcome now records the
 arguments the adapter proposed and the detail of the refusal that stopped
 them, so this document is the one place non-`SAMPLE_*` content could enter
@@ -102,6 +110,30 @@ def prompt_digest() -> dict:
     }
 
 
+def schema_digest() -> str:
+    """The output schema, recorded beside the prompt it is sent with.
+
+    Not required by Section 4.6, which names the model and the decoding
+    configuration; the schema is in neither. That reading is the owner's,
+    recorded 2026-09-10 on #91 -- `issues/91#issuecomment-5611695637`,
+    disposition (a): "the argument schema is a code concern, not a Section
+    4.6 pin". Cited rather than asserted, because a docstring is not where a
+    governance question gets settled, and a reader who cannot reach the
+    record should be able to see whose decision it was. It is pinned anyway
+    because this incident is
+    the demonstration of what an unpinned input costs: the schema travels
+    inside `output_config`, the same object whose `effort` the contract does
+    pin, and a change to it decided a whole comparison while leaving every
+    recorded digest identical. Two runs with the same `prompt_digest` were
+    not the same experiment.
+
+    A digest rather than the schema itself, for the reason Section 4.6 gives
+    for the prompt: what matters is that a reader can tell two runs apart,
+    not that the artifact carries a copy.
+    """
+    return _sha256(vocabulary.as_text(vocabulary.schema()))
+
+
 def perform(
     *,
     propose,
@@ -153,6 +185,7 @@ def perform(
         "model": model,
         "decoding": decoding,
         "prompt_digest": prompt_digest(),
+        "schema_digest": schema_digest(),
         "thresholds": thresholds.as_json() if thresholds is not None else None,
         "report": report.as_json(),
         "judgement": judgement.as_json(),
@@ -218,8 +251,13 @@ def exit_code(document: dict) -> int:
     return 0 if document["judgement"]["judged"] else 2
 
 
+def artifact_text(document: dict) -> str:
+    """The one serialisation of a document: what `write` stores and `main` prints."""
+    return json.dumps(document, indent=2, sort_keys=False) + "\n"
+
+
 def write(path: pathlib.Path, document: dict) -> pathlib.Path:
-    path.write_text(json.dumps(document, indent=2, sort_keys=False) + "\n")
+    path.write_text(artifact_text(document))
     return path
 
 
@@ -274,6 +312,12 @@ def main(argv=None) -> int:
     raw = raw_path(arguments.artifact)
     write(raw, raw_document(document, adapter.calls))
     print(f"{summary(document)}\n  -> {arguments.artifact}\n  -> {raw} (not committed)")
+    # #117. The main document follows the summary on stdout, so a run can be
+    # read from its job log by a reader who cannot download the artifact.
+    # It is the same text `write` put in the artifact, and it is the *main*
+    # document only: the raw record is what the paragraphs above keep out of
+    # everything but its own artifact, and it is not printed.
+    print(artifact_text(document), end="")
     return exit_code(document)
 
 
