@@ -2,13 +2,15 @@
 
 **Milestone:** 2 — Thin LLM Adapter
 
-**Disposition:** _not yet recorded — the repository owner writes this line ([#58](https://github.com/OKJ1105/evidence-first-rag/issues/58))_
+**Disposition:** Accepted
 
-**Date:** _with the disposition_
+**Date:** 2026-09-11
 
-**Recorded by:** _the repository owner, with the disposition_
+**Recorded by:** repository owner
 
-This record is drafted against the Milestone 2 acceptance gate in [Project Charter](../PROJECT_CHARTER.md) Section 9. Every gate item below names the evidence that exists — an automated assertion over registered inputs, or a field of the committed comparison artifact — and where it runs. No item rests on a claim made only here. Drafted from that evidence by Claude Code on the owner's instruction ([#58](https://github.com/OKJ1105/evidence-first-rag/issues/58), [#91](https://github.com/OKJ1105/evidence-first-rag/issues/91)); the disposition is the owner's alone, and a judged artifact that had not cleared the bar would have produced a Rejected record with the same care.
+**Reasoning.** Every pre-registered condition in contract Section 8.3 is met: `task_coverage 1.0000` against the `0.90` bar, `false_resolution 0.0000` against the `0.00` bar, and no weakened negative outcome — measured on the same frozen 48-case set as the Section 4.7 deterministic baseline, which scored `0.4583`, with the set and the thresholds registered before every run that informed this result. The coverage figure is **in-sample**, as this record states below; it is adopted on the understanding that it measures the adapter against the registered set and not against unseen requests, and that what keeps a wrong proposal from becoming a fact is the deterministic revalidation of Section 4.6 rather than this number.
+
+This record satisfies the Milestone 2 acceptance gate in [Project Charter](../PROJECT_CHARTER.md) Section 9. Every gate item below names the evidence that exists — an automated assertion over registered inputs, or a field of the committed comparison artifact — and where it runs. No item rests on a claim made only here. Drafted from that evidence by Claude Code on the owner's instruction ([#58](https://github.com/OKJ1105/evidence-first-rag/issues/58), [#91](https://github.com/OKJ1105/evidence-first-rag/issues/91)); the disposition is the owner's alone, and a judged artifact that had not cleared the bar would have produced a Rejected record with the same care.
 
 ## The comparison this record rests on
 
