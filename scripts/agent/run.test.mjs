@@ -2220,7 +2220,7 @@ describe("the loop reads the Issue's comments, not only its body (#33)", () => {
 // does not own the counter — that recovery does not spend a round.
 
 describe("recovering from a CI verdict that was never about the branch (#116)", () => {
-  const concludedMarker = (ciConclusion) => ({
+  const concludedMarker = (ciObserved, ciConclusion = "timed_out") => ({
     round: 1,
     phase: "needs-human",
     headSha: "shaSAME",
@@ -2230,13 +2230,16 @@ describe("recovering from a CI verdict that was never about the branch (#116)", 
     lastReview: { summary: "clean", findings: [] },
     checksOk: false,
     ciConclusion,
+    ciObserved,
     runId: null,
     updatedAt: null,
   });
 
-  const rerun = async (ciConclusion, verdict) => {
+  const rerun = async (ciObserved, verdict, ciConclusion = "timed_out") => {
     const gh = fakeGitHub({
-      comments: [{ id: 7, body: renderStatusComment(concludedMarker(ciConclusion)) }],
+      comments: [
+        { id: 7, body: renderStatusComment(concludedMarker(ciObserved, ciConclusion)) },
+      ],
     });
     gh._.pr.head.sha = "shaSAME";
     const seen = [];
@@ -2258,22 +2261,35 @@ describe("recovering from a CI verdict that was never about the branch (#116)", 
     return { gh, seen, concluded, marker };
   };
 
-  const green = { ok: true, conclusion: "success", url: null, summary: "- ci: success" };
+  const green = {
+    ok: true,
+    conclusion: "success",
+    url: null,
+    observed: true,
+    summary: "- ci: success",
+  };
   const stillTimedOut = {
     ok: false,
     conclusion: "timed_out",
     url: null,
+    observed: false,
     summary: "- ci: **timed_out**",
   };
-  const red = { ok: false, conclusion: "failure", url: null, summary: "- ci: **failure**" };
+  const red = {
+    ok: false,
+    conclusion: "failure",
+    url: null,
+    observed: true,
+    summary: "- ci: **failure**",
+  };
 
   it("re-asks for the verdict at the same head", async () => {
-    const { seen } = await rerun("timed_out", green);
+    const { seen } = await rerun(false, green);
     expect(seen.map((x) => x.headSha)).toEqual(["shaSAME"]);
   });
 
   it("reaches ready when the second answer is green", async () => {
-    const { concluded, gh } = await rerun("timed_out", green);
+    const { concluded, gh } = await rerun(false, green);
     expect(concluded.action).toBe("ready-for-human-merge");
     expect(gh._.labels.has(LABELS.ready)).toBe(true);
   });
@@ -2282,7 +2298,7 @@ describe("recovering from a CI verdict that was never about the branch (#116)", 
     // The defect this Issue is actually about. `/agent-loop reset` was the
     // only way to get here, and reset is `emptyState()`, so recovering from a
     // slow build and refunding two AI review rounds were one keystroke.
-    const { concluded, marker } = await rerun("timed_out", green);
+    const { concluded, marker } = await rerun(false, green);
     expect(concluded.round).toBe(1);
     expect(marker.round).toBe(1);
   });
@@ -2290,14 +2306,15 @@ describe("recovering from a CI verdict that was never about the branch (#116)", 
   it("records what this run saw, not what got it re-examined", async () => {
     // Otherwise the marker keeps `timed_out` for ever and every later re-run
     // re-examines a head that has long since been judged.
-    const { marker } = await rerun("timed_out", green);
+    const { marker } = await rerun(false, green);
     expect(marker.ciConclusion).toBe("success");
+    expect(marker.ciObserved).toBe(true);
     expect(marker.checksOk).toBe(true);
     expect(marker.phase).toBe("ready-for-human-merge");
   });
 
   it("concludes needs-human again, and records it, when CI is still unseen", async () => {
-    const { concluded, marker } = await rerun("timed_out", stillTimedOut);
+    const { concluded, marker } = await rerun(false, stillTimedOut);
     expect(concluded.action).toBe("needs-human");
     expect(marker.ciConclusion).toBe("timed_out");
   });
@@ -2306,20 +2323,30 @@ describe("recovering from a CI verdict that was never about the branch (#116)", 
     // The recovery path must be able to close itself: an unseen build that
     // turns out to be broken becomes a statement about the branch, and the
     // next re-run skips it.
-    const { concluded, marker } = await rerun("timed_out", red);
+    const { concluded, marker } = await rerun(false, red);
     expect(concluded.action).toBe("needs-human");
     expect(marker.ciConclusion).toBe("failure");
   });
 
+  it("does not re-ask at a head a completed run judged, whatever it said", async () => {
+    // #137 B1: `cancelled` is only ever a completed run's own conclusion, and
+    // a re-run would get it again for ever because `awaitCiOnHead` looks
+    // before it dispatches. Keyed on the string, such a head could never
+    // conclude again.
+    const { seen, concluded } = await rerun(true, green, "cancelled");
+    expect(seen).toEqual([]);
+    expect(concluded.action).toBe("skip");
+  });
+
   it("does not re-ask at a head whose CI genuinely failed", async () => {
-    const { seen, concluded } = await rerun("failure", green);
+    const { seen, concluded } = await rerun(true, green, "failure");
     expect(seen).toEqual([]);
     expect(concluded.action).toBe("skip");
   });
 
   it("does not re-ask at a head that predates this change", async () => {
     // `ciConclusion: null` is every marker written before #116.
-    const { seen, concluded } = await rerun(null, green);
+    const { seen, concluded } = await rerun(null, green, null);
     expect(seen).toEqual([]);
     expect(concluded.action).toBe("skip");
   });

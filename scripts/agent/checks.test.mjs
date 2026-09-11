@@ -654,3 +654,95 @@ describe("the ci dependency main() wires in carries the bound (#113 N3)", () => 
     });
   });
 });
+
+// #137 B1. The carve-out that lets a re-run re-take a verdict (#116) must key
+// on whether a COMPLETED run judged the head, never on the conclusion string:
+// `cancelled` is only ever GitHub's own verdict, and `timed_out` is both
+// GitHub's and this function's wait-expiry sentinel. Since `awaitCiOnHead`
+// looks for an existing run before dispatching, a completed run on the head
+// means a re-run gets the same answer for ever — so a head mistaken for
+// "unseen" could never conclude again, and `reset` would not end it.
+
+describe("a CI verdict says whether a completed run produced it (#137)", () => {
+  for (const conclusion of ["success", "failure", "cancelled", "timed_out"]) {
+    it(`marks a completed \`${conclusion}\` run as observed`, async () => {
+      const gh = fakeActions({ runs: [completed("headsha", conclusion)] });
+      const r = await awaitCiOnHead({
+        gh,
+        branch: "b",
+        headSha: "headsha",
+        ...fastClock(),
+      });
+      expect(r.conclusion).toBe(conclusion);
+      expect(r.observed).toBe(true);
+    });
+  }
+
+  it("marks a completed run with no conclusion as observed", async () => {
+    // `unknown` is this function's word for a run GitHub reports as completed
+    // with a null conclusion. Completed is completed: re-asking cannot help.
+    const gh = fakeActions({
+      runs: [{ head_sha: "headsha", status: "completed", conclusion: null }],
+    });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      ...fastClock(),
+    });
+    expect(r.conclusion).toBe("unknown");
+    expect(r.observed).toBe(true);
+  });
+
+  it("marks a refused dispatch as not observed", async () => {
+    const gh = {
+      listWorkflowRuns: async () => ({ workflow_runs: [] }),
+      dispatchWorkflow: async () => {
+        throw new Error("403");
+      },
+    };
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      ...fastClock(),
+    });
+    expect(r.conclusion).toBe("not_dispatched");
+    expect(r.observed).toBe(false);
+  });
+
+  it("marks an exhausted job budget as not observed", async () => {
+    const gh = fakeActions({ runs: [] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 0,
+      ...fastClock(),
+    });
+    expect(r.conclusion).toBe("budget_exhausted");
+    expect(r.observed).toBe(false);
+  });
+
+  it("marks its own expired wait as not observed", async () => {
+    // The collision that makes the string unusable: this is `timed_out` and so
+    // is the first table's fourth row, and they must decide oppositely.
+    const gh = fakeActions({ runs: [] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      ...fastClock(),
+    });
+    expect(r.conclusion).toBe("timed_out");
+    expect(r.observed).toBe(false);
+  });
+
+  it("keeps the flag through `withCiVerdict`, which is how the loop reads it", () => {
+    const folded = withCiVerdict(
+      { ok: true, summary: "checks" },
+      { ok: false, conclusion: "timed_out", url: null, observed: false, summary: "s" },
+    );
+    expect(folded.ci.observed).toBe(false);
+  });
+});

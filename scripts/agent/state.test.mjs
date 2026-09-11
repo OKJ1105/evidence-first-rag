@@ -105,12 +105,35 @@ describe("renderStatusComment", () => {
 // costs nothing at runtime and everything to the reader.
 
 describe("the marker carries why CI said what it said (#116)", () => {
-  it("defaults the conclusion rather than leaving the key absent", () => {
+  it("defaults both fields rather than leaving the keys absent", () => {
     // `parseState` spreads `emptyState()` under the parsed marker, so this is
     // what a marker written before #116 resolves to. `null` is a stated
     // "not recorded"; an absent key is an accident that reads the same.
-    expect(Object.keys(emptyState())).toContain("ciConclusion");
-    expect(emptyState().ciConclusion).toBe(null);
+    for (const key of ["ciConclusion", "ciObserved"]) {
+      expect(Object.keys(emptyState())).toContain(key);
+      expect(emptyState()[key]).toBe(null);
+    }
+  });
+
+  it("tells the owner when the loop never saw a completed run (#137)", () => {
+    // The conclusion string alone does not say it: `timed_out` is both the
+    // loop's expired wait and one of GitHub's own run conclusions.
+    const unseen = renderStatusComment({
+      ...emptyState(),
+      headSha: "abc",
+      ciConclusion: "timed_out",
+      ciObserved: false,
+    });
+    expect(unseen).toContain("the loop never saw a completed run");
+
+    const judged = renderStatusComment({
+      ...emptyState(),
+      headSha: "abc",
+      ciConclusion: "timed_out",
+      ciObserved: true,
+    });
+    expect(judged).toContain("CI on that head: `timed_out`");
+    expect(judged).not.toContain("never saw a completed run");
   });
 
   it("shows the conclusion to the owner when there is one", () => {
@@ -130,7 +153,14 @@ describe("the marker carries why CI said what it said (#116)", () => {
   });
 
   it("survives a round trip through the marker", () => {
-    const state = { ...emptyState(), headSha: "abc", ciConclusion: "cancelled" };
-    expect(parseState(renderStatusComment(state)).ciConclusion).toBe("cancelled");
+    const state = {
+      ...emptyState(),
+      headSha: "abc",
+      ciConclusion: "cancelled",
+      ciObserved: true,
+    };
+    const back = parseState(renderStatusComment(state));
+    expect(back.ciConclusion).toBe("cancelled");
+    expect(back.ciObserved).toBe(true);
   });
 });

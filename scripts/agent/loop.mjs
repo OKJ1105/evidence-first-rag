@@ -57,13 +57,6 @@ export function roundCapFor(riskLevel) {
  * @param {string|null} input.stateHeadSha Head the recorded state refers to.
  * @param {string} input.phase            Recorded phase, from state.
  */
-export const transientCiConclusions = new Set([
-  "timed_out",
-  "not_dispatched",
-  "budget_exhausted",
-  "cancelled",
-]);
-
 export function nextStep({
   riskLevel,
   round = 0,
@@ -73,7 +66,7 @@ export function nextStep({
   stateHeadSha = null,
   phase = "idle",
   fencedEdits = [],
-  ciConclusion = null,
+  ciObserved = null,
 }) {
   const cap = roundCapFor(riskLevel);
 
@@ -117,8 +110,8 @@ export function nextStep({
   //
   // #116 carves out one case, and only one. Since #21 the verdict folded into
   // `checks` can be a statement about the RUN rather than about the branch:
-  // the loop's wait expired, the dispatch was refused, the job ran out of
-  // time, or the run was cancelled. All four set `ok: false` — correctly, an
+  // the loop's wait expired, the dispatch was refused, or the job ran out of
+  // time before it could wait. All three set `ok: false` — correctly, an
   // unmeasured build is not ready — and the head then concluded `needs-human`
   // and became untouchable. CI going green two minutes later changed nothing,
   // and the only way to make the loop look again was `/agent-loop reset`,
@@ -130,6 +123,16 @@ export function nextStep({
   // changes. "I did not see the build" is about the run, and a later run at
   // the same head has strictly better information.
   //
+  // **Keyed on `ciObserved`, never on the conclusion string (#137 B1).** The
+  // first version listed the conclusions it considered transient, and two of
+  // them can be written by GitHub as a COMPLETED run's own terminal verdict:
+  // `cancelled` always is, and `timed_out` is both that and the loop's own
+  // wait-expiry sentinel. Since `awaitCiOnHead` looks before it dispatches, a
+  // completed run on the head means a re-run gets the same answer for ever —
+  // so such a head could never conclude again, and `/agent-loop reset` did not
+  // end it either. `observed` is set by the one place that reads a completed
+  // run, so the two producers cannot collide.
+  //
   // Deliberately narrow. Re-examination needs a recorded review at this head
   // with nothing blocking left in it, so the unseen verdict is the only thing
   // between this head and `ready`. A head carrying blocking findings stays
@@ -139,9 +142,7 @@ export function nextStep({
     (f) => f.severity === "blocking",
   );
   const ciWasNeverAVerdict =
-    transientCiConclusions.has(ciConclusion) &&
-    lastReview !== null &&
-    recordedBlocking.length === 0;
+    ciObserved === false && lastReview !== null && recordedBlocking.length === 0;
 
   const concluded = phase === ACTIONS.ready || phase === ACTIONS.needsHuman;
   if (concluded && stateHeadSha === headSha && !ciWasNeverAVerdict) {

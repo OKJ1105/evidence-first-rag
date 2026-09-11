@@ -34,14 +34,25 @@ export function emptyState() {
     // Display only. Never an input to `nextStep`: a verdict recorded on a
     // previous run belongs to a different commit (BF2).
     checksOk: null,
-    // Why the last CI verdict on `headSha` said what it said (#116).
+    // The CI verdict at the last run that CONCLUDED, and whether a completed
+    // CI run produced it (#116, #137 N3).
     //
-    // Unlike `checksOk` this IS read by `nextStep` — in exactly one place, the
-    // idempotency branch, which only runs when `stateHeadSha === headSha`. So
-    // it is never a verdict carried across commits, which is what BF2 forbids.
-    // It decides one thing: whether a head the loop already concluded on may
-    // be looked at again. The verdict itself is always re-taken.
+    // "Concluded" is exact, not loose: both fields are written only where the
+    // phase is set to `ready` or `needs-human`. The review and fix steps
+    // advance `headSha` without touching them, so an interrupted marker can
+    // pair a new `headSha` with an older run's verdict. That is safe only
+    // because `nextStep` reads `ciObserved` in one branch, and that branch
+    // requires a concluded phase — which only the write that sets these fields
+    // produces. Display only otherwise, like `checksOk`, and never a verdict
+    // carried across commits (BF2).
     ciConclusion: null,
+    // `false` means the loop never saw a completed run: its wait expired, the
+    // dispatch was refused, or the job had no time left. `true` means a
+    // completed run judged the head, whatever it concluded — `cancelled` and
+    // `timed_out` included, which is why this is a flag and not a list of
+    // conclusion strings (#137 B1). `null` is "not recorded", which is every
+    // marker written before this field existed.
+    ciObserved: null,
     runId: null,
     updatedAt: null,
   };
@@ -104,7 +115,14 @@ export function renderStatusComment(state) {
     `- Phase: \`${state.phase}\``,
     `- Head: \`${state.headSha ?? "unknown"}\``,
     `- Checks at last run: ${state.checksOk === null ? "not run" : state.checksOk ? "pass" : "**FAIL**"}`,
-    ...(state.ciConclusion ? [`- CI on that head: \`${state.ciConclusion}\``] : []),
+    ...(state.ciConclusion
+      ? [
+          `- CI on that head: \`${state.ciConclusion}\`` +
+            (state.ciObserved === false
+              ? " — **the loop never saw a completed run**, so a re-run takes the verdict again"
+              : ""),
+        ]
+      : []),
     ...(state.runId ? [`- Latest run: ${state.runId}`] : []),
     ...(state.updatedAt ? [`- Updated: ${state.updatedAt}`] : []),
     "",

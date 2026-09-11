@@ -321,18 +321,34 @@ describe("the loop document enumerates what each role actually sees", () => {
 describe("the loop document records the transient-CI carve-out (#116)", () => {
   const doc = readFileSync("docs/agent-loop.md", "utf8");
 
-  it("names every conclusion that counts as unseen", () => {
-    for (const c of ["timed_out", "not_dispatched", "budget_exhausted", "cancelled"]) {
-      expect(doc, `${c} is not named`).toContain(c);
+  it("names what the loop's own non-observations are", () => {
+    for (const phrase of [
+      "the loop's wait expired",
+      "the dispatch was refused",
+      "the job had no time left",
+    ]) {
+      expect(doc, `${phrase} is not named`).toContain(phrase);
     }
+  });
+
+  it("says the decision is observation, not the conclusion string (#137 B1)", () => {
+    expect(doc).toContain(
+      "whether a completed CI run judged the head, not what that run concluded",
+    );
+    expect(doc).toContain("A completed run is terminal *whatever it says*");
+  });
+
+  it("qualifies the early-return claim the carve-out breaks (#137 N1)", () => {
+    expect(doc).toContain("One head does not take that second early return");
+    expect(doc).toContain("passes this guard like any other conclusion");
   });
 
   it("says the re-examination spends no round", () => {
     expect(doc).toContain("no round is spent");
   });
 
-  it("says a red build stays terminal", () => {
-    expect(doc).toContain("`failure` is about the branch");
+  it("says a completed run's verdict stays terminal", () => {
+    expect(doc).toContain("A completed run is terminal");
   });
 
   it("stops presenting reset as the way to re-take a verdict", () => {

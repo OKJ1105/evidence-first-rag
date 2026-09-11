@@ -572,10 +572,24 @@ export async function awaitCiOnHead({
   now = () => Date.now(),
   log = () => {},
 }) {
-  const say = (conclusion, ok, detail, url = null) => ({
+  // `observed` says whether a completed CI run actually judged this head, and
+  // it is a different question from `ok` (#137 B1). The three conclusions this
+  // function synthesises for itself are non-observations: the loop did not see
+  // a verdict. Everything `verdictOf` passes through is GitHub's own terminal
+  // conclusion, whatever it says.
+  //
+  // The distinction cannot live in the conclusion STRING. `timed_out` is both
+  // this function's wait-expiry sentinel and one of GitHub's run conclusions,
+  // and `cancelled` is only ever GitHub's. Keying on the string reads a
+  // completed, terminal run as something a later run could answer differently
+  // — and since `awaitCiOnHead` looks before it dispatches, a completed run on
+  // the head means the answer can never change. That is a head nothing can
+  // conclude on again.
+  const say = (conclusion, ok, detail, url = null, observed = false) => ({
     ok,
     conclusion,
     url,
+    observed,
     summary: `- \`${workflowFile}\` on \`${headSha}\`: ${detail}`,
   });
   const runOnHead = async () => {
@@ -588,6 +602,9 @@ export async function awaitCiOnHead({
       run.conclusion === "success",
       `**${run.conclusion}**`,
       run.html_url ?? null,
+      // A completed run judged this head. Its conclusion is terminal even when
+      // it is `cancelled`, `timed_out` or `unknown`.
+      true,
     );
 
   // Look first. An existing run on this head — dispatched or raised by the
@@ -825,7 +842,7 @@ export async function runLoop({
       // and the current head are the same commit, so this is not a verdict
       // travelling between commits (BF2). It decides whether to look again;
       // the verdict itself is always re-taken by the `check` step.
-      ciConclusion: state.ciConclusion,
+      ciObserved: state.ciObserved,
       checks: checkResult,
       headSha: currentHead,
       stateHeadSha: state.headSha,
@@ -1117,6 +1134,7 @@ export async function runLoop({
       ? {
           checksOk: checkResult.ok,
           ciConclusion: checkResult.ci?.conclusion ?? null,
+          ciObserved: checkResult.ci?.observed ?? null,
         }
       : {}),
     updatedAt: new Date().toISOString(),

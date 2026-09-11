@@ -1,10 +1,5 @@
 import { describe, expect, it } from "./test-kit.mjs";
-import {
-  ACTIONS,
-  nextStep,
-  roundCapFor,
-  transientCiConclusions,
-} from "./loop.mjs";
+import { ACTIONS, nextStep, roundCapFor } from "./loop.mjs";
 
 const HEAD = "aaaaaaa";
 
@@ -344,7 +339,7 @@ describe("the owner-decision fence concludes from the state machine (#82)", () =
 // keystroke.
 
 describe("a verdict about the run does not conclude the head (#116)", () => {
-  const concluded = (ciConclusion, findings = []) => ({
+  const concluded = (ciObserved, findings = []) => ({
     riskLevel: "L2",
     round: 1,
     lastReview: { summary: "clean", findings },
@@ -352,34 +347,27 @@ describe("a verdict about the run does not conclude the head (#116)", () => {
     headSha: "H1",
     stateHeadSha: "H1",
     phase: "needs-human",
-    ciConclusion,
+    ciObserved,
   });
 
-  for (const conclusion of [
-    "timed_out",
-    "not_dispatched",
-    "budget_exhausted",
-    "cancelled",
-  ]) {
-    it(`re-examines a head concluded on \`${conclusion}\``, () => {
-      // Not `skip`: the loop asks for the verdict again at the same head.
-      expect(nextStep(concluded(conclusion)).action).toBe("check");
-    });
-  }
-
-  it("leaves a genuinely red head concluded", () => {
-    // `failure` is a statement about the branch. It stays terminal until the
-    // branch changes, which is what the idempotency branch is for.
-    expect(nextStep(concluded("failure")).action).toBe("skip");
+  it("re-examines a head the loop never saw a completed run for", () => {
+    // Not `skip`: the loop asks for the verdict again at the same head.
+    expect(nextStep(concluded(false)).action).toBe("check");
   });
 
-  it("leaves a head concluded when CI passed", () => {
-    expect(nextStep(concluded("success")).action).toBe("skip");
+  it("leaves a head concluded when a completed run judged it", () => {
+    // #137 B1. The first version listed conclusion STRINGS it considered
+    // transient, and `cancelled` is only ever a completed run's own terminal
+    // verdict while `timed_out` is both that and the loop's wait-expiry
+    // sentinel. Since `awaitCiOnHead` looks before it dispatches, a completed
+    // run on the head means a re-run gets the same answer for ever — so such
+    // a head could never conclude again, and `reset` did not end it either.
+    expect(nextStep(concluded(true)).action).toBe("skip");
   });
 
   it("leaves a marker written before this change alone", () => {
-    // A `null` conclusion is every marker that predates #116. Re-examining
-    // those would reopen heads on no evidence at all.
+    // `null` is every marker that predates #116. Re-examining those would
+    // reopen heads on no evidence at all.
     expect(nextStep(concluded(null)).action).toBe("skip");
   });
 
@@ -388,7 +376,7 @@ describe("a verdict about the run does not conclude the head (#116)", () => {
     // verdict is the ONLY thing between this head and `ready`. Resuming the
     // fix loop would spend a round the owner never asked for.
     const step = nextStep(
-      concluded("timed_out", [{ id: "B1", severity: "blocking", summary: "s" }]),
+      concluded(false, [{ id: "B1", severity: "blocking", summary: "s" }]),
     );
     expect(step.action).toBe("skip");
   });
@@ -396,24 +384,32 @@ describe("a verdict about the run does not conclude the head (#116)", () => {
   it("does not re-examine a head with no recorded review", () => {
     // The BF7 terminus and the `L0` path both conclude with `lastReview: null`.
     // Falling through there would spend a review round, not re-take a verdict.
-    expect(
-      nextStep({ ...concluded("timed_out"), lastReview: null }).action,
-    ).toBe("skip");
+    expect(nextStep({ ...concluded(false), lastReview: null }).action).toBe(
+      "skip",
+    );
   });
 
   it("still skips a re-run at a head that concluded ready", () => {
     expect(
-      nextStep({ ...concluded("success"), phase: "ready-for-human-merge" })
-        .action,
+      nextStep({ ...concluded(true), phase: "ready-for-human-merge" }).action,
     ).toBe("skip");
   });
 
+  it("ignores the recorded flag unless the head actually concluded", () => {
+    // A run cut off mid-round leaves `review` or `fix` in the marker. The
+    // carve-out is about reopening a CONCLUDED head; an interrupted one is
+    // handled by the stale-review branch below it and must not be diverted.
+    for (const phase of ["review", "fix", "idle"]) {
+      expect(nextStep({ ...concluded(false), phase }).action).not.toBe("skip");
+    }
+    expect(nextStep({ ...concluded(null), phase: "review" }).action).toBe(
+      "check",
+    );
+  });
+
   it("reaches ready once the re-taken verdict is green, without spending a round", () => {
-    // The recovery itself must not move the counter; that is the whole point.
-    // `nextStep` is pure, so this asserts the step it hands back rather than a
-    // counter it does not own — `run.test.mjs` holds the counter end to end.
     const step = nextStep({
-      ...concluded("timed_out"),
+      ...concluded(false),
       checks: { ok: true, summary: "all green" },
     });
     expect(step.action).toBe("ready-for-human-merge");
@@ -421,35 +417,9 @@ describe("a verdict about the run does not conclude the head (#116)", () => {
 
   it("concludes needs-human again when the re-taken verdict is red", () => {
     const step = nextStep({
-      ...concluded("timed_out"),
+      ...concluded(false),
       checks: { ok: false, summary: "red" },
     });
     expect(step.action).toBe("needs-human");
-  });
-
-  it("ignores the recorded conclusion unless the head actually concluded", () => {
-    // A run cut off mid-round leaves `review` or `fix` in the marker. The
-    // carve-out is about reopening a CONCLUDED head; an interrupted one is
-    // handled by the stale-review branch below it and must not be diverted.
-    for (const phase of ["review", "fix", "idle"]) {
-      expect(nextStep({ ...concluded("timed_out"), phase }).action).not.toBe(
-        "skip",
-      );
-    }
-    // And the one that matters: an interrupted run at the same head resumes
-    // through `check`, not because of the conclusion but because a clean
-    // review is recorded and the checks have not run.
-    expect(nextStep({ ...concluded(null), phase: "review" }).action).toBe(
-      "check",
-    );
-  });
-
-  it("names every conclusion that counts as unseen, in one place", () => {
-    expect([...transientCiConclusions].sort()).toEqual([
-      "budget_exhausted",
-      "cancelled",
-      "not_dispatched",
-      "timed_out",
-    ]);
   });
 });
