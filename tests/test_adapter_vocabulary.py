@@ -11,16 +11,13 @@ contain.
 """
 
 import json
-import pathlib
-import re
 import unittest
 
 from evidence_first_rag import SCOPE_DIMENSIONS, UNSUPPORTED_ROUTE, Route
 from evidence_first_rag.adapter import vocabulary
 from evidence_first_rag.runtime.request import allowed_parameters
 
-FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
-SAMPLE = re.compile(r"SAMPLE_[A-Za-z0-9_]+")
+from .support import SAMPLE, loaded_identifiers
 
 
 def everything_the_adapter_is_told() -> str:
@@ -30,23 +27,17 @@ def everything_the_adapter_is_told() -> str:
 
 
 class TheCallCarriesNoDatabaseContent(unittest.TestCase):
-    def fixture_identifiers(self):
-        found = set()
-        for path in FIXTURES.glob("*.jsonl"):
-            found.update(SAMPLE.findall(path.read_text()))
-        return found
-
     def test_no_fixture_identifier_appears_anywhere_in_the_payload(self):
         told = everything_the_adapter_is_told()
-        leaked = sorted(name for name in self.fixture_identifiers() if name in told)
+        leaked = sorted(name for name in loaded_identifiers() if name in told)
         self.assertEqual(leaked, [])
 
     def test_the_search_would_notice_one(self):
         # Probed, because a scan over an empty set passes quietly.
-        self.assertTrue(self.fixture_identifiers())
+        self.assertTrue(loaded_identifiers())
         self.assertIn(
             "SAMPLE_MSG_ENGINE_STATUS",
-            self.fixture_identifiers(),
+            loaded_identifiers(),
             "the fixtures no longer contain the identifier this probe uses",
         )
 
