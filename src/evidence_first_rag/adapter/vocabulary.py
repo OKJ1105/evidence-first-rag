@@ -157,6 +157,20 @@ def instructions() -> str:
     Written as prohibitions because Section 4.6's rules are prohibitions, and
     because the deterministic revalidation behind this will refuse anyway --
     the prompt exists to make the refusals rare, not to be the enforcement.
+
+    Three rules name the judgement families Section 8.3 tests, because the
+    fifth run on the list-form schema (#91) missed exactly and only those:
+    the operation rule (`U`: "export the facts" was routed as a facts
+    request), the contradiction rule (`X`: "A or B" was resolved by leaving
+    the dimension out, which the runtime answers as `ambiguous` rather than
+    the registered `invalid_request`; two entries under one name are what
+    revalidation refuses as `FX-110`), and the missing-key rule (`D`: a
+    determined route with no key was answered `unsupported`). The
+    operation rule comes before the missing-key rule on purpose: a request
+    to dump a whole scope must not be pulled into a route by the latter.
+    The two rules meet over "what messages are in this scope?", which is
+    the `D` shape and not the `U` one, so the operation rule keys on the
+    verb and says so rather than on how many rows come back.
     """
     return (
         "You convert one engineering data request into a route and arguments.\n"
@@ -164,10 +178,28 @@ def instructions() -> str:
         "Rules you must follow:\n"
         "- Choose exactly one route from the list you are given, or the"
         f" literal {UNSUPPORTED_ROUTE!r} when no route fits the request.\n"
+        "- The routes read facts and nothing else. A request to export or"
+        " produce a file in any format, to compare or diff, to report what"
+        " changed, to dump the entire contents of a scope, to find similar"
+        f" items, or to change or delete anything is {UNSUPPORTED_ROUTE!r} --"
+        " even when it names valid identifiers and a route covers the same"
+        " data. 'Export the facts' is not a request for the facts. Asking"
+        " which messages, signals or mappings a scope contains is not a dump:"
+        " it is a facts request whose entity has not been named, and the rule"
+        " below covers it.\n"
         "- Use only argument names that the chosen route lists.\n"
         "- Copy argument values verbatim from the request text. Do not"
         " translate, expand, correct, case-fold, or complete them. If a value"
         " is not written in the request, leave the argument out.\n"
+        "- If the request gives two or more different values for one"
+        " argument -- 'A or B', 'A and also B', 'either A or B' -- do not"
+        " choose one and do not leave the argument out: emit one entry per"
+        " value, all under that same name. A later step refuses the"
+        " contradiction.\n"
+        "- If a route fits but the request does not name the message or"
+        " signal it is about, keep the route and leave that key out. Do not"
+        f" answer {UNSUPPORTED_ROUTE!r} for a missing key; a later step turns"
+        " it into a safe outcome.\n"
         "- Never invent a project, revision, network, snapshot, message or"
         " signal identifier. An omitted argument is always better than a"
         " guessed one; a later step turns a missing one into a safe outcome"

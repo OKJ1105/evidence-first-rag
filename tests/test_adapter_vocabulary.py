@@ -92,6 +92,55 @@ class ThePayloadIsBuiltFromTheContract(unittest.TestCase):
         )
 
 
+class TheInstructionsNameTheJudgementFamilies(unittest.TestCase):
+    """Section 8.3's `U`, `X` and `D` families, as rules in the fixed text.
+
+    Offline this can only assert the text; the evidence that the rules land
+    is the comparison run, read per case on #91. What these tests hold is
+    that the rules stay in the prompt and keep their operative wording.
+    """
+
+    def test_the_operation_rule_names_every_unsupported_operation_of_section_8_3(self):
+        # "export, compare, diff, dump-the-scope, similarity, or any write"
+        # is the contract's own list for the `U` family. Each names an
+        # operation verb: the rule turns on what is asked for, not on how
+        # many rows the answer would have.
+        text = vocabulary.instructions()
+        for operation in ("export", "compare", "diff", "what changed",
+                          "dump the entire contents of a scope", "similar", "delete"):
+            self.assertIn(operation, text, f"the operation rule does not name {operation!r}")
+        self.assertIn("even when it names valid identifiers", text)
+        self.assertIn("'Export the facts' is not a request for the facts", text)
+
+    def test_the_operation_rule_hands_a_scopes_contents_to_the_missing_key_rule(self):
+        # `EV-D-1` and `EV-D-3` ask which messages or mappings a scope
+        # contains. That is a determined route with no key, not a dump, and
+        # the operation rule has to say so or it would claim them first.
+        text = vocabulary.instructions()
+        self.assertIn(
+            "Asking which messages, signals or mappings a scope contains is not a dump",
+            text,
+        )
+
+    def test_the_contradiction_rule_says_emit_every_value_not_choose_or_omit(self):
+        text = vocabulary.instructions()
+        self.assertIn("two or more different values for one argument", text)
+        self.assertIn("do not choose one and do not leave the argument out", text)
+        self.assertIn("emit one entry per value, all under that same name", text)
+
+    def test_the_missing_key_rule_keeps_the_route(self):
+        text = vocabulary.instructions()
+        self.assertIn("keep the route and leave that key out", text)
+        self.assertIn(f"Do not answer {UNSUPPORTED_ROUTE!r} for a missing key", text)
+
+    def test_the_operation_rule_comes_before_the_missing_key_rule(self):
+        # A request to dump a whole scope must meet the operation rule
+        # first, or the missing-key rule would pull it into a route.
+        text = vocabulary.instructions()
+        self.assertLess(text.index("The routes read facts and nothing else"),
+                        text.index("keep the route and leave that key out"))
+
+
 class TheSchemaClosesWhatItCan(unittest.TestCase):
     def test_the_route_enum_is_the_three_plus_the_literal(self):
         schema = vocabulary.schema()
