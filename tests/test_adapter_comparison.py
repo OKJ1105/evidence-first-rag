@@ -319,6 +319,25 @@ class ANonMappingProposalIsRefusedRatherThanCrashingTheRun(unittest.TestCase):
         self.assertEqual(recorded, ARGUMENTS)
         self.assertTrue(outcomes[0].correct)
 
+    def test_a_route_that_is_not_text_is_a_miss_rather_than_a_crash(self):
+        # The same untrusted path, three lines earlier in `_correct`: `read`
+        # parses with `_keep_duplicates`, so a response whose top-level
+        # `route` key appears twice arrives as a list, and `in _ROUTE_NAMES`
+        # hashes what it is given. It raised, and the run lost every paid
+        # call in the dispatch exactly as the arguments crash did.
+        for route in (["message_facts", "signal_facts"], {"a": 1}, 5, None):
+            with self.subTest(route=route):
+                _, outcomes = measure(
+                    [RESOLVING], lambda text: Proposal(route=route, arguments=ARGUMENTS)
+                )
+                # Not the registered route, so a miss -- and it got recorded.
+                self.assertFalse(outcomes[0].correct)
+                _, outcomes = measure(
+                    [UNRESOLVABLE], lambda text: Proposal(route=route, arguments=ARGUMENTS)
+                )
+                # Names none of the three, so the no-route case is correct.
+                self.assertTrue(outcomes[0].correct)
+
     def test_a_case_registering_no_route_never_reads_the_arguments(self):
         # That branch judges by route name and refusal status alone, so a
         # non-mapping cannot reach `dict()` there. Proved by holding the

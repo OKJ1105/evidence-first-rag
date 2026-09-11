@@ -210,13 +210,17 @@ def _arguments_as_json(value: object) -> dict[str, str]:
     `_as_text` keeps the payload.
 
     **The key alone does not identify the branch**, so the value names the
-    type first. `//` cannot collide with an *allowlisted* argument name, but
-    this field records what the model emitted rather than what the allowlist
-    permits (Section 4.6, and `Proposal.arguments: object`): a response
+    type first. What keeps the reserved key out of a *conforming* call is
+    `vocabulary.schema()` constraining each `name` to an enum of the
+    allowlisted parameters -- not the `//` characters, which are a
+    convention and nothing more. That guarantee is precisely the one this
+    function exists because it cannot assume: a schema-constrained field can
+    still arrive off-shape, which is the premise of #119. So a response
     carrying the pair `{"name": "//not-a-mapping", "value": "x"}` folds into
-    a genuine mapping and lands on the same single key. Both outcomes refuse,
-    so nothing unsafe follows -- what would be lost is the diagnostic this
-    exists for, and `list: [1, 2]` against a bare `x` is what keeps it.
+    a genuine mapping and lands on the same single key, and `list: [1, 2]`
+    against a bare `x` is what tells a reader of `docs/acceptance/` which of
+    the two happened. Both outcomes refuse either way; the diagnostic is the
+    only thing that would have been lost.
 
     Otherwise every name and value goes through
     `_as_text`, which is what keeps the diagnostic that matters: Section
@@ -359,13 +363,22 @@ def _revalidated(
 
 
 def _correct(proposal: Proposal, case: EvaluationCase, refused_as: str | None) -> bool:
+    # `route` is untrusted for the same reason `arguments` is (Section 4.6),
+    # and `client.py` `read` parses with `_keep_duplicates`, so a response
+    # whose top-level `route` key appears twice arrives here as a list.
+    # `x in _ROUTE_NAMES` hashes `x`, so that raised `TypeError` and the
+    # exception left `perform` with neither document written -- the same lost
+    # run as the `arguments` guard below, three lines further down. A value
+    # that is not text names none of the three routes, which is what both
+    # branches below then conclude, so no Section 8.3 definition moves.
+    route = proposal.route if isinstance(proposal.route, str) else None
     if not case.resolves():
         # The case registers no route. Correct is a proposal that names none
         # of the three either -- or one the deterministic layer refused with
         # exactly the status the case registers, which is the registered
         # outcome reached the way Section 8.1 describes it (Section 8.3).
-        return proposal.route not in _ROUTE_NAMES or refused_as == case.expected_status
-    if proposal.route != case.expected_route:
+        return route not in _ROUTE_NAMES or refused_as == case.expected_status
+    if route != case.expected_route:
         return False
     if not isinstance(proposal.arguments, Mapping):
         # Section 4.6 types adapter output as untrusted, so `arguments` can be
