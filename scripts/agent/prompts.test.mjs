@@ -100,6 +100,34 @@ describe("the Writer is told about both fences, with the reason for each", () =>
     expect(prompt).toContain("privileges you do not have");
   });
 
+  it("says the second fence stops the run differently from the first (#82)", () => {
+    // N3 on #92. The two fences now terminate differently — BF3 aborts, BF7
+    // concludes and hands over — and a Writer told they do the same thing is
+    // reading the description that was true before #82.
+    expect(prompt).toContain("it stops the run differently");
+    expect(prompt).toContain("stops and hands the pull request to the owner");
+    expect(prompt).toContain("nothing from your turn is committed or pushed");
+    // The first fence keeps its own word.
+    expect(prompt).toContain("the run is **aborted** if your edits touch");
+  });
+
+  it("does not commend the second fence's outcome to the Writer (#92 N9)", () => {
+    // N9 on #92. The BF7 path exits `run.mjs`'s fix step by `continue`, above
+    // the `state.round + 1` increment, so tripping the fence costs the Writer
+    // no round and ends the run at once. A prompt that also calls that outcome
+    // correct — "where a contract-only change is supposed to end", "not a
+    // failed run" — describes a free exit from any finding the Writer cannot
+    // resolve, and the honest conclusion ("blocking finding(s) remain after N
+    // of 2 round trip(s)") is never reached. The owner is the reader who needs
+    // the designed-terminus framing, and `docs/agent-loop.md` Section 5 gives
+    // it to them; the Writer needs the prohibition.
+    expect(prompt).toContain("without your fix");
+    expect(prompt).toContain("the route you must take instead");
+    expect(prompt).toContain("is the worse of the two");
+    expect(prompt).not.toContain("is supposed to end");
+    expect(prompt).not.toContain("That is not a failed run");
+  });
+
   it("gives the second fence the recorded-decision reason, not the credential one", () => {
     // The distinction the two lists exist to preserve: a contract is not
     // executed and holds no credential, so borrowing privilege is not why it

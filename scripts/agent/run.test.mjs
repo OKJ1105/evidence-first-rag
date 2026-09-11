@@ -947,32 +947,51 @@ describe("BF3 - a Writer turn that edits the machinery aborts the run", () => {
   });
 });
 
-describe("a Writer turn that edits the contract aborts the run", () => {
+describe("a Writer turn that edits the contract stops the run at needs-human", () => {
   // #34. The loop's Writer amended an accepted contract on #23 to authorise
   // its own branch, and reverted an authorised amendment on #32 because the
-  // decision was recorded where it could not see it. Both are refused here,
-  // and the message must give the recorded-decision reason rather than BF3's
-  // credential one — a contract is never executed and holds no credential.
+  // decision was recorded where it could not see it. Both are refused here.
+  //
+  // #82 changed how that refusal is *reported*, not whether it happens. It
+  // used to throw, and a throw is labelled `agent:failed` — a crash. Now the
+  // run concludes `agent:needs-human`, which is what `docs/agent-loop.md`
+  // always said a contract-only pull request ends at. The two properties #34
+  // established are unchanged and are what these assert: the Writer's edit
+  // does not land, and the reason given is the recorded-decision one rather
+  // than BF3's credential wording.
+  function driveTouching(path) {
+    const gh = fakeGitHub();
+    const commits = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")])],
+        writer: [{ responses: [], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async (message) => {
+        commits.push(message);
+        return "sha1";
+      },
+      diff: async () => "d",
+      changedPaths: async () => [path],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, commits, result };
+  }
+
   it.each([
     ["docs/contracts/mvp-v0.1.md"],
     ["docs/contracts/README.md"],
   ])("refuses an edit to %s", async (path) => {
-    const gh = fakeGitHub();
-    await expect(
-      runLoop({
-        gh,
-        agent: fakeAgent({
-          reviewer: [review([blocking("one")])],
-          writer: [{ responses: [], summary: "r1" }],
-        }),
-        checks: passingChecks,
-        commit: async () => "sha1",
-        diff: async () => "d",
-        changedPaths: async () => [path],
-        ctx: baseCtx(),
-        log: () => {},
-      }),
-    ).rejects.toThrow(/recorded human decision/);
+    const { commits, result } = driveTouching(path);
+    const concluded = await result;
+    // Refused: the edit is discarded rather than committed or pushed. This is
+    // the assertion that carries #34's guarantee across #82's change.
+    expect(commits).toEqual([]);
+    expect(concluded.action).toBe("needs-human");
+    expect(concluded.reason).toMatch(/recorded human decision/);
   });
 
   it("does not report the contract under BF3's credential wording", async () => {
@@ -980,22 +999,12 @@ describe("a Writer turn that edits the contract aborts the run", () => {
     // would tell a reader the contract is fenced to stop an agent borrowing
     // the orchestrator's privileges, which is not true of a document nothing
     // executes.
-    const gh = fakeGitHub();
-    await expect(
-      runLoop({
-        gh,
-        agent: fakeAgent({
-          reviewer: [review([blocking("one")])],
-          writer: [{ responses: [], summary: "r1" }],
-        }),
-        checks: passingChecks,
-        commit: async () => "sha1",
-        diff: async () => "d",
-        changedPaths: async () => ["docs/contracts/mvp-v0.1.md"],
-        ctx: baseCtx(),
-        log: () => {},
-      }),
-    ).rejects.toThrow(/not a review-finding fix/);
+    const { gh, result } = driveTouching("docs/contracts/mvp-v0.1.md");
+    const concluded = await result;
+    expect(concluded.reason).toMatch(/not a review-finding fix/);
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).not.toContain("protected paths");
+    expect(all).not.toContain("privileges the agents do not hold");
   });
 
   it("leaves a document outside docs/contracts/ alone", async () => {
@@ -1183,6 +1192,166 @@ describe("agentRunner resolves the model per role and publishes what it asked fo
     const result = await agent({ role: "writer", prompt: "p" });
     expect(seen[0].model).toBe(undefined);
     expect(result.model).toBe(UNPINNED_MODEL);
+  });
+});
+
+// #82. BF7 is reached by a contract-only pull request doing exactly what it is
+// supposed to do, so it is a designed terminus. It used to throw, and every
+// throw is labelled `agent:failed` by `main()` — the loop's word for a crash,
+// and the one #68's queue teaches the owner to restart. Restarting this case
+// aborts identically every time. What must NOT change is the part of BF7 that
+// matters: the fenced edit is still discarded rather than committed.
+
+describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
+  const writerReply = {
+    responses: [{ id: "B1", action: "fixed", note: "amended Section 4.2" }],
+    summary: "amended the contract",
+  };
+
+  /** Drive a full fix round where the Writer's edits land on `paths`. */
+  function driveWithWriterTouching(paths, options = {}) {
+    const gh = fakeGitHub(options.gh);
+    const commits = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("Section 4.2 is ambiguous", "docs/contracts/mvp-v0.1.md")])],
+        writer: [writerReply],
+      }),
+      checks: passingChecks,
+      commit: async (message) => {
+        commits.push(message);
+        return "sha1";
+      },
+      diff: async () => "d",
+      changedPaths: async () => paths,
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, commits, result };
+  }
+
+  const contractEdit = ["docs/contracts/mvp-v0.1.md"];
+
+  it("concludes needs-human instead of throwing", async () => {
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    const concluded = await result;
+    expect(concluded.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(true);
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+    // `agent:failed` is main()'s, and main() is only reached by a throw.
+    expect(gh._.labels.has(LABELS.failed)).toBe(false);
+  });
+
+  it("commits nothing, so the fenced edit is discarded rather than published", async () => {
+    // The half of BF7 that must survive the change. A conclusion that shipped
+    // the Writer's contract edit would be worse than the crash it replaces.
+    const { commits, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    expect(commits).toEqual([]);
+  });
+
+  it("names the fence, the path, and that nothing was committed", async () => {
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("docs/contracts/mvp-v0.1.md");
+    expect(all).toContain("owner-decision fence");
+    expect(all).toMatch(/Section 10/);
+    expect(all).toMatch(/nothing from that Writer turn was committed or pushed/);
+    expect(all).toMatch(/not a failed run/);
+  });
+
+  it("makes no run-wide claim that nothing was committed (#92 N6)", async () => {
+    // The conclusion and the proposal comment are what the owner reads. An
+    // unqualified "nothing was committed or pushed" is false on a run whose
+    // earlier round pushed an ordinary fix, and "contract-only" is not
+    // something the loop determines — the fence fires on any Writer turn that
+    // reaches `docs/contracts/`.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const published = gh._.comments.map((c) => c.body).join("\n");
+    expect(published).not.toContain("nothing was committed or pushed");
+    expect(published).not.toContain("designed outcome for a contract-only change");
+  });
+
+  it("publishes the standing findings with the conclusion", async () => {
+    // #82: a needs-human on a contract is exactly the moment the owner needs
+    // the findings in one place rather than scrolling for them.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).toContain("Section 4.2 is ambiguous");
+  });
+
+  it("records needs-human in the state marker, not a mid-run phase", async () => {
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    expect(stateOf(gh).phase).toBe("needs-human");
+  });
+
+  it("runs the approve guard before concluding, like any other conclusion", async () => {
+    // The conclusion path is shared, so #5's guard covers this terminus too.
+    const { result } = driveWithWriterTouching(contractEdit, {
+      gh: {
+        reviews: [
+          {
+            state: "APPROVED",
+            submitted_at: "2026-01-01T01:00:00Z",
+            user: { login: "someone" },
+          },
+        ],
+      },
+    });
+    await expect(result).rejects.toThrow(/never approve/);
+  });
+
+  it("publishes what the Writer proposed, marked as discarded", async () => {
+    // N2 on #92. The proposal is the input to the decision the fence reserves
+    // for the owner. Without it the record says an edit was attempted and
+    // never what it was.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const proposal = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Writer proposal"));
+    expect(proposal).not.toBeUndefined();
+    expect(proposal).toContain("discarded at the owner-decision fence");
+    expect(proposal).toContain("nothing from this turn was committed or pushed");
+    expect(proposal).toContain("amended the contract");
+    expect(proposal).toContain("amended Section 4.2");
+    expect(proposal).toContain("docs/contracts/mvp-v0.1.md");
+  });
+
+  it("does not present the discarded proposal as a change to the branch", async () => {
+    // The risk in publishing it at all: a reader taking the proposal for an
+    // applied edit. The heading and the body both have to say otherwise.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const proposal = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Writer proposal"));
+    expect(proposal).toContain("it is not a change to the branch");
+    expect(proposal).not.toContain("Writer response — round");
+  });
+
+  it("still throws on a BF3 edit, so a reach for the machinery reads as a crash", async () => {
+    // The other fence keeps its behaviour. A Writer editing the orchestrator
+    // is not a designed terminus and must not be labelled as one.
+    const { result } = driveWithWriterTouching(["scripts/agent/run.mjs"]);
+    await expect(result).rejects.toThrow(/protected paths/);
+  });
+
+  it("throws on a BF3 edit even when a contract edit is present too", async () => {
+    // Order matters: the credential fence is checked first and wins, because
+    // the machinery reach is the more serious of the two.
+    const { result } = driveWithWriterTouching([
+      "docs/contracts/mvp-v0.1.md",
+      "scripts/agent/run.mjs",
+    ]);
+    await expect(result).rejects.toThrow(/protected paths/);
   });
 });
 
