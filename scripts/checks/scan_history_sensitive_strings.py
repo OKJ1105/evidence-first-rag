@@ -183,17 +183,34 @@ def contents(names):
     rules apply to it, so content could be exempted under a rule meant for a
     file it does not come from.
 
-    **Two checks close that, and only together.** The separator check is the
-    cheap one: git writes its separator after every frame, including the last
-    and including a blob whose own content does not end in a newline, so
-    asserting it costs nothing on any real stream. But it is *probabilistic*
-    — it catches a desynchronised cursor only when the leftover bytes fail to
-    look like a frame, and they can look like one. This suite commits a blob
-    whose content is a batch header repeated, for exactly that reason. The
-    name check is the *definitive* one: whatever the leftover bytes resemble,
-    they do not begin with the object name that was asked for. #110 added it
-    after #108 shipped the separator check alone and said, wrongly, that the
-    separator closed this.
+    **Three guards bear on a desynchronised cursor — the field count, the
+    name, and the separator — and none of them closes it.** Each only makes
+    a bypass need more of the leftover bytes than the last. Saying otherwise
+    has been this function's recurring bug: pull request #108 claimed the
+    separator check closed desynchronisation, pull request #114 replaced
+    that with two checks closing it together, and Issue #115 is the third
+    pass. So what follows says what each guard *demands* of a bypass, and
+    ranks nothing.
+
+    The two guards above are not in that set. The mid-header search and the
+    length check each reject their own failure mode outright — which is why
+    the length check is described above as the one whose absence is silent,
+    rather than as one more narrowing.
+
+    The separator check is the cheap one: git writes its separator after
+    every frame, including the last and including a blob whose own content
+    does not end in a newline, so asserting it costs nothing on any real
+    stream. What it demands is a newline at the offset the declared size
+    computes — which leftover content can supply, and this suite commits a
+    blob whose content is a batch header repeated for exactly that reason.
+
+    The name check demands more: leftover content reproducing **the exact
+    object name being requested**, at exactly the offset the cursor landed
+    on. That is a real shape rather than an impossible one — a committed
+    `git ls-tree` dump, an object-name manifest, or a CI log would carry it,
+    and this repository already commits content matching `<40 hex> blob `,
+    in this check's own test file. None of it names a *requested* object
+    today, which is the whole distance between "narrowed" and "closed".
 
     **No diagnostic here prints what the stream carried.** Each reports a
     position, a length, or a field count. A desynchronised parse is reading
