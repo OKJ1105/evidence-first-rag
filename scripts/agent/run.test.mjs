@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
 import {
   LABELS,
@@ -1141,6 +1142,46 @@ describe("BF6 - the record is not overwritten", () => {
   });
 });
 
+// `main()` is the one function here that is never executed by a test: it opens
+// a worktree, spawns the CLI and holds the token. #30 answered that by moving
+// the model resolution into `agentRunner`, and #113 N3 moved the CI bound into
+// `ciRunner` for the same reason — but a factory only helps if `main()` calls
+// it, and a mutation that inlined the raw dependency again failed nothing.
+//
+// This is a text assertion about wiring, not a behavioural one. It cannot say
+// the arguments are right; the describes below do that. It says only that the
+// covered path is the one `main()` takes, which is the half no other test sees.
+// `workflow.test.mjs` reads module source the same way and for the same reason.
+
+describe("main() wires the covered factories rather than inlining them", () => {
+  const source = readFileSync("scripts/agent/run.mjs", "utf8");
+  const mainBody = source.slice(source.indexOf("\nasync function main("));
+
+  it("takes its agent through agentRunner (#30)", () => {
+    expect(mainBody).toMatch(/agent: agentRunner\(/);
+  });
+
+  it("takes its CI verdict through ciRunner, which carries the budget (#113 N3)", () => {
+    expect(mainBody).toMatch(/ci: ciRunner\(/);
+    // The bound has to reach it: `ciRunner` needs a start time to compute one.
+    expect(mainBody).toMatch(/ci: ciRunner\(\{[^}]*startedAt/);
+  });
+
+  it("budgets that verdict from the job's start, not this process's (#113 N8)", () => {
+    // `startedAt` is `new Date()` inside `main()`, which is minutes after the
+    // job began. The ceiling the budget subtracts from is the job's, so the
+    // wiring has to prefer the recorded job start and fall back only when it
+    // is absent — outside Actions, where there is no job.
+    expect(mainBody).toMatch(
+      /ci: ciRunner\(\{[^}]*startedAt: process\.env\.CI_AGENT_JOB_STARTED_AT \|\| startedAt/,
+    );
+    // Only the CI budget switches. `startedAt` itself is unchanged and still
+    // reaches `runLoop`, where `assertNothingApproved` uses it — that is about
+    // when the loop took custody, not about the job's budget.
+    expect(mainBody).toMatch(/startedAt,\s*\n?\s*(reset|runUrl|prNumber)/);
+  });
+});
+
 describe("agentRunner resolves the model per role and publishes what it asked for", () => {
   // `main()` is wiring and is otherwise uncovered, which is how CI_AGENT_MODEL
   // came to be read and never set. This is the seam: the model handed to the
@@ -1352,6 +1393,329 @@ describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
       "scripts/agent/run.mjs",
     ]);
     await expect(result).rejects.toThrow(/protected paths/);
+  });
+});
+
+// #21. The Writer's push raises no workflow, so CI never ran on the head the
+// loop labelled. These assert at the loop level what checks.test.mjs asserts
+// at the helper level: a red CI on a loop-pushed head cannot reach `ready`.
+
+describe("CI on a loop-pushed head gates the verdict (#21)", () => {
+  const driveWithCi = (ci) => {
+    const gh = fakeGitHub();
+    const seen = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "fixed" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => "pushedsha",
+      diff: async () => "d",
+      changedPaths: async () => ["src/x.py"],
+      ci: async (args) => {
+        seen.push(args);
+        return ci;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, seen, result };
+  };
+
+  const green = { ok: true, conclusion: "success", url: null, summary: "- ci: success" };
+  const red = { ok: false, conclusion: "failure", url: null, summary: "- ci: **failure**" };
+
+  it("concludes ready when the loop's checks and CI both pass", async () => {
+    const { gh, result } = driveWithCi(green);
+    const r = await result;
+    expect(r.action).toBe("ready-for-human-merge");
+    expect(gh._.labels.has(LABELS.ready)).toBe(true);
+  });
+
+  it("refuses ready when CI failed, even though every manifest check passed", async () => {
+    // The defect: `passingChecks` is green throughout, and before #21 that was
+    // the whole verdict. Head 03ba0c4 on #18 was labelled ready in this state.
+    const { gh, result } = driveWithCi(red);
+    const r = await result;
+    expect(r.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(true);
+  });
+
+  it("asks for CI on the head the push created, not the head it started from", async () => {
+    const { seen, result } = driveWithCi(green);
+    await result;
+    const heads = seen.map((s) => s.headSha);
+    expect(heads).toContain("pushedsha");
+    expect(seen.every((s) => s.branch === "agent/1-x")).toBe(true);
+  });
+
+  it("asks once per head, not once per verdict (#113 B2)", async () => {
+    // CI's conclusion on a commit is a fixed fact once it completes, and the
+    // wait is minutes. Re-asking for the same head would re-spend it for the
+    // same answer.
+    const { seen, result } = driveWithCi(green);
+    await result;
+    const heads = seen.map((s) => s.headSha);
+    expect(heads.length).toBe(new Set(heads).size);
+  });
+
+  it("publishes the CI verdict where the owner reads it", async () => {
+    const { gh, result } = driveWithCi(red);
+    await result;
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("- ci: **failure**");
+    expect(all).toMatch(/CI on the head this run is concluding on/);
+    // N4 on #113. After B2 most verdicts are taken on heads this run did not
+    // push — a fresh pull request's opening review, a resumed `check`, a Writer
+    // turn that committed nothing. Claiming a push tells the owner the loop
+    // created the commit CI ran on, and on a resumed run that head is theirs.
+    expect(all).not.toMatch(/CI on the head this run pushed/);
+  });
+
+  it("still takes a CI verdict when the Writer pushed nothing (#113 B2)", async () => {
+    // This used to be gated on there being a new head, on the reasoning that
+    // an unmoved head already carries whatever CI the human's push produced.
+    // The reasoning was right and the gate was still wrong: the run concludes
+    // on that head either way, so the verdict has to be taken there too — and
+    // asking is now cheap, because `awaitCiOnHead` looks before it dispatches
+    // and starts nothing when a run already exists.
+    const gh = fakeGitHub();
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "declined" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return red;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(seen.length > 0).toBe(true);
+    expect(concluded.action).toBe("needs-human");
+  });
+
+  it("refuses ready on a resumed run whose review path never saw CI (#113 B2)", async () => {
+    // The hole B2 named. Round 1 pushes H1 and is cut off during the CI wait,
+    // so the marker still records the pre-fix head and `phase: review`. The
+    // next run finds the review stale, re-reviews H1 through the review path —
+    // which used to take no CI verdict at all — and a clean review concluded
+    // `ready` over a head no CI had ever seen. That is exactly the defect #21
+    // exists to remove, reached by a different route.
+    const gh = fakeGitHub();
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({ reviewer: [review([])], writer: [] }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return red;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    // No fix round ran at all: the verdict came from the review path.
+    expect(seen.length > 0).toBe(true);
+    expect(concluded.action).toBe("needs-human");
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("- ci: **failure**");
+  });
+
+  it("folds CI into the `check` path too, so a resumed clean review is gated (#113 B2)", async () => {
+    // The third route to a conclusion, and the one #76 already caught once for
+    // the manifest checks: a clean review recorded at an unchanged head resumes
+    // with no `review` step at all, so `nextStep` asks for a bare `check`. If
+    // that path takes no CI verdict, a red CI on the head being labelled is
+    // invisible — the same hole as the review path, one branch over.
+    const interrupted = {
+      round: 1,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "clean", findings: [] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(interrupted) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ci: async (args) => {
+        seen.push(args);
+        return red;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(seen.map((x) => x.headSha)).toEqual(["shaSAME"]);
+    expect(concluded.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+  });
+
+  it("concludes without a verdict line when no checks ran at all (#113 N6)", async () => {
+    // The guard on the new summary line is load-bearing, and the path that
+    // needs it is reachable: a resumed run already at its round cap with
+    // blocking findings standing at the same head concludes straight from
+    // `nextStep` — `blocking.length === 0` is false, so the branch that would
+    // have run the checks is never entered and `checkResult` is still null.
+    // Interpolating it unguarded would crash the one comment that tells the
+    // owner why the loop stopped.
+    const spent = {
+      round: 2,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "one left", findings: [blocking("still broken")] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(spent) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    let checksRan = 0;
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: async () => {
+        checksRan += 1;
+        return { ok: true, summary: "All checks passed." };
+      },
+      commit: async () => null,
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(checksRan).toBe(0);
+    expect(concluded.action).toBe("needs-human");
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("still broken");
+  });
+
+  it("publishes the CI verdict from the conclusion on the `check` path (#113 N6)", async () => {
+    // That path posts no review and no Writer response, so the conclusion is
+    // its only comment. Before this it carried `concluded.reason` alone — "the
+    // repository checks are failing" — which does not say the failure was CI
+    // rather than the manifest, does not distinguish a red build from a
+    // timeout, and carries no run URL.
+    const interrupted = {
+      round: 1,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "clean", findings: [] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(interrupted) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ci: async () => ({
+        ok: false,
+        conclusion: "timed_out",
+        url: "https://example/run/9",
+        summary: "- `repository-checks` on `shaSAME`: no run appeared on this head",
+      }),
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("no run appeared on this head");
+    // No review or Writer comment exists to carry it instead.
+    // No review or Writer comment exists to carry it instead. Matched on the
+    // heading, not the body: the state marker's own text mentions Writer
+    // responses, and a looser filter picks it up.
+    const headings = gh._.comments.map((c) => c.body.split("\n")[0]);
+    expect(headings).toEqual(["## Agent loop state", "## Stopped — a human is needed"]);
+  });
+
+  it("asks CI once for a head reached by two different paths (#113 B2)", async () => {
+    // The memo has to key on the head, not on the call site. A Writer turn
+    // that pushes nothing leaves the head unmoved, so the fix path and the
+    // review path that follows it both conclude on the same commit — and the
+    // CI wait is minutes, so asking twice spends it twice for one fact.
+    const gh = fakeGitHub();
+    const seen = [];
+    await runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "declined" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return green;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const heads = seen.map((x) => x.headSha);
+    expect(heads.length).toBe(new Set(heads).size);
+  });
+
+  it("concludes ready through the review path when CI on that head is green", async () => {
+    // The other half: the new fold must not turn every clean review into
+    // needs-human.
+    const gh = fakeGitHub();
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({ reviewer: [review([])], writer: [] }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async () => green,
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(concluded.action).toBe("ready-for-human-merge");
   });
 });
 
