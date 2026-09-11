@@ -98,3 +98,39 @@ describe("renderStatusComment", () => {
     expect(rendered).toContain("separate comments");
   });
 });
+
+// #116. The marker is the only place the next run can learn WHY the last CI
+// verdict said what it said, and `nextStep` reads it to decide whether a
+// concluded head may be looked at again. A missing default or a missing line
+// costs nothing at runtime and everything to the reader.
+
+describe("the marker carries why CI said what it said (#116)", () => {
+  it("defaults the conclusion rather than leaving the key absent", () => {
+    // `parseState` spreads `emptyState()` under the parsed marker, so this is
+    // what a marker written before #116 resolves to. `null` is a stated
+    // "not recorded"; an absent key is an accident that reads the same.
+    expect(Object.keys(emptyState())).toContain("ciConclusion");
+    expect(emptyState().ciConclusion).toBe(null);
+  });
+
+  it("shows the conclusion to the owner when there is one", () => {
+    const body = renderStatusComment({
+      ...emptyState(),
+      headSha: "abc",
+      checksOk: false,
+      ciConclusion: "timed_out",
+    });
+    expect(body).toContain("CI on that head: `timed_out`");
+  });
+
+  it("says nothing about CI when none was taken", () => {
+    // An empty line here would read as a verdict of its own.
+    const body = renderStatusComment({ ...emptyState(), headSha: "abc" });
+    expect(body).not.toContain("CI on that head");
+  });
+
+  it("survives a round trip through the marker", () => {
+    const state = { ...emptyState(), headSha: "abc", ciConclusion: "cancelled" };
+    expect(parseState(renderStatusComment(state)).ciConclusion).toBe("cancelled");
+  });
+});

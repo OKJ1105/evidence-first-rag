@@ -811,6 +811,11 @@ export async function runLoop({
       riskLevel,
       round: state.round,
       lastReview: state.lastReview,
+      // #116. Read only inside the idempotency branch, where the recorded head
+      // and the current head are the same commit, so this is not a verdict
+      // travelling between commits (BF2). It decides whether to look again;
+      // the verdict itself is always re-taken by the `check` step.
+      ciConclusion: state.ciConclusion,
       checks: checkResult,
       headSha: currentHead,
       stateHeadSha: state.headSha,
@@ -1086,6 +1091,24 @@ export async function runLoop({
   state = {
     ...state,
     phase: concluded.action,
+    // #116: the one place the CI conclusion is recorded, and one is enough.
+    //
+    // `nextStep` reads it only inside the idempotency branch, which fires only
+    // when the recorded phase is `ready` or `needs-human` — and this is the
+    // only write that sets either. A run cut off mid-round leaves `review` or
+    // `fix` in the marker, where the field is never consulted, so recording it
+    // there would be state nothing reads.
+    //
+    // It has to happen here rather than at the review or fix step because a
+    // run that concludes through the `check` action writes state nowhere else:
+    // without this the marker would keep the transient conclusion that got the
+    // head re-examined and invite the same re-examination for ever.
+    ...(checkResult
+      ? {
+          checksOk: checkResult.ok,
+          ciConclusion: checkResult.ci?.conclusion ?? null,
+        }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
   await gh.createComment(

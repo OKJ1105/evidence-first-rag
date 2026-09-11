@@ -34,6 +34,14 @@ export function emptyState() {
     // Display only. Never an input to `nextStep`: a verdict recorded on a
     // previous run belongs to a different commit (BF2).
     checksOk: null,
+    // Why the last CI verdict on `headSha` said what it said (#116).
+    //
+    // Unlike `checksOk` this IS read by `nextStep` — in exactly one place, the
+    // idempotency branch, which only runs when `stateHeadSha === headSha`. So
+    // it is never a verdict carried across commits, which is what BF2 forbids.
+    // It decides one thing: whether a head the loop already concluded on may
+    // be looked at again. The verdict itself is always re-taken.
+    ciConclusion: null,
     runId: null,
     updatedAt: null,
   };
@@ -96,6 +104,7 @@ export function renderStatusComment(state) {
     `- Phase: \`${state.phase}\``,
     `- Head: \`${state.headSha ?? "unknown"}\``,
     `- Checks at last run: ${state.checksOk === null ? "not run" : state.checksOk ? "pass" : "**FAIL**"}`,
+    ...(state.ciConclusion ? [`- CI on that head: \`${state.ciConclusion}\``] : []),
     ...(state.runId ? [`- Latest run: ${state.runId}`] : []),
     ...(state.updatedAt ? [`- Updated: ${state.updatedAt}`] : []),
     "",

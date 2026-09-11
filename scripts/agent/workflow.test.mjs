@@ -312,3 +312,30 @@ describe("the loop document enumerates what each role actually sees", () => {
     );
   });
 });
+
+// #116. The document is where the owner learns what `/agent-loop reset` means,
+// and the reason this change exists is that `reset` silently meant two things.
+// A document that still describes it as the only way to re-take a verdict
+// would keep teaching the workaround this removes.
+
+describe("the loop document records the transient-CI carve-out (#116)", () => {
+  const doc = readFileSync("docs/agent-loop.md", "utf8");
+
+  it("names every conclusion that counts as unseen", () => {
+    for (const c of ["timed_out", "not_dispatched", "budget_exhausted", "cancelled"]) {
+      expect(doc, `${c} is not named`).toContain(c);
+    }
+  });
+
+  it("says the re-examination spends no round", () => {
+    expect(doc).toContain("no round is spent");
+  });
+
+  it("says a red build stays terminal", () => {
+    expect(doc).toContain("`failure` is about the branch");
+  });
+
+  it("stops presenting reset as the way to re-take a verdict", () => {
+    expect(doc).toContain("Re-examination now happens on a plain re-run");
+  });
+});

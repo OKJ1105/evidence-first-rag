@@ -57,6 +57,13 @@ export function roundCapFor(riskLevel) {
  * @param {string|null} input.stateHeadSha Head the recorded state refers to.
  * @param {string} input.phase            Recorded phase, from state.
  */
+export const transientCiConclusions = new Set([
+  "timed_out",
+  "not_dispatched",
+  "budget_exhausted",
+  "cancelled",
+]);
+
 export function nextStep({
   riskLevel,
   round = 0,
@@ -66,6 +73,7 @@ export function nextStep({
   stateHeadSha = null,
   phase = "idle",
   fencedEdits = [],
+  ciConclusion = null,
 }) {
   const cap = roundCapFor(riskLevel);
 
@@ -106,8 +114,37 @@ export function nextStep({
   // Idempotency. A workflow re-run, a duplicate comment, or a second label
   // event must not spend a round trip or repost a review. Only an unchanged
   // head qualifies: a new commit is new work.
+  //
+  // #116 carves out one case, and only one. Since #21 the verdict folded into
+  // `checks` can be a statement about the RUN rather than about the branch:
+  // the loop's wait expired, the dispatch was refused, the job ran out of
+  // time, or the run was cancelled. All four set `ok: false` — correctly, an
+  // unmeasured build is not ready — and the head then concluded `needs-human`
+  // and became untouchable. CI going green two minutes later changed nothing,
+  // and the only way to make the loop look again was `/agent-loop reset`,
+  // which is implemented as `emptyState()` and therefore puts `round` back to
+  // 0. Recovering from a slow build and refunding two AI review rounds were
+  // the same keystroke, and nothing in the record said which one was meant.
+  //
+  // "the build is red" is about the branch and stays terminal until the branch
+  // changes. "I did not see the build" is about the run, and a later run at
+  // the same head has strictly better information.
+  //
+  // Deliberately narrow. Re-examination needs a recorded review at this head
+  // with nothing blocking left in it, so the unseen verdict is the only thing
+  // between this head and `ready`. A head carrying blocking findings stays
+  // skipped: resuming the fix loop would spend a round the owner did not ask
+  // for, and that is not what this is for.
+  const recordedBlocking = (lastReview?.findings ?? []).filter(
+    (f) => f.severity === "blocking",
+  );
+  const ciWasNeverAVerdict =
+    transientCiConclusions.has(ciConclusion) &&
+    lastReview !== null &&
+    recordedBlocking.length === 0;
+
   const concluded = phase === ACTIONS.ready || phase === ACTIONS.needsHuman;
-  if (concluded && stateHeadSha === headSha) {
+  if (concluded && stateHeadSha === headSha && !ciWasNeverAVerdict) {
     return {
       action: ACTIONS.skip,
       reason: `Already concluded at ${headSha} (${phase}).`,
