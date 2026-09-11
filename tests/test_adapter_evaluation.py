@@ -29,11 +29,11 @@ from evidence_first_rag.references import SCOPE_DIMENSIONS
 from evidence_first_rag.runtime.request import required_lookup_keys
 from evidence_first_rag.routes import Route
 
+from .support import FIXTURES, SAMPLE, loaded_identifiers
+
 REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
-FIXTURES = REPOSITORY / "fixtures"
 CONTRACT = REPOSITORY / "docs" / "contracts" / "mvp-v0.1.md"
 EXPECTED = REPOSITORY / "src" / "evidence_first_rag" / "conformance" / "expected"
-SAMPLE = re.compile(r"SAMPLE_[A-Za-z0-9_]+")
 
 # fixtures/README.md reserves these three as absent; validate_fixtures.py
 # asserts the fixtures never grow one. They are legitimate in a request.
@@ -44,9 +44,7 @@ def _rows(name):
     return [json.loads(line) for line in (FIXTURES / name).read_text().splitlines() if line.strip()]
 
 
-LOADED_IDENTIFIERS = {
-    token for path in FIXTURES.glob("*.jsonl") for token in SAMPLE.findall(path.read_text())
-}
+LOADED_IDENTIFIERS = loaded_identifiers()
 LOADED_SCOPES = [
     {dimension: row[dimension] for dimension in SCOPE_DIMENSIONS}
     for row in _rows("source_snapshot.jsonl")
