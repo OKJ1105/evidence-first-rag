@@ -24,7 +24,13 @@ import { parseState, renderStatusComment } from "./state.mjs";
  * It has no approve method and no merge method, for the same reason the real
  * client does not: the loop must have no route to either.
  */
-function fakeGitHub({ pr, issue, comments = [], reviews = [] } = {}) {
+function fakeGitHub({
+  pr,
+  issue,
+  comments = [],
+  issueComments = [],
+  reviews = [],
+} = {}) {
   const state = {
     pr: pr ?? {
       head: { sha: "sha0", ref: "agent/1-x" },
@@ -33,6 +39,8 @@ function fakeGitHub({ pr, issue, comments = [], reviews = [] } = {}) {
     },
     issue: issue ?? { number: 42, body: "ISSUE BODY: the requirement." },
     comments: [...comments],
+    issueComments: [...issueComments],
+    listedNumbers: [],
     reviews: [...reviews],
     labels: new Set(),
     nextId: 100,
@@ -41,7 +49,15 @@ function fakeGitHub({ pr, issue, comments = [], reviews = [] } = {}) {
     _: state,
     getPull: async () => state.pr,
     getIssue: async () => state.issue,
-    listComments: async () => state.comments,
+    // #33: the pull request's comments and the Issue's are different lists
+    // served from the same path, and reading the wrong one is the defect
+    // itself. The fake keeps them apart so a test can tell which was asked for.
+    listComments: async (number) => {
+      state.listedNumbers.push(number);
+      return number === state.issue.number
+        ? state.issueComments
+        : state.comments;
+    },
     createComment: async (_n, body) => {
       const c = { id: (state.nextId += 1), body };
       state.comments.push(c);
@@ -1940,5 +1956,103 @@ describe("parsing the paths a Writer turn changed", () => {
     expect(parseStatusPaths("?? scripts/we\nird.mjs\0")).toEqual([
       "scripts/we\nird.mjs",
     ]);
+  });
+});
+
+// #33's first defect, at the loop level. The prompt tests pin the rendering;
+// these pin that the orchestrator asks for the right list at all. The loop
+// already called `listComments` — for the PULL REQUEST, to find its own state
+// marker — so "it calls listComments" was true before this change and meant
+// nothing. What was missing is the call with the ISSUE's number.
+
+describe("the loop reads the Issue's comments, not only its body (#33)", () => {
+  const issueComments = [
+    { user: { login: "OKJ1105" }, created_at: "2026-09-01T00:00:00Z", body: "DECISION: keep it opt-in." },
+  ];
+
+  const drive = (extra = {}) => {
+    const gh = fakeGitHub({ issueComments, ...extra });
+    const prompts = [];
+    const result = runLoop({
+      gh,
+      agent: async ({ role, prompt }) => {
+        prompts.push({ role, prompt });
+        return role === "reviewer"
+          ? { text: JSON.stringify(review([blocking("one")])), sessionId: "s" }
+          : {
+              text: JSON.stringify({ responses: [{ id: "B1", action: "fixed" }], summary: "r" }),
+              sessionId: "s",
+            };
+      },
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, prompts, result };
+  };
+
+  it("asks for the Issue's number, not just the pull request's", async () => {
+    const { gh, result } = drive();
+    await result;
+    // 42 is the Issue the fake pull request closes; 7 is the pull request.
+    expect(gh._.listedNumbers).toContain(42);
+    expect(gh._.listedNumbers).toContain(7);
+  });
+
+  it("puts the Issue's comment in front of the Reviewer", async () => {
+    const { prompts, result } = drive();
+    await result;
+    const reviewer = prompts.find((p) => p.role === "reviewer");
+    expect(reviewer.prompt).toContain("DECISION: keep it opt-in.");
+  });
+
+  it("puts it in front of the Writer too", async () => {
+    const { prompts, result } = drive();
+    await result;
+    const writer = prompts.find((p) => p.role === "writer");
+    expect(writer).not.toBeUndefined();
+    expect(writer.prompt).toContain("DECISION: keep it opt-in.");
+  });
+
+  it("does not leak the pull request's own comments into either prompt", async () => {
+    // The loop's state marker and its published reviews live there. Feeding a
+    // Reviewer its own prior output as Issue discussion would seed the verdict
+    // from state, which BF2 exists to stop.
+    const { prompts, result } = drive({
+      comments: [{ id: 1, body: "PR-ONLY: the loop's own state marker." }],
+    });
+    await result;
+    for (const p of prompts) {
+      expect(p.prompt).not.toContain("PR-ONLY:");
+    }
+  });
+
+  it("runs anyway when the comments cannot be read", async () => {
+    // The body is still the specification. Losing the discussion is worse than
+    // losing the run, so the read is not allowed to be fatal.
+    const gh = fakeGitHub();
+    gh.listComments = async (number) => {
+      if (number === 42) throw new Error("502 Bad Gateway");
+      return gh._.comments;
+    };
+    const prompts = [];
+    const concluded = await runLoop({
+      gh,
+      agent: async ({ role, prompt }) => {
+        prompts.push({ role, prompt });
+        return { text: JSON.stringify(review([])), sessionId: "s" };
+      },
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(concluded.action).toBe("ready-for-human-merge");
+    expect(prompts[0].prompt).toContain("The Issue has no comments");
   });
 });

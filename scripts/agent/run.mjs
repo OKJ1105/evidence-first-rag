@@ -728,6 +728,22 @@ export async function runLoop({
   const issue = await gh.getIssue(issueNumber);
   const issueBody = issue.body ?? "";
 
+  // #33: the body was all either role ever saw, so a decision recorded as an
+  // Issue comment was structurally invisible. On #32 that made the Writer
+  // revert a contract amendment because "no such decision is present in this
+  // session's context" — correct on its inputs, and the inputs were missing it.
+  //
+  // `listComments` is the same paginated read the state marker relies on, and
+  // GitHub serves an Issue's comments from the same path as a pull request's.
+  // A failure here is not fatal: the Issue's body is still the specification,
+  // and losing the discussion is worse than losing the run.
+  let issueComments = [];
+  try {
+    issueComments = await gh.listComments(issueNumber);
+  } catch (err) {
+    log(`Could not read Issue #${issueNumber}'s comments: ${err.message}`);
+  }
+
   let { state, commentId } = await loadState(gh, prNumber);
   if (reset) {
     log("Reset requested: clearing the recorded round count.");
@@ -827,6 +843,7 @@ export async function runLoop({
         prompt: reviewerPrompt({
           issueNumber,
           issueBody,
+          issueComments,
           riskLevel,
           branch,
           diff: await diff(),
@@ -876,6 +893,7 @@ export async function runLoop({
         prompt: writerPrompt({
           issueNumber,
           issueBody,
+          issueComments,
           riskLevel,
           branch,
           findings: blocking,

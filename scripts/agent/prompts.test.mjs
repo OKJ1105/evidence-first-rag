@@ -1,5 +1,5 @@
 import { describe, expect, it } from "./test-kit.mjs";
-import { reviewerPrompt, writerPrompt } from "./prompts.mjs";
+import { issueDiscussion, reviewerPrompt, writerPrompt } from "./prompts.mjs";
 
 // The loop's Reviewer once ran without `docs/reviewer-brief.md`, the Charter
 // or the contract framework, so the brief's blocking priorities could not be
@@ -243,5 +243,126 @@ describe("the field of view is the Reviewer's alone", () => {
       ownerDecisionPaths: ["docs/contracts/"],
     });
     expect(p).not.toContain("What you can and cannot see");
+  });
+});
+
+// #33's first defect. The loop read `issue.body` and nothing else, so a
+// decision recorded as an Issue comment reached neither role. On #32 that made
+// the Writer revert a contract amendment because "no such decision is present
+// in this session's context" — correct on its inputs, and the inputs were
+// missing it.
+
+describe("the Issue's comments reach both roles, as discussion (#33)", () => {
+  const comments = [
+    {
+      user: { login: "OKJ1105" },
+      created_at: "2026-09-01T00:00:00Z",
+      body: "DECISION: alias resolution stays opt-in.",
+    },
+    {
+      user: { login: "github-actions[bot]" },
+      created_at: "2026-09-02T00:00:00Z",
+      body: "SECOND: and the fixture ids are frozen.",
+    },
+  ];
+  const base = {
+    issueNumber: 42,
+    issueBody: "ISSUE BODY",
+    issueComments: comments,
+    riskLevel: "L2",
+    branch: "b",
+    checks: { summary: "All checks passed." },
+    docs: [],
+  };
+  const reviewer = reviewerPrompt({ ...base, diff: "d", round: 1, priorFindings: [] });
+  const writer = writerPrompt({
+    ...base,
+    findings: [],
+    round: 1,
+    cap: 2,
+    protectedPaths: ["scripts/"],
+    ownerDecisionPaths: ["docs/contracts/"],
+  });
+
+  it("puts every comment in the Reviewer's prompt", () => {
+    expect(reviewer).toContain("DECISION: alias resolution stays opt-in.");
+    expect(reviewer).toContain("SECOND: and the fixture ids are frozen.");
+  });
+
+  it("puts every comment in the Writer's prompt", () => {
+    // Option 1 on the Issue: both roles, not the Reviewer alone. A Writer that
+    // cannot see the decision is the role that reverted the amendment.
+    expect(writer).toContain("DECISION: alias resolution stays opt-in.");
+    expect(writer).toContain("SECOND: and the fixture ids are frozen.");
+  });
+
+  it("keeps them out of the Issue's own section", () => {
+    // The body is what the slice is measured against; a comment is someone
+    // talking about it, including talk the next comment superseded. Merged into
+    // one text, a passing remark reads as a requirement.
+    const issueSection = reviewer.slice(
+      reviewer.indexOf("## Issue #42"),
+      reviewer.indexOf("## Discussion on the Issue"),
+    );
+    expect(issueSection).toContain("ISSUE BODY");
+    expect(issueSection).not.toContain("DECISION: alias resolution");
+  });
+
+  it("labels them as discussion rather than specification", () => {
+    expect(reviewer).toContain("comments on the Issue, not the Issue's specification");
+    expect(writer).toContain("comments on the Issue, not the Issue's specification");
+  });
+
+  it("says a login is not provenance, without claiming what is (#33 defect 2)", () => {
+    // Writer, Reviewer and owner post under one account. Defect 2 — what a
+    // "recorded decision" claim is worth, and what does carry provenance — is
+    // not settled by this slice, so the prompt states the limit and stops.
+    expect(reviewer).toContain("not provenance");
+    expect(reviewer).toContain("post under one account");
+  });
+
+  it("names the authors anyway, so two voices can be told apart", () => {
+    expect(reviewer).toContain("OKJ1105");
+    expect(reviewer).toContain("github-actions[bot]");
+  });
+
+  it("keeps the comments in the order they were said", () => {
+    expect(reviewer.indexOf("DECISION: alias") < reviewer.indexOf("SECOND: and the")).toBe(true);
+  });
+
+  it("tells the Reviewer the comments are now in its field of view (#29's gap)", () => {
+    // The Issue names this as the same class as #29: the Reviewer had no way to
+    // know comments existed at all.
+    expect(reviewer).toContain("The Issue's comments are in your view");
+  });
+
+  it("still names what is outside the view, so the fix does not read as total", () => {
+    expect(reviewer).toContain("the Issue's labels");
+    expect(reviewer).toContain("every pull request comment");
+  });
+});
+
+describe("issueDiscussion on an Issue with no comments", () => {
+  it("says so, rather than rendering an empty heading", () => {
+    // A blank section reads as "nothing was recorded anywhere"; an explicit
+    // "None" reads as "this was looked at and there was nothing".
+    expect(issueDiscussion([])).toContain("The Issue has no comments");
+  });
+
+  it("does not claim there is discussion to read", () => {
+    expect(issueDiscussion([])).not.toContain("not the Issue's specification");
+  });
+
+  it("survives a malformed comment without dropping its body", () => {
+    // The API shape is not this repository's to guarantee.
+    const out = issueDiscussion([{ body: "orphaned" }]);
+    expect(out).toContain("orphaned");
+    expect(out).toContain("unknown");
+    expect(out).toContain("undated");
+  });
+
+  it("treats a non-array as no comments at all", () => {
+    expect(issueDiscussion(undefined)).toContain("The Issue has no comments");
+    expect(issueDiscussion(null)).toContain("The Issue has no comments");
   });
 });
