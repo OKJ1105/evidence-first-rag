@@ -728,6 +728,40 @@ export async function runLoop({
   const issue = await gh.getIssue(issueNumber);
   const issueBody = issue.body ?? "";
 
+  // #33: the body was all either role ever saw, so a decision recorded as an
+  // Issue comment was structurally invisible. On #32 that made the Writer
+  // revert a contract amendment because "no such decision is present in this
+  // session's context" — correct on its inputs, and the inputs were missing it.
+  //
+  // `listComments` is the same paginated read the state marker relies on, and
+  // GitHub serves an Issue's comments from the same path as a pull request's.
+  // A failure here is not fatal: the Issue's body is still the specification,
+  // and losing the discussion is worse than losing the run.
+  //
+  // But the failure is CARRIED, not swallowed (#126 B1). The first version left
+  // `issueComments = []`, and an empty list renders as "None. The Issue has no
+  // comments." — so a 502 reached both agents as an affirmative claim that
+  // nothing was recorded, on exactly the case this read exists for. Unread and
+  // empty are different states and both prompts now say which one they got.
+  let issueComments = [];
+  let issueCommentsUnread = null;
+  try {
+    issueComments = await gh.listComments(issueNumber);
+  } catch (err) {
+    issueCommentsUnread = err.message;
+    log(`Could not read Issue #${issueNumber}'s comments: ${err.message}`);
+  }
+
+  // The owner reads the pull request, not the Actions log. A run whose agents
+  // reasoned without the discussion has to say so where the merge decision is
+  // made, or the gap is invisible at exactly the moment it matters.
+  const unreadNotice = issueCommentsUnread
+    ? `> **The Issue's comments could not be read** (${issueCommentsUnread}). ` +
+      "Both agents were told the discussion is unknown rather than empty, so " +
+      "anything recorded only in an Issue comment was not in front of either " +
+      "of them on this run."
+    : null;
+
   let { state, commentId } = await loadState(gh, prNumber);
   if (reset) {
     log("Reset requested: clearing the recorded round count.");
@@ -827,6 +861,8 @@ export async function runLoop({
         prompt: reviewerPrompt({
           issueNumber,
           issueBody,
+          issueComments,
+          issueCommentsUnread,
           riskLevel,
           branch,
           diff: await diff(),
@@ -858,6 +894,7 @@ export async function runLoop({
           `Head \`${currentHead}\` · Issue #${issueNumber} · risk \`${riskLevel}\``,
           `Reviewer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
+          ...(unreadNotice ? [unreadNotice, ""] : []),
           parsed.summary,
           "",
           renderFindings(findings),
@@ -876,6 +913,8 @@ export async function runLoop({
         prompt: writerPrompt({
           issueNumber,
           issueBody,
+          issueComments,
+          issueCommentsUnread,
           riskLevel,
           branch,
           findings: blocking,
@@ -1006,6 +1045,7 @@ export async function runLoop({
           `Head \`${currentHead}\``,
           `Writer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
+          ...(unreadNotice ? [unreadNotice, ""] : []),
           summary,
           "",
           ...(responses.length
@@ -1055,6 +1095,11 @@ export async function runLoop({
       "",
       concluded.reason,
       "",
+      // A run that concludes through `check` posts neither a review nor a
+      // Writer response, so this can be the only comment it writes. The notice
+      // has to be here too or a whole run can go by with the gap recorded
+      // nowhere the owner looks.
+      ...(unreadNotice ? [unreadNotice, ""] : []),
       ready
         ? "No blocking findings remain and the checks pass. **Merging is the owner's act; nothing here approves or merges.**"
         : "The loop stopped without clearing every blocking finding. The comments above are the record the owner decides from.",
