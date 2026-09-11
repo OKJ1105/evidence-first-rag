@@ -2151,6 +2151,57 @@ describe("the loop reads the Issue's comments, not only its body (#33)", () => {
     expect(conclusion).toContain("could not be read");
   });
 
+  // #134. The guard `issueDiscussion` branches on was `err.message`, which is a
+  // property of the thrown value and not of the failure. `new Error("").message`
+  // is `""`; a non-Error throw has no `.message` at all. Either one made the
+  // flag falsy, dropped the run back into the empty branch, and published
+  // "None. The Issue has no comments." on a run where the read failed — the
+  // #126 B1 claim verbatim, reintroduced through the guard added to remove it.
+
+  const throwingValue = (value) => {
+    const gh = fakeGitHub();
+    gh.listComments = async (number) => {
+      if (number === gh._.issue.number) throw value;
+      return gh._.comments;
+    };
+    return gh;
+  };
+
+  for (const [label, value, shown] of [
+    ["an Error with an empty message", new Error(""), "Error"],
+    ["a thrown string", "boom", "boom"],
+    ["a thrown object with no message", { code: 500 }, "[object Object]"],
+    ["a thrown undefined", undefined, "undefined"],
+    ["a thrown empty string", "", "unknown error"],
+  ]) {
+    it(`still reports unread on ${label}`, async () => {
+      const { prompts } = await driveWith(throwingValue(value));
+      expect(prompts[0].prompt).toContain("could not be read");
+      expect(prompts[0].prompt).not.toContain("The Issue has no comments");
+      expect(prompts[0].prompt).toContain(shown);
+    });
+  }
+
+  it("prefers the error's own message over its stringified form", async () => {
+    // Falling back is for when there is nothing better. Reaching for the
+    // fallback first would put "Error: " in front of every reason the owner
+    // reads, which is noise where the notice has one job: name the cause.
+    const gh = throwingGitHub("502 Bad Gateway");
+    await driveWith(gh);
+    const published = gh._.comments.map((c) => c.body).join("\n\n");
+    expect(published).toContain("could not be read** (502 Bad Gateway)");
+    expect(published).not.toContain("Error: 502 Bad Gateway");
+  });
+
+  it("never leaves the reason blank, whatever was thrown", async () => {
+    // A notice that names no reason is barely better than no notice: the owner
+    // cannot tell a rate limit from a bug from a refusal.
+    const gh = throwingValue("");
+    await driveWith(gh);
+    const published = gh._.comments.map((c) => c.body).join("\n\n");
+    expect(published).toContain("could not be read** (unknown error)");
+  });
+
   it("tells the Writer the read failed, not the Reviewer alone", async () => {
     // The role that reverted the amendment on #32 was the Writer, and a run
     // with no blocking finding never spawns one — so the earlier tests here
@@ -2160,5 +2211,143 @@ describe("the loop reads the Issue's comments, not only its body (#33)", () => {
     expect(writer).not.toBeUndefined();
     expect(writer.prompt).toContain("could not be read");
     expect(writer.prompt).not.toContain("The Issue has no comments");
+  });
+});
+
+// #116, end to end. The unit tests in `loop.test.mjs` pin the decision; these
+// pin that the orchestrator carries the conclusion into the marker, feeds it
+// back on the next run, and — the part `nextStep` cannot assert, because it
+// does not own the counter — that recovery does not spend a round.
+
+describe("recovering from a CI verdict that was never about the branch (#116)", () => {
+  const concludedMarker = (ciObserved, ciConclusion = "timed_out") => ({
+    round: 1,
+    phase: "needs-human",
+    headSha: "shaSAME",
+    riskLevel: "L2",
+    issueNumber: 42,
+    registry: {},
+    lastReview: { summary: "clean", findings: [] },
+    checksOk: false,
+    ciConclusion,
+    ciObserved,
+    runId: null,
+    updatedAt: null,
+  });
+
+  const rerun = async (ciObserved, verdict, ciConclusion = "timed_out") => {
+    const gh = fakeGitHub({
+      comments: [
+        { id: 7, body: renderStatusComment(concludedMarker(ciObserved, ciConclusion)) },
+      ],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return verdict;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const marker = parseState(gh._.comments.find((c) => c.id === 7).body);
+    return { gh, seen, concluded, marker };
+  };
+
+  const green = {
+    ok: true,
+    conclusion: "success",
+    url: null,
+    observed: true,
+    summary: "- ci: success",
+  };
+  const stillTimedOut = {
+    ok: false,
+    conclusion: "timed_out",
+    url: null,
+    observed: false,
+    summary: "- ci: **timed_out**",
+  };
+  const red = {
+    ok: false,
+    conclusion: "failure",
+    url: null,
+    observed: true,
+    summary: "- ci: **failure**",
+  };
+
+  it("re-asks for the verdict at the same head", async () => {
+    const { seen } = await rerun(false, green);
+    expect(seen.map((x) => x.headSha)).toEqual(["shaSAME"]);
+  });
+
+  it("reaches ready when the second answer is green", async () => {
+    const { concluded, gh } = await rerun(false, green);
+    expect(concluded.action).toBe("ready-for-human-merge");
+    expect(gh._.labels.has(LABELS.ready)).toBe(true);
+  });
+
+  it("spends no round doing it", async () => {
+    // The defect this Issue is actually about. `/agent-loop reset` was the
+    // only way to get here, and reset is `emptyState()`, so recovering from a
+    // slow build and refunding two AI review rounds were one keystroke.
+    const { concluded, marker } = await rerun(false, green);
+    expect(concluded.round).toBe(1);
+    expect(marker.round).toBe(1);
+  });
+
+  it("records what this run saw, not what got it re-examined", async () => {
+    // Otherwise the marker keeps `timed_out` for ever and every later re-run
+    // re-examines a head that has long since been judged.
+    const { marker } = await rerun(false, green);
+    expect(marker.ciConclusion).toBe("success");
+    expect(marker.ciObserved).toBe(true);
+    expect(marker.checksOk).toBe(true);
+    expect(marker.phase).toBe("ready-for-human-merge");
+  });
+
+  it("concludes needs-human again, and records it, when CI is still unseen", async () => {
+    const { concluded, marker } = await rerun(false, stillTimedOut);
+    expect(concluded.action).toBe("needs-human");
+    expect(marker.ciConclusion).toBe("timed_out");
+  });
+
+  it("turns a red re-take into a terminal conclusion", async () => {
+    // The recovery path must be able to close itself: an unseen build that
+    // turns out to be broken becomes a statement about the branch, and the
+    // next re-run skips it.
+    const { concluded, marker } = await rerun(false, red);
+    expect(concluded.action).toBe("needs-human");
+    expect(marker.ciConclusion).toBe("failure");
+  });
+
+  it("does not re-ask at a head a completed run judged, whatever it said", async () => {
+    // #137 B1: `cancelled` is only ever a completed run's own conclusion, and
+    // a re-run would get it again for ever because `awaitCiOnHead` looks
+    // before it dispatches. Keyed on the string, such a head could never
+    // conclude again.
+    const { seen, concluded } = await rerun(true, green, "cancelled");
+    expect(seen).toEqual([]);
+    expect(concluded.action).toBe("skip");
+  });
+
+  it("does not re-ask at a head whose CI genuinely failed", async () => {
+    const { seen, concluded } = await rerun(true, green, "failure");
+    expect(seen).toEqual([]);
+    expect(concluded.action).toBe("skip");
+  });
+
+  it("does not re-ask at a head that predates this change", async () => {
+    // `ciConclusion: null` is every marker written before #116.
+    const { seen, concluded } = await rerun(null, green, null);
+    expect(seen).toEqual([]);
+    expect(concluded.action).toBe("skip");
   });
 });

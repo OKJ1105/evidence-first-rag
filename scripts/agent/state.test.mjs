@@ -98,3 +98,69 @@ describe("renderStatusComment", () => {
     expect(rendered).toContain("separate comments");
   });
 });
+
+// #116. The marker is the only place the next run can learn WHY the last CI
+// verdict said what it said, and `nextStep` reads it to decide whether a
+// concluded head may be looked at again. A missing default or a missing line
+// costs nothing at runtime and everything to the reader.
+
+describe("the marker carries why CI said what it said (#116)", () => {
+  it("defaults both fields rather than leaving the keys absent", () => {
+    // `parseState` spreads `emptyState()` under the parsed marker, so this is
+    // what a marker written before #116 resolves to. `null` is a stated
+    // "not recorded"; an absent key is an accident that reads the same.
+    for (const key of ["ciConclusion", "ciObserved"]) {
+      expect(Object.keys(emptyState())).toContain(key);
+      expect(emptyState()[key]).toBe(null);
+    }
+  });
+
+  it("tells the owner when the loop never saw a completed run (#137)", () => {
+    // The conclusion string alone does not say it: `timed_out` is both the
+    // loop's expired wait and one of GitHub's own run conclusions.
+    const unseen = renderStatusComment({
+      ...emptyState(),
+      headSha: "abc",
+      ciConclusion: "timed_out",
+      ciObserved: false,
+    });
+    expect(unseen).toContain("the loop never saw a completed run");
+
+    const judged = renderStatusComment({
+      ...emptyState(),
+      headSha: "abc",
+      ciConclusion: "timed_out",
+      ciObserved: true,
+    });
+    expect(judged).toContain("CI on that head: `timed_out`");
+    expect(judged).not.toContain("never saw a completed run");
+  });
+
+  it("shows the conclusion to the owner when there is one", () => {
+    const body = renderStatusComment({
+      ...emptyState(),
+      headSha: "abc",
+      checksOk: false,
+      ciConclusion: "timed_out",
+    });
+    expect(body).toContain("CI on that head: `timed_out`");
+  });
+
+  it("says nothing about CI when none was taken", () => {
+    // An empty line here would read as a verdict of its own.
+    const body = renderStatusComment({ ...emptyState(), headSha: "abc" });
+    expect(body).not.toContain("CI on that head");
+  });
+
+  it("survives a round trip through the marker", () => {
+    const state = {
+      ...emptyState(),
+      headSha: "abc",
+      ciConclusion: "cancelled",
+      ciObserved: true,
+    };
+    const back = parseState(renderStatusComment(state));
+    expect(back.ciConclusion).toBe("cancelled");
+    expect(back.ciObserved).toBe(true);
+  });
+});

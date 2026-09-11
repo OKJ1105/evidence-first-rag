@@ -116,6 +116,41 @@ jobs:
         # which spawns commands without a shell.
         run: node --test "scripts/agent/*.test.mjs"
 
+  # #101. `repository-checks` above installs nothing, so every test whose
+  # module needs `anthropic` or `psycopg` skips there: the adapter and
+  # database test modules are imported, found unimportable, and reported as
+  # skips rather than failures. A skip is green, so the job that gates every
+  # pull request passes without having executed those tests at all. This job
+  # is the same test tree with the optional dependencies installed, so the
+  # adapter tests actually run.
+  #
+  # No test reaches the network: the only construction of `anthropic.Anthropic`
+  # in the package is `client.py`'s `from_environment`, which no test calls —
+  # the adapter tests build the client with a recording double instead. What
+  # installing `anthropic` changes here is whether the modules import, not
+  # whether anything is sent.
+  adapter-checks:
+    name: adapter-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      # `.[adapter]` is the package plus the adapter extra, and the package's
+      # own dependency list carries psycopg — so this one command installs
+      # both of the imports the skips above are waiting on, from
+      # pyproject.toml rather than from a command line that can drift from it.
+      - name: Install the package with its optional dependencies
+        run: python -m pip install --quiet -e ".[adapter]"
+
+      - name: Package unit tests with the optional dependencies installed
+        # The same command as `repository-checks`, deliberately: the
+        # difference between the two jobs is the environment, not the tests.
+        run: python3 -m unittest discover --start-directory tests --top-level-directory .
+
   # Section 4.1, 4.3, 4.11 and 6 are claims about a database, so the evidence
   # for them belongs where anyone can re-run it. Issue #12: "It passes
   # locally" is not acceptance evidence for a determinism claim.

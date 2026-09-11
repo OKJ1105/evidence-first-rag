@@ -327,3 +327,99 @@ describe("the owner-decision fence concludes from the state machine (#82)", () =
     expect(step.action).toBe(ACTIONS.review);
   });
 });
+
+// #116. Since #21 the verdict folded into `checks` can be a statement about
+// the RUN rather than about the branch — the wait expired, the dispatch was
+// refused, the job ran out of time, the run was cancelled. All four set
+// `ok: false`, the head concluded `needs-human`, and the idempotency branch
+// then made that head untouchable. CI going green two minutes later changed
+// nothing, and the only way to make the loop look again was `/agent-loop
+// reset`, which is `emptyState()` and therefore also puts `round` back to 0:
+// recovering from a slow build and refunding two review rounds were the same
+// keystroke.
+
+describe("a verdict about the run does not conclude the head (#116)", () => {
+  const concluded = (ciObserved, findings = []) => ({
+    riskLevel: "L2",
+    round: 1,
+    lastReview: { summary: "clean", findings },
+    checks: null,
+    headSha: "H1",
+    stateHeadSha: "H1",
+    phase: "needs-human",
+    ciObserved,
+  });
+
+  it("re-examines a head the loop never saw a completed run for", () => {
+    // Not `skip`: the loop asks for the verdict again at the same head.
+    expect(nextStep(concluded(false)).action).toBe("check");
+  });
+
+  it("leaves a head concluded when a completed run judged it", () => {
+    // #137 B1. The first version listed conclusion STRINGS it considered
+    // transient, and `cancelled` is only ever a completed run's own terminal
+    // verdict while `timed_out` is both that and the loop's wait-expiry
+    // sentinel. Since `awaitCiOnHead` looks before it dispatches, a completed
+    // run on the head means a re-run gets the same answer for ever — so such
+    // a head could never conclude again, and `reset` did not end it either.
+    expect(nextStep(concluded(true)).action).toBe("skip");
+  });
+
+  it("leaves a marker written before this change alone", () => {
+    // `null` is every marker that predates #116. Re-examining those would
+    // reopen heads on no evidence at all.
+    expect(nextStep(concluded(null)).action).toBe("skip");
+  });
+
+  it("does not re-examine a head that still carries a blocking finding", () => {
+    // Deliberately narrow. Re-examination is for the case where the unseen
+    // verdict is the ONLY thing between this head and `ready`. Resuming the
+    // fix loop would spend a round the owner never asked for.
+    const step = nextStep(
+      concluded(false, [{ id: "B1", severity: "blocking", summary: "s" }]),
+    );
+    expect(step.action).toBe("skip");
+  });
+
+  it("does not re-examine a head with no recorded review", () => {
+    // The BF7 terminus and the `L0` path both conclude with `lastReview: null`.
+    // Falling through there would spend a review round, not re-take a verdict.
+    expect(nextStep({ ...concluded(false), lastReview: null }).action).toBe(
+      "skip",
+    );
+  });
+
+  it("still skips a re-run at a head that concluded ready", () => {
+    expect(
+      nextStep({ ...concluded(true), phase: "ready-for-human-merge" }).action,
+    ).toBe("skip");
+  });
+
+  it("ignores the recorded flag unless the head actually concluded", () => {
+    // A run cut off mid-round leaves `review` or `fix` in the marker. The
+    // carve-out is about reopening a CONCLUDED head; an interrupted one is
+    // handled by the stale-review branch below it and must not be diverted.
+    for (const phase of ["review", "fix", "idle"]) {
+      expect(nextStep({ ...concluded(false), phase }).action).not.toBe("skip");
+    }
+    expect(nextStep({ ...concluded(null), phase: "review" }).action).toBe(
+      "check",
+    );
+  });
+
+  it("reaches ready once the re-taken verdict is green, without spending a round", () => {
+    const step = nextStep({
+      ...concluded(false),
+      checks: { ok: true, summary: "all green" },
+    });
+    expect(step.action).toBe("ready-for-human-merge");
+  });
+
+  it("concludes needs-human again when the re-taken verdict is red", () => {
+    const step = nextStep({
+      ...concluded(false),
+      checks: { ok: false, summary: "red" },
+    });
+    expect(step.action).toBe("needs-human");
+  });
+});
