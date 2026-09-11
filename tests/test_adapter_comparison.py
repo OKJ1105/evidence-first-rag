@@ -243,12 +243,24 @@ class ANonMappingProposalIsRefusedRatherThanCrashingTheRun(unittest.TestCase):
     neither the artifact nor the raw record, losing every paid call in the
     dispatch.
 
-    The four shapes below are the ones
+    The first four shapes are the ones
     `tests/test_adapter_client.py::test_a_list_that_is_not_pairs_is_passed_on_as_it_came`
-    enumerates, which is where they can actually arrive from.
+    enumerates. The rest are the other reachable ones: `_as_mapping` returns
+    anything that is not a `list` unchanged, so a response whose `arguments`
+    is a string, a number or `null` reaches this guard too -- and the string
+    exercises `_as_text`'s own branch, where the payload is the text rather
+    than its `repr`.
     """
 
-    SHAPES = ([1, 2], ["message_key"], [{"value": "x"}], [{"name": 1, "value": "x"}])
+    SHAPES = (
+        [1, 2],
+        ["message_key"],
+        [{"value": "x"}],
+        [{"name": 1, "value": "x"}],
+        "message_key=SAMPLE_MSG_ENGINE_STATUS",
+        5,
+        None,
+    )
 
     def measured(self, arguments, case=RESOLVING):
         return measure([case], lambda text: Proposal(route="message_facts", arguments=arguments))
@@ -270,13 +282,34 @@ class ANonMappingProposalIsRefusedRatherThanCrashingTheRun(unittest.TestCase):
     def test_the_artifact_records_the_shape_rather_than_erasing_it(self):
         # `{}` made a malformed proposal indistinguishable from one that
         # carried no arguments at all (#95). The reserved key keeps the
-        # field a `dict[str, str]` and keeps the payload.
+        # field a `dict[str, str]` and keeps the payload, typed.
         for arguments in self.SHAPES:
             with self.subTest(arguments=arguments):
                 _, outcomes = self.measured(arguments)
                 recorded = outcomes[0].as_json()["proposed_arguments"]
                 self.assertEqual(list(recorded), ["//not-a-mapping"])
-                self.assertEqual(recorded["//not-a-mapping"], repr(arguments))
+                # `_as_text`'s rule, not `repr` alone: a string is recorded as
+                # itself, so asserting `repr` here would pass by accident on
+                # the four lists and mislead on the string.
+                payload = arguments if isinstance(arguments, str) else repr(arguments)
+                self.assertEqual(
+                    recorded["//not-a-mapping"], f"{type(arguments).__name__}: {payload}"
+                )
+
+    def test_the_reserved_key_is_told_apart_from_a_model_that_emits_it(self):
+        # The key alone cannot identify the branch: this field records what
+        # the model emitted, not what the allowlist permits, so a response
+        # carrying the pair {"name": "//not-a-mapping", "value": "x"} folds
+        # into a genuine mapping and lands on the same key. The type prefix
+        # is what separates them.
+        _, outcomes = self.measured({"//not-a-mapping": "x"})
+        emitted = outcomes[0].as_json()["proposed_arguments"]
+        _, outcomes = self.measured([1, 2])
+        reserved = outcomes[0].as_json()["proposed_arguments"]
+        self.assertEqual(list(emitted), list(reserved))
+        self.assertNotEqual(emitted, reserved)
+        self.assertEqual(emitted["//not-a-mapping"], "x")
+        self.assertEqual(reserved["//not-a-mapping"], "list: [1, 2]")
 
     def test_a_mapping_is_still_recorded_name_by_name(self):
         # The guard must not send a well-formed proposal down the same path.

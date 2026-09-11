@@ -129,15 +129,17 @@ class Outcome:
     # The status revalidation refused with, or None when it accepted. Recorded
     # so the artifact shows *why* a no-route case counted, not only that it did.
     refused_as: str | None = None
-    # What the proposal actually carried, untouched. `{}` when it carried no
-    # mapping at all -- and that is a blind spot rather than a record: a
-    # proposal whose `arguments` were a list and one that genuinely carried
-    # none both serialise to `{}` and both refuse as `invalid_request`, a
-    # status several unrelated causes share. `refusal_detail` recovers the
-    # *type* ("arguments must be a mapping, not list"); nothing recovers the
-    # content. Carrying it would mean widening this field beyond the
-    # `dict[str, str]` #89 registers, or widening the refusal detail in
-    # `runtime/request.py`, and both are outside this slice.
+    # What the proposal actually carried, untouched. A proposal that carried
+    # no mapping -- since #112 the schema asks for a list, so that is the
+    # normal shape's failure mode -- is recorded under the single reserved
+    # key `//not-a-mapping`, whose value names the type and then the payload.
+    # The field stays the `dict[str, str]` #89 registers, so no reader of
+    # `docs/acceptance/` sees a union, and nothing about the proposal is
+    # lost: `_arguments_as_json` says how.
+    #
+    # Until #119 this was `{}`, which made a proposal whose `arguments` were
+    # a list indistinguishable from one that genuinely carried none -- both
+    # refuse as `invalid_request`, a status several unrelated causes share.
     proposed_arguments: object = dataclasses.field(default_factory=dict)
     # The refusal's own explanation -- the missing lookup key, or the argument
     # whose value is not in the request text. `None` when nothing refused.
@@ -206,8 +208,16 @@ def _arguments_as_json(value: object) -> dict[str, str]:
 
     The reserved key keeps the field a `dict[str, str]`, which is the shape
     #89 registered and every reader of `docs/acceptance/` relies on, while
-    `_as_text`'s `repr` keeps the payload. `//` cannot collide with an
-    argument name, and on that branch there is no other key to collide with.
+    `_as_text` keeps the payload.
+
+    **The key alone does not identify the branch**, so the value names the
+    type first. `//` cannot collide with an *allowlisted* argument name, but
+    this field records what the model emitted rather than what the allowlist
+    permits (Section 4.6, and `Proposal.arguments: object`): a response
+    carrying the pair `{"name": "//not-a-mapping", "value": "x"}` folds into
+    a genuine mapping and lands on the same single key. Both outcomes refuse,
+    so nothing unsafe follows -- what would be lost is the diagnostic this
+    exists for, and `list: [1, 2]` against a bare `x` is what keeps it.
 
     Otherwise every name and value goes through
     `_as_text`, which is what keeps the diagnostic that matters: Section
@@ -217,7 +227,7 @@ def _arguments_as_json(value: object) -> dict[str, str]:
     case the artifact is being read to find.
     """
     if not isinstance(value, Mapping):
-        return {"//not-a-mapping": _as_text(value)}
+        return {"//not-a-mapping": f"{type(value).__name__}: {_as_text(value)}"}
     return {_as_text(name): _as_text(item) for name, item in value.items()}
 
 
