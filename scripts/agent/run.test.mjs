@@ -5,6 +5,7 @@ import {
   UNPINNED_MODEL,
   agentRunner,
   assertNothingApproved,
+  failureReason,
   forbiddenEdits,
   ownerDecisionEdits,
   ownerDecisionPaths,
@@ -2167,20 +2168,42 @@ describe("the loop reads the Issue's comments, not only its body (#33)", () => {
     return gh;
   };
 
+  // Driven through a FULL round, not a clean one. #134's acceptance evidence
+  // says both prompts, and a clean review concludes without ever spawning a
+  // Writer — so the first version of this loop could only ever see the
+  // Reviewer's. #135 N1 caught that. It is the third time on this branch that
+  // a test which never reaches the code path looked like a guard.
   for (const [label, value, shown] of [
     ["an Error with an empty message", new Error(""), "Error"],
     ["a thrown string", "boom", "boom"],
     ["a thrown object with no message", { code: 500 }, "[object Object]"],
     ["a thrown undefined", undefined, "undefined"],
     ["a thrown empty string", "", "unknown error"],
+    ["an object that cannot be coerced", Object.create(null), "unknown error"],
   ]) {
-    it(`still reports unread on ${label}`, async () => {
-      const { prompts } = await driveWith(throwingValue(value));
-      expect(prompts[0].prompt).toContain("could not be read");
-      expect(prompts[0].prompt).not.toContain("The Issue has no comments");
-      expect(prompts[0].prompt).toContain(shown);
+    it(`still reports unread to both roles on ${label}`, async () => {
+      const { prompts } = await driveFullRound(throwingValue(value));
+      const roles = prompts.map((p) => p.role);
+      expect(roles).toContain("reviewer");
+      expect(roles).toContain("writer");
+      for (const { role, prompt } of prompts) {
+        expect(prompt, `${role} was not told`).toContain("could not be read");
+        expect(prompt, `${role} was told there are none`).not.toContain(
+          "The Issue has no comments",
+        );
+        expect(prompt, `${role} was not given the reason`).toContain(shown);
+      }
     });
   }
+
+  it("survives a thrown value that cannot be stringified at all", async () => {
+    // `String(Object.create(null))` throws. Letting that escape would kill the
+    // run over a failure whose whole point is that it must not — the same
+    // class of defect as #134 itself, one step further out (#135 O1).
+    expect(failureReason(Object.create(null))).toBe("unknown error");
+    const { concluded } = await driveWith(throwingValue(Object.create(null)));
+    expect(concluded.action).toBe("ready-for-human-merge");
+  });
 
   it("prefers the error's own message over its stringified form", async () => {
     // Falling back is for when there is nothing better. Reaching for the

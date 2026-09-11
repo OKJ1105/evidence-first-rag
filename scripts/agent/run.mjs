@@ -699,6 +699,33 @@ export async function assertNothingApproved(gh, prNumber, since) {
  * @param {string} deps.docs      Governing documents, read from the base ref.
  * @param {object} deps.ctx       { prNumber, runUrl, startedAt, reset }.
  */
+/**
+ * A truthy, printable reason for any thrown value.
+ *
+ * The catch that reads the Issue's comments is deliberately non-fatal, and the
+ * flag it sets decides whether both agents are told the discussion is unknown
+ * or told there is none. So the flag must be armed for every throw shape:
+ * `new Error("").message` is `""`, a non-Error throw has no `.message`, and
+ * `throw undefined` makes an unguarded `err.message` throw again.
+ *
+ * **The coercion is guarded too (#135 O1).** `String(Object.create(null))`
+ * throws `TypeError: Cannot convert object to primitive value`, and a throw
+ * there would escape `runLoop` — taking out the run over a failure whose whole
+ * point was that it must not. The rationale for `?.` applies verbatim to the
+ * second operand, so it gets the same treatment.
+ *
+ * A real message is preferred over the stringified form: the notice has one
+ * job, which is to name the cause, and `Error: ` in front of every reason is
+ * noise.
+ */
+export function failureReason(err) {
+  try {
+    return err?.message || String(err) || "unknown error";
+  } catch {
+    return "unknown error";
+  }
+}
+
 export async function runLoop({
   gh,
   agent,
@@ -756,7 +783,7 @@ export async function runLoop({
     // "None. The Issue has no comments." on a run where the read failed, which
     // is the #126 B1 claim verbatim. A guard must not be disarmed by the shape
     // of the failure it exists to report.
-    issueCommentsUnread = err?.message || String(err) || "unknown error";
+    issueCommentsUnread = failureReason(err);
     log(
       `Could not read Issue #${issueNumber}'s comments: ${issueCommentsUnread}`,
     );
