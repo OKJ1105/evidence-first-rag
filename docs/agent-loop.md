@@ -64,13 +64,15 @@ The code comments reference these by name; they are the loop's load-bearing rule
 | BF3 | No credential reaches an agent process or anything an agent wrote. The checks run with a stripped environment, and a Writer turn that edits the machinery the orchestrator executes aborts the run. |
 | BF4 | The machinery — orchestrator code, prompts, settings, the checks manifest — comes from the base branch or from outside both checkouts, never from the branch under review. |
 | BF6 | The record is append-only. Each review and each response is its own comment; only the state marker is edited in place, and it displays no findings. |
-| BF7 | A Writer turn does not amend the contract. An edit under `docs/contracts/` aborts the run, and for its own reason: a contract is never executed and holds no credential, so BF3 does not cover it. Amending an `Accepted` contract is a recorded human decision under its Section 10, which is not a Writer's to make or to record. |
+| BF7 | A Writer turn does not amend the contract. An edit under `docs/contracts/` is discarded and the run stops at `agent:needs-human`, for its own reason: a contract is never executed and holds no credential, so BF3 does not cover it. Amending an `Accepted` contract is a recorded human decision under its Section 10, which is not a Writer's to make or to record. Unlike BF3 this is a designed terminus rather than a crash, and it is labelled as one (#82). |
 
 ## 5. Safety
 
 **The agents hold no GitHub credential, and neither does anything they write.** `scripts/agent/claude.mjs` deletes the token from every agent process; `scripts/agent/run.mjs` strips it again before any manifest command runs, because the Writer's *output* is executed by the privileged parent moments later. A Writer turn that edits `scripts/`, `.github/`, `.githooks/` or `.claude/` **aborts the run** — those are the machinery the orchestrator executes with privileges the agents do not hold. `actions/checkout` runs with `persist-credentials: false`, so the token is not in `.git/config` either; the push step supplies its own credential through the environment of that one command. `scripts/agent/github.mjs` has no approve method and no merge method.
 
-**A second fence, for authority rather than credentials (BF7).** A Writer turn that edits `docs/contracts/` also aborts the run, and it is a separate list — `ownerDecisionPaths`, not `protectedPaths` — because the reason is different and both abort messages have to stay true. Nothing under `docs/contracts/` is executed and none of it carries a credential; the edit is refused because amending an `Accepted` contract is a recorded human decision under its Section 10.
+**A second fence, for authority rather than credentials (BF7).** A Writer turn that edits `docs/contracts/` also stops the run, and it is a separate list — `ownerDecisionPaths`, not `protectedPaths` — because the reason is different and both messages have to stay true. Nothing under `docs/contracts/` is executed and none of it carries a credential; the edit is refused because amending an `Accepted` contract is a recorded human decision under its Section 10.
+
+**The two fences stop the run differently, and that is deliberate (#82).** BF3 throws: a Writer reaching for the machinery is a fault, and `agent:failed` is the right word for it. BF7 **concludes** `agent:needs-human` and publishes the standing findings, because a contract-only pull request reaches it by doing exactly what it is supposed to do. Both discard the edit — the commit is never reached, so nothing the Writer wrote to a fenced path is committed or pushed — and neither publishes a verdict resting on it. Labelling BF7 `agent:failed` was a real defect rather than a cosmetic one: `agent:failed` is what this repository's queue teaches the owner to restart by re-adding `agent:run`, and restarting this case aborts identically every time.
 
 The fence is by path rather than by judgement, and that is deliberate. A code finding is resolvable from the artifacts — the diff, the contract, the tests decide it. A finding like "Section 3.4 requires Docker Compose and Issue #12 forbids it" is resolvable only by choosing between legitimate alternatives, and Section 10 assigns that choice to the repository owner. Both reach a Writer as "blocking finding, fix it", and it cannot tell them apart from the inside: on 2026-09-03 it amended a contract to authorise its own branch on one pull request, and reverted an authorised amendment on another because the decision had been recorded where it could not see it. Opposite directions, the same missing authority. No improvement in Writer quality closes that, because the input does not contain the answer.
 
@@ -98,7 +100,8 @@ This document said "at the end" until #5. The guard moved ahead of publication i
 2. The round cap is spent with blocking findings outstanding → `agent:needs-human`.
 3. The checks fail → `agent:needs-human`.
 4. `L0` → `agent:needs-human`, with nothing reviewed.
-5. Anything throws → `agent:failed`, with the message on the pull request.
+5. A Writer turn edits `docs/contracts/` (BF7) → `agent:needs-human`, with the edit discarded and the standing findings published. Its own row rather than a case of 6 below: it is where a contract-only pull request is *supposed* to end.
+6. Anything throws, BF3's fence included → `agent:failed`, with the message on the pull request.
 
 ### Concurrency, idempotency, timeouts
 

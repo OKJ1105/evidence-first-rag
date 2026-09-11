@@ -546,6 +546,10 @@ export async function runLoop({
   let checkResult = null;
   let concluded = null;
   let currentHead = pr.head.sha;
+  // #82 / N1 on #92: what the Writer touched behind the owner-decision fence,
+  // observed during the fix step and handed to `nextStep` on the iteration
+  // after, so the terminal decision stays in the state machine.
+  let fencedEdits = [];
 
   // Two steps per round (fix, review), plus the opening review, plus the
   // conclusion — and one more for the `check` step a resumed run inserts
@@ -560,6 +564,7 @@ export async function runLoop({
       headSha: currentHead,
       stateHeadSha: state.headSha,
       phase: state.phase,
+      fencedEdits,
     });
     log(`step: ${step.action} - ${step.reason}`);
 
@@ -677,20 +682,9 @@ export async function runLoop({
             "so the run is aborted rather than executing them.",
         );
       }
-      // A separate fence with a separate reason: nothing here is executed and
-      // nothing carries a credential. The edit is refused because amending an
-      // `Accepted` contract is a recorded human decision under its Section 10,
-      // which is not a Writer's to make. Reporting it under the message above
-      // would state the wrong reason.
-      const needsOwner = ownerDecisionEdits(changedNow);
-      if (needsOwner.length > 0) {
-        throw new Error(
-          `The Writer edited paths that require a recorded human decision: ${needsOwner.join(", ")}. ` +
-            "Amending an accepted contract is the repository owner's decision, not a review-finding fix, " +
-            "so the run is aborted rather than publishing a conclusion built on one.",
-        );
-      }
-
+      // The reply is read before the second fence, so a Writer turn that
+      // trips that fence can still have its proposal published (N2 on #92).
+      // Parsing is pure; nothing here acts on the reply.
       let responses = [];
       let summary;
       try {
@@ -710,6 +704,57 @@ export async function runLoop({
       } catch {
         summary =
           "The Writer's reply could not be parsed; its edits are in the diff.";
+      }
+
+      // A separate fence with a separate reason: nothing under it is executed
+      // and nothing carries a credential. The edit is refused because amending
+      // an `Accepted` contract is a recorded human decision under its Section
+      // 10, which is not a Writer's to make.
+      //
+      // It records rather than throws (#82). BF7 is reached by a contract-only
+      // pull request doing exactly what it is supposed to do, so it is a
+      // designed terminus, not a crash — and every throw is labelled
+      // `agent:failed` by `main()`, which is this repository's word for a
+      // crash and the one its queue teaches the owner to restart. Restarting
+      // this case aborts identically every time.
+      //
+      // BF7 still holds where it matters: `commit()` is below this point and
+      // is never reached, so the Writer's edit to a fenced path is discarded
+      // with the runner rather than committed or pushed. The BF3 fence above
+      // keeps throwing, because a Writer reaching for the machinery is a fault
+      // and should read as one.
+      const needsOwner = ownerDecisionEdits(changedNow);
+      if (needsOwner.length > 0) {
+        // N2 on #92: publish what the Writer proposed. That proposal is the
+        // input to the decision the fence reserves for the owner, and without
+        // it the record says an edit was attempted but never what it was.
+        await gh.createComment(
+          prNumber,
+          [
+            `## Writer proposal — discarded at the owner-decision fence`,
+            "",
+            `Head \`${currentHead}\` · nothing from this turn was committed or pushed`,
+            `Writer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+            "",
+            `The Writer's fix reached ${needsOwner.map((p) => `\`${p}\``).join(", ")}, which is behind the owner-decision fence. ` +
+              "Its edit was **discarded**. What it proposed is recorded here because that proposal is the input to the decision the fence reserves for you — it is not a change to the branch.",
+            "",
+            summary,
+            "",
+            ...(responses.length
+              ? [
+                  "| Finding | Proposed action | Note |",
+                  "| --- | --- | --- |",
+                  ...responses.map(
+                    (r) =>
+                      `| ${r.id} | ${r.action} | ${(r.note ?? "").replace(/\|/g, "/")} |`,
+                  ),
+                ]
+              : ["_No structured response._"]),
+          ].join("\n"),
+        );
+        fencedEdits = needsOwner;
+        continue;
       }
 
       const newHead = await commit(

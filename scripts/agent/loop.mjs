@@ -65,8 +65,34 @@ export function nextStep({
   headSha,
   stateHeadSha = null,
   phase = "idle",
+  fencedEdits = [],
 }) {
   const cap = roundCapFor(riskLevel);
+
+  // BF7's terminus (#82), decided here rather than in the orchestrator.
+  //
+  // A Writer turn that edited a path behind the owner-decision fence has its
+  // edit discarded and hands the pull request to the owner. This lives in
+  // `nextStep` because the header above promises `run.mjs` "does nothing this
+  // file did not decide", and an orchestrator that synthesised its own
+  // terminal action would make that false — raised as N1 on #92.
+  //
+  // It is checked before the `L0` and idempotency branches on purpose: the
+  // observation is about the run in hand, and no later condition can make a
+  // discarded contract edit into a different outcome.
+  if (fencedEdits.length > 0) {
+    return {
+      action: ACTIONS.needsHuman,
+      reason:
+        `The Writer's fix required editing ${fencedEdits.join(", ")}, which is behind the ` +
+        "owner-decision fence. Amending an accepted contract is a recorded human decision " +
+        "under its Section 10, not a review-finding fix, so that edit was discarded and " +
+        "nothing from that Writer turn was committed or pushed. Whether the amendment was " +
+        "warranted is yours to judge, and earlier rounds of this run may already have moved " +
+        "the branch head. Reaching this fence is a designed outcome, not a failed run. The " +
+        "findings below stand and are the owner's to resolve.",
+    };
+  }
 
   // `L0` takes no AI review at all. Saying so is not the same as saying the
   // change is fine, so this concludes without a ready-to-merge claim.

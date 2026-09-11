@@ -25,6 +25,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import types
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -437,6 +438,117 @@ class TestWhenItCannotRun(HistoryCheck):
         subprocess.run(("git", "init", "--quiet"), cwd=bare, check=True)
         self.module.WORK_TREE = bare
         self.assert_fails("CANNOT RUN")
+
+
+class TestAMalformedBatchStream(HistoryCheck):
+    """#104. `git cat-file --batch` can exit 0 having written a stream the
+    parse cannot read.
+
+    A failing git is already covered by `TestWhenItCannotRun`. This is the
+    other shape: git reports success and what it wrote is short or misframed,
+    which is what a partial clone, a full disk, or a killed subprocess look
+    like from here. Each case is asserted through `main()` rather than against
+    `contents()` alone, because what is being tested is the answer an operator
+    reads, not which exception type was raised on the way.
+
+    Real git serves every other call, so the walk that produces the object
+    names is the real one and only the batch read is chosen by the test.
+    """
+
+    def batch_writes(self, stream):
+        real = subprocess.run
+
+        def run(arguments, **keywords):
+            if tuple(arguments[:3]) == ("git", "cat-file", "--batch"):
+                return subprocess.CompletedProcess(arguments, 0, stream, b"")
+            return real(arguments, **keywords)
+
+        # `main()` resolves `subprocess.CalledProcessError` through the module
+        # too, so the stand-in has to carry it or the handler stops existing.
+        self.module.subprocess = types.SimpleNamespace(
+            run=run, CalledProcessError=subprocess.CalledProcessError
+        )
+
+    def framed(self, body):
+        """A well-formed frame for `body`, sized the way git sizes one."""
+        name = self.repository.git("rev-parse", "HEAD:README.md").strip()
+        return f"{name} blob {len(body)}\n".encode() + body + b"\n"
+
+    def test_a_header_that_never_ends_reports_cannot_run(self):
+        # `stream.index` raised ValueError here, which no handler caught, so
+        # the operator got a traceback instead of a sentence.
+        self.batch_writes(b"deadbeefdeadbeef blob 99999")
+        self.assertIn("mid-header", self.assert_fails("CANNOT RUN"))
+
+    def test_a_size_that_is_not_a_number_reports_cannot_run(self):
+        # The second ValueError, from `int(header[2])`.
+        self.batch_writes(b"deadbeefdeadbeef blob xyz\nhello\n")
+        self.assertIn("unreadable size", self.assert_fails("CANNOT RUN"))
+
+    def test_a_body_shorter_than_its_header_declares_reports_cannot_run(self):
+        """The one that failed OPEN, which is why it matters most.
+
+        Python's slice returns what it has rather than raising, so a short
+        final frame produced no exception at all: the scan read five bytes of
+        a file version declaring ninety-nine thousand, found nothing in them,
+        and printed PASS. Verified before the fix — it exited 0 on exactly
+        this stream.
+        """
+        self.batch_writes(b"deadbeefdeadbeef blob 99999\nshort")
+        output = self.assert_fails("CANNOT RUN")
+        self.assertIn("truncated", output)
+        self.assertIn("wrote 5", output)
+
+    def test_a_whole_frame_is_still_read_and_still_scanned(self):
+        """The guard has to be seen not to fire on a good stream.
+
+        A length check is one `!=` away from rejecting everything, and an
+        off-by-one in the slice beside it would drop the last byte of every
+        file version silently. So the frame here is exact, and what it carries
+        is a credential the scan must still find — which it can only do by
+        reading the body whole.
+        """
+        self.batch_writes(self.framed(b"id " + AWS_KEY.encode() + b"\n"))
+        self.assertIn("issued-credential", self.assert_fails("issued-credential"))
+
+    def test_a_whole_frame_carrying_nothing_sensitive_still_passes(self):
+        self.batch_writes(self.framed(b"# Sample\n"))
+        self.assertIn("PASS", self.assert_passes())
+
+    def test_a_frame_that_is_not_terminated_reports_cannot_run(self):
+        """O1 on #108. The last way this parse could desynchronise silently.
+
+        A frame whose declared size is *short* of what git wrote passes the
+        length check — the slice is exactly as long as the header claimed —
+        and leaves the cursor inside the leftover content, where the next
+        header is read out of file content. `test_a_blob_whose_content_looks
+        _like_a_batch_header_is_read_correctly` shows a blob can imitate one,
+        so that ends in a body mapped to the wrong name rather than in an
+        error, and the path is what decides which rules apply to it.
+        """
+        self.batch_writes(b"deadbeefdeadbeef blob 5\nabcdefghijklmnopqrst\n")
+        self.assertIn("misframed", self.assert_fails("CANNOT RUN"))
+
+    def test_no_diagnostic_echoes_what_the_stream_carried(self):
+        """N2 on #108. A diagnostic may not publish what a finding masks.
+
+        Every finding in this module is reduced to four characters and a
+        length, because a credential printed into a CI log is exposed a
+        second time. A diagnostic printed to the same log has no licence to
+        do otherwise — and a desynchronised parse is reading blob content as
+        a header, so each of these three paths can be reached with a
+        credential sitting where git's framing should be.
+        """
+        streams = {
+            "mid-header": b"id " + AWS_KEY.encode(),
+            "too few header fields": AWS_KEY.encode() + b"\nrest\n",
+            "unreadable size": b"deadbeef blob " + AWS_KEY.encode() + b"\nx\n",
+        }
+        for where, stream in streams.items():
+            with self.subTest(where=where):
+                self.batch_writes(stream)
+                output = self.assert_fails("CANNOT RUN")
+                self.assertNotIn(AWS_KEY, output)
 
 
 class TestWhatIsReported(HistoryCheck):
