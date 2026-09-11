@@ -230,6 +230,80 @@ class TheJudgementReadsTheRegisteredNumbers(unittest.TestCase):
         self.assertTrue(any("weakened" in reason for reason in verdict.reasons))
 
 
+class ANonMappingProposalIsRefusedRatherThanCrashingTheRun(unittest.TestCase):
+    """#119. `_correct` called `dict()` on whatever the model emitted.
+
+    Section 4.6 types adapter output as untrusted, and since #112 the schema
+    asks for `arguments` as a `[{name, value}]` list: `client.py`
+    `_as_mapping` folds a conforming one into a mapping and passes a
+    malformed one through unchanged, so that deterministic revalidation
+    refuses the shape rather than the adapter guessing what was meant.
+    `_correct` runs before `measure` can record that refusal, so `dict()`
+    raised and the exception left `perform` -- the run exited having written
+    neither the artifact nor the raw record, losing every paid call in the
+    dispatch.
+
+    The four shapes below are the ones
+    `tests/test_adapter_client.py::test_a_list_that_is_not_pairs_is_passed_on_as_it_came`
+    enumerates, which is where they can actually arrive from.
+    """
+
+    SHAPES = ([1, 2], ["message_key"], [{"value": "x"}], [{"name": 1, "value": "x"}])
+
+    def measured(self, arguments, case=RESOLVING):
+        return measure([case], lambda text: Proposal(route="message_facts", arguments=arguments))
+
+    def test_measure_survives_every_shape_the_fold_passes_through(self):
+        for arguments in self.SHAPES:
+            with self.subTest(arguments=arguments):
+                metrics, outcomes = self.measured(arguments)
+                outcome = outcomes[0]
+                self.assertFalse(outcome.correct)
+                self.assertFalse(outcome.accepted)
+                self.assertEqual(outcome.refused_as, Status.INVALID_REQUEST.value)
+                # A refusal never became a lookup, so it is a miss and not a
+                # false resolution -- Section 8.3's definition, unchanged.
+                self.assertFalse(outcome.false_resolution)
+                self.assertEqual(metrics.task_coverage, 0.0)
+                self.assertEqual(metrics.false_resolution, 0.0)
+
+    def test_the_artifact_records_the_shape_rather_than_erasing_it(self):
+        # `{}` made a malformed proposal indistinguishable from one that
+        # carried no arguments at all (#95). The reserved key keeps the
+        # field a `dict[str, str]` and keeps the payload.
+        for arguments in self.SHAPES:
+            with self.subTest(arguments=arguments):
+                _, outcomes = self.measured(arguments)
+                recorded = outcomes[0].as_json()["proposed_arguments"]
+                self.assertEqual(list(recorded), ["//not-a-mapping"])
+                self.assertEqual(recorded["//not-a-mapping"], repr(arguments))
+
+    def test_a_mapping_is_still_recorded_name_by_name(self):
+        # The guard must not send a well-formed proposal down the same path.
+        _, outcomes = self.measured(ARGUMENTS)
+        recorded = outcomes[0].as_json()["proposed_arguments"]
+        self.assertNotIn("//not-a-mapping", recorded)
+        self.assertEqual(recorded, ARGUMENTS)
+        self.assertTrue(outcomes[0].correct)
+
+    def test_a_case_registering_no_route_never_reads_the_arguments(self):
+        # That branch judges by route name and refusal status alone, so a
+        # non-mapping cannot reach `dict()` there. Proved by holding the
+        # arguments malformed and moving only the route: `unsupported` is
+        # not one of the three, so the case is correct however unreadable
+        # the arguments are.
+        _, outcomes = measure(
+            [UNRESOLVABLE], lambda text: Proposal(route="unsupported", arguments=[1, 2])
+        )
+        self.assertTrue(outcomes[0].correct)
+        # And a route that *is* one of the three is judged by the refusal
+        # status, which a non-mapping makes `invalid_request` rather than
+        # the registered `unsupported` -- still no `dict()`, still no crash.
+        _, outcomes = self.measured([1, 2], case=UNRESOLVABLE)
+        self.assertFalse(outcomes[0].correct)
+        self.assertEqual(outcomes[0].refused_as, Status.INVALID_REQUEST.value)
+
+
 class TheMetricsCountWhatTheyClaim(unittest.TestCase):
     def test_answering_no_route_to_an_unanswerable_request_is_correct(self):
         metrics, _ = measure(

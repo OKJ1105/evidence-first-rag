@@ -195,9 +195,21 @@ def _as_text(value: object) -> str:
 def _arguments_as_json(value: object) -> dict[str, str]:
     """The proposal's arguments as a plain `dict[str, str]`.
 
-    `{}` when the proposal carried no mapping, because there is then nothing
-    argument-shaped to record -- see the field's own comment for what that
-    loses. Otherwise every name and value goes through
+    A proposal that carried no mapping is recorded under one reserved key
+    rather than as `{}`. Until #112 the schema constrained `arguments` to an
+    object and a non-mapping was an aberration that had never occurred, so
+    `{}` cost nothing (#95). Since #112 the schema carries `arguments` as a
+    `[{name, value}]` list and `client.py` `_as_mapping` passes a
+    non-conforming list through unchanged, so `{}` would now make the normal
+    shape's failure mode indistinguishable from a proposal that carried no
+    arguments at all -- the exact absence #89 exists to close.
+
+    The reserved key keeps the field a `dict[str, str]`, which is the shape
+    #89 registered and every reader of `docs/acceptance/` relies on, while
+    `_as_text`'s `repr` keeps the payload. `//` cannot collide with an
+    argument name, and on that branch there is no other key to collide with.
+
+    Otherwise every name and value goes through
     `_as_text`, which is what keeps the diagnostic that matters: Section
     8.1's `FX-110` is "the adapter proposed two `revision_label` values", and
     those two values arrive as a list inside one name. A serialisation that
@@ -205,7 +217,7 @@ def _arguments_as_json(value: object) -> dict[str, str]:
     case the artifact is being read to find.
     """
     if not isinstance(value, Mapping):
-        return {}
+        return {"//not-a-mapping": _as_text(value)}
     return {_as_text(name): _as_text(item) for name, item in value.items()}
 
 
@@ -345,6 +357,18 @@ def _correct(proposal: Proposal, case: EvaluationCase, refused_as: str | None) -
         # outcome reached the way Section 8.1 describes it (Section 8.3).
         return proposal.route not in _ROUTE_NAMES or refused_as == case.expected_status
     if proposal.route != case.expected_route:
+        return False
+    if not isinstance(proposal.arguments, Mapping):
+        # Section 4.6 types adapter output as untrusted, so `arguments` can be
+        # anything the model emitted, and since #112 a list is what the schema
+        # asks for -- `client.py` `_as_mapping` folds a conforming one and
+        # passes a malformed one through so that revalidation refuses the
+        # shape. `dict()` on that raises, and `_correct` runs before `measure`
+        # can record the refusal, so the exception left `perform` and the run
+        # exited having written neither document: every paid call in that
+        # dispatch lost (#119). A non-mapping cannot equal a registered
+        # argument mapping, so `False` is the answer the definition already
+        # gives; what changes is that the harness survives to record it.
         return False
     return dict(proposal.arguments) == dict(case.expected_arguments)
 
