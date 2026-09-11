@@ -129,15 +129,15 @@ class Outcome:
     # The status revalidation refused with, or None when it accepted. Recorded
     # so the artifact shows *why* a no-route case counted, not only that it did.
     refused_as: str | None = None
-    # What the proposal actually carried, untouched. `{}` when it carried no
-    # mapping at all -- and that is a blind spot rather than a record: a
-    # proposal whose `arguments` were a list and one that genuinely carried
-    # none both serialise to `{}` and both refuse as `invalid_request`, a
-    # status several unrelated causes share. `refusal_detail` recovers the
-    # *type* ("arguments must be a mapping, not list"); nothing recovers the
-    # content. Carrying it would mean widening this field beyond the
-    # `dict[str, str]` #89 registers, or widening the refusal detail in
-    # `runtime/request.py`, and both are outside this slice.
+    # What the proposal actually carried, untouched. A proposal that carried no
+    # mapping -- since #112 the normal shape's failure mode, a `[{name, value}]`
+    # list `client.py` `_as_mapping` passes through unchanged -- is recorded
+    # under the single reserved key `//not-a-mapping`, with the payload as
+    # `repr`; see `_arguments_as_json`. The field stays the `dict[str, str]`
+    # #89 registers, and `refusal_detail` still carries the *type* ("arguments
+    # must be a mapping, not list") beside it. Until #119 such a proposal
+    # serialised to `{}`, indistinguishable from one that genuinely carried no
+    # arguments; that is history, not current behaviour.
     proposed_arguments: object = dataclasses.field(default_factory=dict)
     # The refusal's own explanation -- the missing lookup key, or the argument
     # whose value is not in the request text. `None` when nothing refused.
