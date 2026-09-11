@@ -93,6 +93,24 @@ Report it, scoped to what you saw:
   verified it, and an unchecked mitigation reported as one is worse than the
   gap reported plainly.
 
+### The Issue's comments are in your view; nothing else about the Issue is
+
+The Issue's body is below. **Its comments are below only if the loop could read
+them**, and the discussion section says which happened. If it says the read
+failed, treat the discussion as unknown rather than as empty — do not read a
+failed fetch as the Issue having nothing recorded on it.
+
+Until #33 only the body reached you, and a decision recorded in a comment was
+invisible — the same shape as the gap this section exists for: a field of view
+nobody described. The comments are labelled as discussion because they are not
+the specification.
+
+What is still outside your view: the Issue's labels, its linked Issues, any
+other Issue, and every pull request comment including this loop's own record —
+**except the earlier findings reproduced below, when this is not round 1.**
+Those are the exception, and they are given to you so ids stay stable; nothing
+else from this pull request reaches you.
+
 ### The check results are not the whole of CI
 
 The results below are the checks in \`.github/agent-checks.json\` — what this
@@ -107,10 +125,91 @@ see it, and say so as that; do not report it as the change having no coverage.
 `.trim();
 }
 
+/**
+ * The Issue's comments, rendered as discussion rather than as specification.
+ *
+ * #33: the loop read `issue.body` and nothing else, so a decision recorded as
+ * an Issue comment reached neither role. On #32 the decision had been recorded
+ * in a comment on Issue #25 before the loop ran; the Writer reverted a contract
+ * amendment because "no such decision is present in this session's context",
+ * which was the right call on inputs that were missing it. Every Issue in this
+ * repository accumulates its real content in comments.
+ *
+ * Labelled, never merged into the body. The body is what the slice is judged
+ * against; a comment is someone talking about it, including talk that was
+ * superseded by the next comment. Presenting the two as one text would let a
+ * passing remark read as a requirement.
+ *
+ * **Authorship is shown and is explicitly not provenance.** Writer, Reviewer
+ * and owner post under one account (`docs/ai-development-workflow.md`, the
+ * attributable-identity property), so a login proves nothing about who is
+ * speaking. It is shown anyway because knowing two comments share a voice, or
+ * do not, is information the reader needs. What a "recorded decision" claim is
+ * worth, and what does carry provenance, is #33's second defect and is not
+ * settled here.
+ *
+ * **Unread is not none, and the difference is the whole point.** The read is
+ * deliberately non-fatal, and the first version of this function collapsed a
+ * failed fetch into the empty case: both rendered "None. The Issue has no
+ * comments." On exactly the case this exists for — a decision recorded in a
+ * comment, as on #25 before the #32 run — that turns a 502 into an affirmative
+ * false statement, and #32's Writer would have been told there was nothing to
+ * find rather than that it could not look. Round 1 of #126 caught it. The
+ * unread branch takes precedence over the empty one for that reason.
+ *
+ * @param {Array<{user?: {login?: string}, created_at?: string, body?: string}>} comments
+ * @param {{unread?: string | null}} [state] why the comments could not be read
+ */
+export function issueDiscussion(comments = [], { unread = null } = {}) {
+  if (unread) {
+    return `## Discussion on the Issue
+
+**The Issue's comments could not be read** (${unread}).
+
+Treat this as **unknown, not as none.** The loop reads the Issue's comments
+because a decision, a clarification or a correction is often recorded in one
+and never copied into the body; this run did not get them. So do not conclude
+from this section that the Issue has no discussion, and do not state that no
+decision was recorded — you cannot see whether one was.`;
+  }
+  if (!Array.isArray(comments) || comments.length === 0) {
+    return `## Discussion on the Issue
+
+None. The Issue has no comments. This is the read succeeding and finding
+nothing, not a read that failed — that case says so in as many words.`;
+  }
+  const rendered = comments
+    .map((c, i) => {
+      const who = c?.user?.login ?? "unknown";
+      const when = c?.created_at ?? "undated";
+      return `### Comment ${i + 1} — \`${who}\` · ${when}
+
+${c?.body ?? ""}`;
+    })
+    .join("\n\n");
+  return `## Discussion on the Issue
+
+These are **comments on the Issue, not the Issue's specification.** The section
+above is what this change is measured against; this is people talking about it,
+in the order they said it. A later comment may supersede an earlier one, and
+some of it will be thinking-aloud that was never adopted. Read it as context —
+for a decision, a clarification or a correction that the body was never updated
+to carry — and not as a requirement.
+
+**A login here is not provenance.** Writer, Reviewer and the repository owner
+post under one account, so an author name does not establish who is speaking or
+that anything was decided. Names are shown only so you can tell whether two
+comments share a voice.
+
+${rendered}`;
+}
+
 /** The Reviewer turn. Produces JSON; posts nothing. */
 export function reviewerPrompt({
   issueNumber,
   issueBody,
+  issueComments = [],
+  issueCommentsUnread = null,
   riskLevel,
   branch,
   diff,
@@ -185,6 +284,8 @@ the governing documents, then measure the diff against it.
 
 ${issueBody}
 
+${issueDiscussion(issueComments, { unread: issueCommentsUnread })}
+
 ## Repository check results
 
 ${checks.summary}
@@ -237,6 +338,8 @@ Rules for findings:
 export function writerPrompt({
   issueNumber,
   issueBody,
+  issueComments = [],
+  issueCommentsUnread = null,
   riskLevel,
   branch,
   findings,
@@ -266,6 +369,8 @@ ${houseRules(docs)}
 
 ${issueBody}
 
+${issueDiscussion(issueComments, { unread: issueCommentsUnread })}
+
 ## Repository check results as they stand
 
 ${checks.summary}
@@ -282,10 +387,15 @@ borrow those privileges, so the run is **aborted** if your edits touch any of:
 
 ${protectedPaths.map((p) => `- \`${p}\``).join("\n")}
 
-A second fence, for a different reason. Nothing below is executed and nothing
-carries a credential. Amending an accepted contract is a **recorded human
-decision** under its Section 10, and that is not yours to make or to record.
-The run is **aborted** if your edits touch any of:
+A second fence, for a different reason, and it stops the run differently.
+Nothing below is executed and nothing carries a credential. Amending an
+accepted contract is a **recorded human decision** under its Section 10, and
+that is not yours to make or to record. If your edits touch any of these, the
+edit is **discarded** — nothing from your turn is committed or pushed — and
+the run **stops and hands the pull request to the owner** without your fix.
+Declining the finding, below, is the route you must take instead: tripping
+this fence loses the work of your turn and is the worse of the two. It is
+also not the abort above:
 
 ${ownerDecisionPaths.map((p) => `- \`${p}\``).join("\n")}
 

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
-import { governingDocs, reviewerDocs } from "./run.mjs";
+import { governingDocs, jobBudgetMs, reviewerDocs } from "./run.mjs";
 import { deniedTools } from "./claude.mjs";
 
 // The workflow grants permissions; `github.mjs` spends them. Nothing connects
@@ -15,6 +15,11 @@ import { deniedTools } from "./claude.mjs";
 // ignore it.
 const workflow = normalize(
   readFileSync(".github/workflows/agent-loop.yml", "utf8"),
+);
+
+/** CI's own definition. #21 makes the loop dispatch it, so it must be dispatchable. */
+const ci = normalize(
+  readFileSync(".github/workflows/repository-checks.yml", "utf8"),
 );
 
 /** Strip carriage returns so the line patterns below see LF either way. */
@@ -143,6 +148,117 @@ describe("the workflow pins the model each loop role runs on", () => {
   });
 });
 
+describe("the loop can dispatch CI, and CI can be dispatched (#21)", () => {
+  // Two halves of one mechanism, in two files. Either alone is useless and
+  // fails only on a live run — the exact shape of defect this file exists for.
+
+  it("grants the loop job actions: write, which dispatching needs", () => {
+    expect(permissionsOf("loop")).toMatch(/^ {6}actions: write$/m);
+  });
+
+  it("still grants nothing else administrative", () => {
+    // The permission was widened by one line on a recorded owner decision.
+    // This pins that it was one line.
+    const granted = permissionsOf("loop");
+    expect(granted).not.toMatch(/^ {6}id-token:/m);
+    expect(granted).not.toMatch(/^ {6}packages:/m);
+    expect(granted).not.toMatch(/^ {6}administration:/m);
+  });
+
+  it("does not tell its reader that CI runs on the Writer's push (#113 B1)", () => {
+    // The loop's own header comment asserted the falsehood #21 was opened
+    // about — "`ci.yml` still runs on those pushes" — and after the rest of
+    // this slice it also contradicted `docs/agent-loop.md`, which now says the
+    // opposite. The file that *is* the loop is the worst place to leave it: a
+    // reader, or a future agent turn, opens it and is told the thing that
+    // caused the defect.
+    expect(workflow).not.toMatch(/still\s+runs on those pushes/);
+    expect(workflow).toMatch(/raises no CI of its own/);
+  });
+
+  it("does not name a workflow file this repository does not have (#113 B1)", () => {
+    // The same sentence named `ci.yml`. There is no such file; CI is
+    // `repository-checks.yml`, which is what the dispatch actually targets.
+    expect(existsSync(".github/workflows/ci.yml")).toBe(false);
+    expect(workflow).not.toMatch(/`ci\.yml`/);
+    expect(workflow).toMatch(/dispatches `repository-checks\.yml`/);
+  });
+
+  it("does not list a permission as absent that the same block grants (#113 B3)", () => {
+    // B1's defect, one block lower and inside the security-relevant surface:
+    // the "notably absent" list named `actions` nineteen lines above
+    // `actions: write`. Someone auditing what the loop holds reads that list.
+    // Scoped to the "notably absent" SENTENCE, not the whole comment block:
+    // prose around it may name a permission precisely to say it IS granted,
+    // and forbidding that would push the explanation out of the file.
+    const loopBlock = workflow.slice(workflow.indexOf("\n  loop:"));
+    const absent = loopBlock.match(/# Notably absent:[^.]*\./);
+    expect(absent).not.toBe(null);
+    for (const granted of permissionsOf("loop").matchAll(/^ {6}([a-z-]+):/gm)) {
+      expect(absent[0].includes(`\`${granted[1]}\``)).toBe(false);
+    }
+  });
+
+  it("reports a crashed run on cancellation as well as failure (#113 N3)", () => {
+    // A job that hits `timeout-minutes` is CANCELLED, not failed. Guarded on
+    // `failure()` alone, the reporter is skipped and the pull request is left
+    // carrying `agent:running` with no conclusion — the one label state this
+    // loop otherwise never leaves behind.
+    const reporter = workflow.slice(workflow.indexOf("- name: Report a crashed run"));
+    expect(reporter).toMatch(/if: failure\(\) \|\| cancelled\(\)/);
+  });
+
+  it("keeps the two whitespace-range mechanisms in separate paragraphs (#113 O7)", () => {
+    // My own O3 edit ran them together, so "Without this" read as attributing
+    // the fallback's purpose to `fetch-depth: 0`. That is the same
+    // misleading-comment defect B1 and B3 raised as blocking against the loop
+    // workflow, left behind in the file this slice had just edited.
+    const step = ci.slice(ci.indexOf("- name: Check changed lines for whitespace"));
+    const comment = step.slice(0, step.indexOf("\n        env:"));
+    expect(comment).not.toMatch(/true\. `fetch-depth: 0`/);
+    expect(comment).toMatch(/`:-` fallbacks are what keep the step/);
+  });
+
+  it("records the job's start before anything else runs (#113 N8)", () => {
+    // The budget subtracts from the job's ceiling, so it has to measure from
+    // the job's start. This must be the FIRST step: every step before it is
+    // setup time the orchestrator would otherwise count as spare.
+    const loopBlock = workflow.slice(workflow.indexOf("\n  loop:"));
+    const firstStep = loopBlock.slice(loopBlock.indexOf("\n    steps:"));
+    expect(firstStep).toMatch(/steps:\n {6}- name: Record when this job started/);
+    expect(firstStep).toMatch(/CI_AGENT_JOB_STARTED_AT=/);
+    expect(firstStep).toMatch(/>> "\$GITHUB_ENV"/);
+  });
+
+  it("mirrors the loop job's timeout into the code that bounds the CI wait", () => {
+    // `ciBudgetMs` caps the wait by what is left of this budget. A constant
+    // that drifted from the workflow would make the cap wrong in the one
+    // direction that matters — too generous, so the wait crosses the ceiling.
+    const loopBlock = workflow.slice(workflow.indexOf("\n  loop:"));
+    const declared = loopBlock.match(/\n {4}timeout-minutes: (\d+)/);
+    expect(declared).not.toBe(null);
+    expect(Number(declared[1]) * 60_000).toBe(jobBudgetMs);
+  });
+
+  it("gives repository-checks a workflow_dispatch trigger", () => {
+    expect(ci).toMatch(/\n {2}workflow_dispatch:/);
+  });
+
+  it("keeps repository-checks' pull_request trigger, so the normal path is unchanged", () => {
+    // Additive, per #17 rule 2's carve-out. Replacing the trigger rather than
+    // adding to it would stop CI on every ordinary pull request.
+    expect(ci).toMatch(/\n {2}pull_request:/);
+  });
+
+  it("resolves the whitespace range without the pull request event", () => {
+    // On a dispatched run there is no pull request, so the two shas are empty
+    // and `git diff --check "..."` would fail for a reason that has nothing to
+    // do with whitespace.
+    expect(ci).toContain('base="${BASE_SHA:-$(git rev-parse "origin/$BASE_REF")}"');
+    expect(ci).toContain('head="${HEAD_SHA:-$(git rev-parse HEAD)}"');
+  });
+});
+
 describe("CRLF tolerance", () => {
   it("normalizes a CRLF checkout before matching", () => {
     // Fed CRLF directly, the line patterns above match nothing. This asserts
@@ -150,5 +266,49 @@ describe("CRLF tolerance", () => {
     // machine that happens to check out LF.
     const crlf = "\n    permissions:\r\n      contents: read\r\n";
     expect(normalize(crlf)).toBe("\n    permissions:\n      contents: read\n");
+  });
+});
+
+// #126 round 1, finding N2. The independence table and the loop diagram are
+// what an owner answers "what does the Reviewer see, and where could a Writer's
+// own narrative reach it" from. They enumerated Issue + diff + check results
+// and went on saying that after the Issue's comments started reaching both
+// prompts. The document names this drift shape as a real defect itself.
+
+describe("the loop document enumerates what each role actually sees", () => {
+  const doc = readFileSync("docs/agent-loop.md", "utf8");
+  const property3 = /\| 3\. Recorded order of exposure \|[^|]*\|/.exec(doc);
+
+  it("has the property-3 row", () => {
+    expect(property3).not.toBeNull();
+  });
+
+  it("names the Issue's comments as an input, in that row", () => {
+    expect(property3[0]).toContain("the Issue's own comments");
+  });
+
+  it("says the Writer gets them too, not the Reviewer alone", () => {
+    expect(property3[0]).toContain("Writer prompt carries the Issue and its comments");
+  });
+
+  it("still says the pull request's own body and comments reach neither", () => {
+    // BF2. Widening the row must not quietly drop what it already guaranteed.
+    expect(property3[0]).toContain("reach neither prompt");
+    expect(property3[0]).toContain("BF2");
+  });
+
+  it("names the round-2 exception rather than overstating the rule", () => {
+    expect(property3[0]).toContain("earlier findings");
+  });
+
+  it("says what a failed read renders as", () => {
+    expect(property3[0]).toContain("could not read them");
+  });
+
+  it("puts the comments in the diagram too", () => {
+    const diagram = doc.slice(doc.indexOf("owner comments /agent-loop"));
+    expect(diagram.slice(0, diagram.indexOf("```"))).toContain(
+      "Issue + its comments + diff",
+    );
   });
 });

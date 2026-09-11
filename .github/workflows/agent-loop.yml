@@ -8,9 +8,20 @@
 # loop hands the pull request back with a label. The owner merges.
 #
 # Deliberately NOT triggered by `push`. The Writer pushes inside the run, and a
-# push trigger here would restart the loop on its own output. `ci.yml` still
-# runs on those pushes and stays authoritative for merge; the loop's own check
-# subset exists to give the Reviewer something to review against.
+# push trigger here would restart the loop on its own output.
+#
+# That push also raises no CI of its own: it uses `GITHUB_TOKEN`, and GitHub
+# starts no workflow from an event that token raised. Until #21 this comment
+# claimed the opposite, and named a workflow file this repository has never
+# had. Both were wrong, and #18's loop-pushed head `03ba0c4` was labelled ready
+# with zero check runs because of it -- the defect was in a comment before it
+# was in the code.
+#
+# The orchestrator now dispatches `repository-checks.yml` on whichever head it
+# is about to conclude on, and waits for the conclusion before labelling (#21).
+# That dispatch is what `actions: write` below is for. `repository-checks`
+# stays authoritative for merge, and the loop's own check subset exists to give
+# the Reviewer something to review against.
 #
 # TWO CHECKOUTS, and the split is the point (BF4). `base/` holds the loop's own
 # code and the governing documents, taken from the base branch. `head/` is the
@@ -105,13 +116,43 @@ jobs:
     # `getIssue` is the only Issue-scoped call the loop makes, and every other
     # call in `github.mjs` is passed the pull request number.
     #
-    # Notably absent: `actions`, `checks`, `id-token`, and anything
-    # administrative.
+    # Notably absent: `checks`, `id-token`, and anything administrative.
+    # `actions` IS granted below, and only for the #21 dispatch -- see the
+    # comment on it. This list said `actions` was absent for nineteen lines
+    # above the line granting it (#113 B3), which is the same defect shape as
+    # the header above: a comment in the security-relevant surface telling an
+    # auditor the opposite of what the block does.
     permissions:
       contents: write
       pull-requests: write
       issues: read
+      # #21, and the one permission this loop gained by a recorded owner
+      # decision (#68 decision 2, answered 2026-09-09). The Writer's push
+      # raises no workflow because it uses GITHUB_TOKEN, so `repository-checks`
+      # never ran on a loop-fixed head and the loop labelled it ready anyway.
+      # `actions: write` is what lets the orchestrator dispatch that workflow
+      # itself and wait for the verdict. It is write rather than read because
+      # dispatching is a write; reading the run's conclusion comes with it.
+      #
+      # It does NOT add a Secret and does not widen what the agents hold:
+      # `claude.mjs` still strips every credential from both agent processes
+      # and `run.mjs` still strips them before any manifest command (BF3).
+      # Option (1) on #21 — a PAT or App token — is the one that would have
+      # needed a Secret, and it is not the option chosen.
+      actions: write
     steps:
+      - name: Record when this job started
+        # #113 N8. `run.mjs` caps the CI wait by what is left of the
+        # `timeout-minutes` above, and that ceiling is measured from the JOB's
+        # start -- but the orchestrator only learns the time when it itself
+        # begins, after this job's checkouts, toolchain setup and CLI install.
+        # Budgeting from process start is optimistic by exactly that setup, so
+        # the cap could still let the wait cross the ceiling it exists to
+        # protect. First step in the job, so it is as close to the real start
+        # as a step can get; `run.mjs` falls back to process start when it is
+        # absent, which is what happens when it is driven outside Actions.
+        run: echo "CI_AGENT_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Resolve the pull request branch
         id: pr
         env:
@@ -214,7 +255,13 @@ jobs:
       - name: Report a crashed run
         # The orchestrator reports its own failures. This covers the case where
         # it could not start at all, so the pull request never goes silent.
-        if: failure()
+        #
+        # `cancelled()` as well as `failure()` (#113 N3): a job that hits
+        # `timeout-minutes` above is CANCELLED, not failed, so a `failure()`
+        # guard alone skips this step and leaves the pull request carrying
+        # `agent:running` with no conclusion and no `agent:failed` -- the one
+        # label state this loop otherwise never leaves behind.
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ needs.gate.outputs.pr }}

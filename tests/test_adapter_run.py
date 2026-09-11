@@ -225,6 +225,34 @@ class TheArtifact(unittest.TestCase):
         for value in digest.values():
             self.assertTrue(re.fullmatch(r"[0-9a-f]{64}", value))
 
+    def test_it_records_the_output_schema_by_digest(self):
+        # #111. The schema travels inside `output_config`, the same object
+        # whose `effort` Section 4.6 pins, and until now it was in neither
+        # `DECODING` nor `prompt_digest` -- so two runs sent different
+        # schemas and recorded identical digests. That is how the `d2f08cb8`
+        # comparison was decided by an input nothing recorded.
+        digest = self.document["schema_digest"]
+        self.assertEqual(
+            digest,
+            hashlib.sha256(
+                vocabulary.as_text(vocabulary.schema()).encode("utf-8")
+            ).hexdigest(),
+        )
+        self.assertEqual(digest, runner.schema_digest())
+        self.assertTrue(re.fullmatch(r"[0-9a-f]{64}", digest))
+
+    def test_the_schema_digest_moves_when_the_schema_does(self):
+        # Rule 9 as a permanent probe rather than a one-off mutation: a
+        # digest that did not change with its subject would record nothing.
+        before = runner.schema_digest()
+        real = vocabulary.schema
+        try:
+            vocabulary.schema = lambda: {**real(), "x": 1}
+            self.assertNotEqual(runner.schema_digest(), before)
+        finally:
+            vocabulary.schema = real
+        self.assertEqual(runner.schema_digest(), before)
+
     def test_it_carries_every_case_in_registered_order_and_ran_against_a_database(self):
         outcomes = self.document["report"]["adapter_outcomes"]
         self.assertEqual([o["identifier"] for o in outcomes], [c.identifier for c in EVALUATION_SET])
@@ -546,6 +574,7 @@ class TheOutcomeSaysWhatWasProposedAndWhyItWasRefused(unittest.TestCase):
                 "prompt_digest",
                 "report",
                 "run_identifier",
+                "schema_digest",
                 "started_at",
                 "thresholds",
             ],
@@ -1067,6 +1096,42 @@ class TheWiringWritesBothFilesAndHandsOverTheRecorder(unittest.TestCase):
             # not for committing.
             self.assertIn(raw.name, printed.getvalue())
             self.assertIn("not committed", printed.getvalue())
+
+    def test_main_prints_the_artifact_after_the_summary_and_never_the_raw_record(self):
+        # #117. The writer session that drives the comparison cannot download
+        # an Actions artifact, but it can read the job log. So the main
+        # document -- the one that is committed under `docs/acceptance/` when
+        # a run is adopted -- follows the summary on stdout, byte for byte
+        # what `write` stored. The raw record does not: it is an artifact
+        # and nothing else, for the reasons `run.py` gives.
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = pathlib.Path(directory) / "comparison.json"
+            with (
+                unittest.mock.patch.object(
+                    adapter_client.Adapter,
+                    "from_environment",
+                    classmethod(lambda cls: cls(client=object())),
+                ),
+                unittest.mock.patch.object(
+                    runtime_connection, "PsycopgDatabase", lambda **keywords: object()
+                ),
+                unittest.mock.patch.object(
+                    runner, "perform", lambda **keywords: self.document
+                ),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as printed:
+                    runner.main(["--artifact", str(artifact)])
+            output = printed.getvalue()
+            stored = artifact.read_text()
+            self.assertTrue(output.endswith(stored), "the artifact text is not the tail of stdout")
+            head = output[: -len(stored)]
+            self.assertIn("Comparison:", head)
+            self.assertIn("not committed", head)
+            # The tail parses back to exactly the written document.
+            self.assertEqual(json.loads(output[len(head):]), json.loads(stored))
+            raw = json.loads(runner.raw_path(artifact).read_text())
+            self.assertIn("calls", raw)
+            self.assertNotIn('"calls"', output)
 
     def test_main_hands_the_runner_the_adapter_as_the_recorder(self):
         # The recorder has to be the *same* object whose `propose` ran, or

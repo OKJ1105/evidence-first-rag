@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "./test-kit.mjs";
 import {
   LABELS,
@@ -23,7 +24,13 @@ import { parseState, renderStatusComment } from "./state.mjs";
  * It has no approve method and no merge method, for the same reason the real
  * client does not: the loop must have no route to either.
  */
-function fakeGitHub({ pr, issue, comments = [], reviews = [] } = {}) {
+function fakeGitHub({
+  pr,
+  issue,
+  comments = [],
+  issueComments = [],
+  reviews = [],
+} = {}) {
   const state = {
     pr: pr ?? {
       head: { sha: "sha0", ref: "agent/1-x" },
@@ -32,6 +39,8 @@ function fakeGitHub({ pr, issue, comments = [], reviews = [] } = {}) {
     },
     issue: issue ?? { number: 42, body: "ISSUE BODY: the requirement." },
     comments: [...comments],
+    issueComments: [...issueComments],
+    listedNumbers: [],
     reviews: [...reviews],
     labels: new Set(),
     nextId: 100,
@@ -40,7 +49,15 @@ function fakeGitHub({ pr, issue, comments = [], reviews = [] } = {}) {
     _: state,
     getPull: async () => state.pr,
     getIssue: async () => state.issue,
-    listComments: async () => state.comments,
+    // #33: the pull request's comments and the Issue's are different lists
+    // served from the same path, and reading the wrong one is the defect
+    // itself. The fake keeps them apart so a test can tell which was asked for.
+    listComments: async (number) => {
+      state.listedNumbers.push(number);
+      return number === state.issue.number
+        ? state.issueComments
+        : state.comments;
+    },
     createComment: async (_n, body) => {
       const c = { id: (state.nextId += 1), body };
       state.comments.push(c);
@@ -947,32 +964,51 @@ describe("BF3 - a Writer turn that edits the machinery aborts the run", () => {
   });
 });
 
-describe("a Writer turn that edits the contract aborts the run", () => {
+describe("a Writer turn that edits the contract stops the run at needs-human", () => {
   // #34. The loop's Writer amended an accepted contract on #23 to authorise
   // its own branch, and reverted an authorised amendment on #32 because the
-  // decision was recorded where it could not see it. Both are refused here,
-  // and the message must give the recorded-decision reason rather than BF3's
-  // credential one — a contract is never executed and holds no credential.
+  // decision was recorded where it could not see it. Both are refused here.
+  //
+  // #82 changed how that refusal is *reported*, not whether it happens. It
+  // used to throw, and a throw is labelled `agent:failed` — a crash. Now the
+  // run concludes `agent:needs-human`, which is what `docs/agent-loop.md`
+  // always said a contract-only pull request ends at. The two properties #34
+  // established are unchanged and are what these assert: the Writer's edit
+  // does not land, and the reason given is the recorded-decision one rather
+  // than BF3's credential wording.
+  function driveTouching(path) {
+    const gh = fakeGitHub();
+    const commits = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")])],
+        writer: [{ responses: [], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async (message) => {
+        commits.push(message);
+        return "sha1";
+      },
+      diff: async () => "d",
+      changedPaths: async () => [path],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, commits, result };
+  }
+
   it.each([
     ["docs/contracts/mvp-v0.1.md"],
     ["docs/contracts/README.md"],
   ])("refuses an edit to %s", async (path) => {
-    const gh = fakeGitHub();
-    await expect(
-      runLoop({
-        gh,
-        agent: fakeAgent({
-          reviewer: [review([blocking("one")])],
-          writer: [{ responses: [], summary: "r1" }],
-        }),
-        checks: passingChecks,
-        commit: async () => "sha1",
-        diff: async () => "d",
-        changedPaths: async () => [path],
-        ctx: baseCtx(),
-        log: () => {},
-      }),
-    ).rejects.toThrow(/recorded human decision/);
+    const { commits, result } = driveTouching(path);
+    const concluded = await result;
+    // Refused: the edit is discarded rather than committed or pushed. This is
+    // the assertion that carries #34's guarantee across #82's change.
+    expect(commits).toEqual([]);
+    expect(concluded.action).toBe("needs-human");
+    expect(concluded.reason).toMatch(/recorded human decision/);
   });
 
   it("does not report the contract under BF3's credential wording", async () => {
@@ -980,22 +1016,12 @@ describe("a Writer turn that edits the contract aborts the run", () => {
     // would tell a reader the contract is fenced to stop an agent borrowing
     // the orchestrator's privileges, which is not true of a document nothing
     // executes.
-    const gh = fakeGitHub();
-    await expect(
-      runLoop({
-        gh,
-        agent: fakeAgent({
-          reviewer: [review([blocking("one")])],
-          writer: [{ responses: [], summary: "r1" }],
-        }),
-        checks: passingChecks,
-        commit: async () => "sha1",
-        diff: async () => "d",
-        changedPaths: async () => ["docs/contracts/mvp-v0.1.md"],
-        ctx: baseCtx(),
-        log: () => {},
-      }),
-    ).rejects.toThrow(/not a review-finding fix/);
+    const { gh, result } = driveTouching("docs/contracts/mvp-v0.1.md");
+    const concluded = await result;
+    expect(concluded.reason).toMatch(/not a review-finding fix/);
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).not.toContain("protected paths");
+    expect(all).not.toContain("privileges the agents do not hold");
   });
 
   it("leaves a document outside docs/contracts/ alone", async () => {
@@ -1132,6 +1158,46 @@ describe("BF6 - the record is not overwritten", () => {
   });
 });
 
+// `main()` is the one function here that is never executed by a test: it opens
+// a worktree, spawns the CLI and holds the token. #30 answered that by moving
+// the model resolution into `agentRunner`, and #113 N3 moved the CI bound into
+// `ciRunner` for the same reason — but a factory only helps if `main()` calls
+// it, and a mutation that inlined the raw dependency again failed nothing.
+//
+// This is a text assertion about wiring, not a behavioural one. It cannot say
+// the arguments are right; the describes below do that. It says only that the
+// covered path is the one `main()` takes, which is the half no other test sees.
+// `workflow.test.mjs` reads module source the same way and for the same reason.
+
+describe("main() wires the covered factories rather than inlining them", () => {
+  const source = readFileSync("scripts/agent/run.mjs", "utf8");
+  const mainBody = source.slice(source.indexOf("\nasync function main("));
+
+  it("takes its agent through agentRunner (#30)", () => {
+    expect(mainBody).toMatch(/agent: agentRunner\(/);
+  });
+
+  it("takes its CI verdict through ciRunner, which carries the budget (#113 N3)", () => {
+    expect(mainBody).toMatch(/ci: ciRunner\(/);
+    // The bound has to reach it: `ciRunner` needs a start time to compute one.
+    expect(mainBody).toMatch(/ci: ciRunner\(\{[^}]*startedAt/);
+  });
+
+  it("budgets that verdict from the job's start, not this process's (#113 N8)", () => {
+    // `startedAt` is `new Date()` inside `main()`, which is minutes after the
+    // job began. The ceiling the budget subtracts from is the job's, so the
+    // wiring has to prefer the recorded job start and fall back only when it
+    // is absent — outside Actions, where there is no job.
+    expect(mainBody).toMatch(
+      /ci: ciRunner\(\{[^}]*startedAt: process\.env\.CI_AGENT_JOB_STARTED_AT \|\| startedAt/,
+    );
+    // Only the CI budget switches. `startedAt` itself is unchanged and still
+    // reaches `runLoop`, where `assertNothingApproved` uses it — that is about
+    // when the loop took custody, not about the job's budget.
+    expect(mainBody).toMatch(/startedAt,\s*\n?\s*(reset|runUrl|prNumber)/);
+  });
+});
+
 describe("agentRunner resolves the model per role and publishes what it asked for", () => {
   // `main()` is wiring and is otherwise uncovered, which is how CI_AGENT_MODEL
   // came to be read and never set. This is the seam: the model handed to the
@@ -1183,6 +1249,489 @@ describe("agentRunner resolves the model per role and publishes what it asked fo
     const result = await agent({ role: "writer", prompt: "p" });
     expect(seen[0].model).toBe(undefined);
     expect(result.model).toBe(UNPINNED_MODEL);
+  });
+});
+
+// #82. BF7 is reached by a contract-only pull request doing exactly what it is
+// supposed to do, so it is a designed terminus. It used to throw, and every
+// throw is labelled `agent:failed` by `main()` — the loop's word for a crash,
+// and the one #68's queue teaches the owner to restart. Restarting this case
+// aborts identically every time. What must NOT change is the part of BF7 that
+// matters: the fenced edit is still discarded rather than committed.
+
+describe("BF7's terminus is a conclusion, not a crash (#82)", () => {
+  const writerReply = {
+    responses: [{ id: "B1", action: "fixed", note: "amended Section 4.2" }],
+    summary: "amended the contract",
+  };
+
+  /** Drive a full fix round where the Writer's edits land on `paths`. */
+  function driveWithWriterTouching(paths, options = {}) {
+    const gh = fakeGitHub(options.gh);
+    const commits = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("Section 4.2 is ambiguous", "docs/contracts/mvp-v0.1.md")])],
+        writer: [writerReply],
+      }),
+      checks: passingChecks,
+      commit: async (message) => {
+        commits.push(message);
+        return "sha1";
+      },
+      diff: async () => "d",
+      changedPaths: async () => paths,
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, commits, result };
+  }
+
+  const contractEdit = ["docs/contracts/mvp-v0.1.md"];
+
+  it("concludes needs-human instead of throwing", async () => {
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    const concluded = await result;
+    expect(concluded.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(true);
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+    // `agent:failed` is main()'s, and main() is only reached by a throw.
+    expect(gh._.labels.has(LABELS.failed)).toBe(false);
+  });
+
+  it("commits nothing, so the fenced edit is discarded rather than published", async () => {
+    // The half of BF7 that must survive the change. A conclusion that shipped
+    // the Writer's contract edit would be worse than the crash it replaces.
+    const { commits, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    expect(commits).toEqual([]);
+  });
+
+  it("names the fence, the path, and that nothing was committed", async () => {
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("docs/contracts/mvp-v0.1.md");
+    expect(all).toContain("owner-decision fence");
+    expect(all).toMatch(/Section 10/);
+    expect(all).toMatch(/nothing from that Writer turn was committed or pushed/);
+    expect(all).toMatch(/not a failed run/);
+  });
+
+  it("makes no run-wide claim that nothing was committed (#92 N6)", async () => {
+    // The conclusion and the proposal comment are what the owner reads. An
+    // unqualified "nothing was committed or pushed" is false on a run whose
+    // earlier round pushed an ordinary fix, and "contract-only" is not
+    // something the loop determines — the fence fires on any Writer turn that
+    // reaches `docs/contracts/`.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const published = gh._.comments.map((c) => c.body).join("\n");
+    expect(published).not.toContain("nothing was committed or pushed");
+    expect(published).not.toContain("designed outcome for a contract-only change");
+  });
+
+  it("publishes the standing findings with the conclusion", async () => {
+    // #82: a needs-human on a contract is exactly the moment the owner needs
+    // the findings in one place rather than scrolling for them.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).toContain("Section 4.2 is ambiguous");
+  });
+
+  it("records needs-human in the state marker, not a mid-run phase", async () => {
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    expect(stateOf(gh).phase).toBe("needs-human");
+  });
+
+  it("runs the approve guard before concluding, like any other conclusion", async () => {
+    // The conclusion path is shared, so #5's guard covers this terminus too.
+    const { result } = driveWithWriterTouching(contractEdit, {
+      gh: {
+        reviews: [
+          {
+            state: "APPROVED",
+            submitted_at: "2026-01-01T01:00:00Z",
+            user: { login: "someone" },
+          },
+        ],
+      },
+    });
+    await expect(result).rejects.toThrow(/never approve/);
+  });
+
+  it("publishes what the Writer proposed, marked as discarded", async () => {
+    // N2 on #92. The proposal is the input to the decision the fence reserves
+    // for the owner. Without it the record says an edit was attempted and
+    // never what it was.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const proposal = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Writer proposal"));
+    expect(proposal).not.toBeUndefined();
+    expect(proposal).toContain("discarded at the owner-decision fence");
+    expect(proposal).toContain("nothing from this turn was committed or pushed");
+    expect(proposal).toContain("amended the contract");
+    expect(proposal).toContain("amended Section 4.2");
+    expect(proposal).toContain("docs/contracts/mvp-v0.1.md");
+  });
+
+  it("does not present the discarded proposal as a change to the branch", async () => {
+    // The risk in publishing it at all: a reader taking the proposal for an
+    // applied edit. The heading and the body both have to say otherwise.
+    const { gh, result } = driveWithWriterTouching(contractEdit);
+    await result;
+    const proposal = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Writer proposal"));
+    expect(proposal).toContain("it is not a change to the branch");
+    expect(proposal).not.toContain("Writer response — round");
+  });
+
+  it("still throws on a BF3 edit, so a reach for the machinery reads as a crash", async () => {
+    // The other fence keeps its behaviour. A Writer editing the orchestrator
+    // is not a designed terminus and must not be labelled as one.
+    const { result } = driveWithWriterTouching(["scripts/agent/run.mjs"]);
+    await expect(result).rejects.toThrow(/protected paths/);
+  });
+
+  it("throws on a BF3 edit even when a contract edit is present too", async () => {
+    // Order matters: the credential fence is checked first and wins, because
+    // the machinery reach is the more serious of the two.
+    const { result } = driveWithWriterTouching([
+      "docs/contracts/mvp-v0.1.md",
+      "scripts/agent/run.mjs",
+    ]);
+    await expect(result).rejects.toThrow(/protected paths/);
+  });
+});
+
+// #21. The Writer's push raises no workflow, so CI never ran on the head the
+// loop labelled. These assert at the loop level what checks.test.mjs asserts
+// at the helper level: a red CI on a loop-pushed head cannot reach `ready`.
+
+describe("CI on a loop-pushed head gates the verdict (#21)", () => {
+  const driveWithCi = (ci) => {
+    const gh = fakeGitHub();
+    const seen = [];
+    const result = runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "fixed" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => "pushedsha",
+      diff: async () => "d",
+      changedPaths: async () => ["src/x.py"],
+      ci: async (args) => {
+        seen.push(args);
+        return ci;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, seen, result };
+  };
+
+  const green = { ok: true, conclusion: "success", url: null, summary: "- ci: success" };
+  const red = { ok: false, conclusion: "failure", url: null, summary: "- ci: **failure**" };
+
+  it("concludes ready when the loop's checks and CI both pass", async () => {
+    const { gh, result } = driveWithCi(green);
+    const r = await result;
+    expect(r.action).toBe("ready-for-human-merge");
+    expect(gh._.labels.has(LABELS.ready)).toBe(true);
+  });
+
+  it("refuses ready when CI failed, even though every manifest check passed", async () => {
+    // The defect: `passingChecks` is green throughout, and before #21 that was
+    // the whole verdict. Head 03ba0c4 on #18 was labelled ready in this state.
+    const { gh, result } = driveWithCi(red);
+    const r = await result;
+    expect(r.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+    expect(gh._.labels.has(LABELS.needsHuman)).toBe(true);
+  });
+
+  it("asks for CI on the head the push created, not the head it started from", async () => {
+    const { seen, result } = driveWithCi(green);
+    await result;
+    const heads = seen.map((s) => s.headSha);
+    expect(heads).toContain("pushedsha");
+    expect(seen.every((s) => s.branch === "agent/1-x")).toBe(true);
+  });
+
+  it("asks once per head, not once per verdict (#113 B2)", async () => {
+    // CI's conclusion on a commit is a fixed fact once it completes, and the
+    // wait is minutes. Re-asking for the same head would re-spend it for the
+    // same answer.
+    const { seen, result } = driveWithCi(green);
+    await result;
+    const heads = seen.map((s) => s.headSha);
+    expect(heads.length).toBe(new Set(heads).size);
+  });
+
+  it("publishes the CI verdict where the owner reads it", async () => {
+    const { gh, result } = driveWithCi(red);
+    await result;
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("- ci: **failure**");
+    expect(all).toMatch(/CI on the head this run is concluding on/);
+    // N4 on #113. After B2 most verdicts are taken on heads this run did not
+    // push — a fresh pull request's opening review, a resumed `check`, a Writer
+    // turn that committed nothing. Claiming a push tells the owner the loop
+    // created the commit CI ran on, and on a resumed run that head is theirs.
+    expect(all).not.toMatch(/CI on the head this run pushed/);
+  });
+
+  it("still takes a CI verdict when the Writer pushed nothing (#113 B2)", async () => {
+    // This used to be gated on there being a new head, on the reasoning that
+    // an unmoved head already carries whatever CI the human's push produced.
+    // The reasoning was right and the gate was still wrong: the run concludes
+    // on that head either way, so the verdict has to be taken there too — and
+    // asking is now cheap, because `awaitCiOnHead` looks before it dispatches
+    // and starts nothing when a run already exists.
+    const gh = fakeGitHub();
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "declined" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return red;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(seen.length > 0).toBe(true);
+    expect(concluded.action).toBe("needs-human");
+  });
+
+  it("refuses ready on a resumed run whose review path never saw CI (#113 B2)", async () => {
+    // The hole B2 named. Round 1 pushes H1 and is cut off during the CI wait,
+    // so the marker still records the pre-fix head and `phase: review`. The
+    // next run finds the review stale, re-reviews H1 through the review path —
+    // which used to take no CI verdict at all — and a clean review concluded
+    // `ready` over a head no CI had ever seen. That is exactly the defect #21
+    // exists to remove, reached by a different route.
+    const gh = fakeGitHub();
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({ reviewer: [review([])], writer: [] }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return red;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    // No fix round ran at all: the verdict came from the review path.
+    expect(seen.length > 0).toBe(true);
+    expect(concluded.action).toBe("needs-human");
+    const all = gh._.comments.map((c) => c.body).join("\n");
+    expect(all).toContain("- ci: **failure**");
+  });
+
+  it("folds CI into the `check` path too, so a resumed clean review is gated (#113 B2)", async () => {
+    // The third route to a conclusion, and the one #76 already caught once for
+    // the manifest checks: a clean review recorded at an unchanged head resumes
+    // with no `review` step at all, so `nextStep` asks for a bare `check`. If
+    // that path takes no CI verdict, a red CI on the head being labelled is
+    // invisible — the same hole as the review path, one branch over.
+    const interrupted = {
+      round: 1,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "clean", findings: [] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(interrupted) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    const seen = [];
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ci: async (args) => {
+        seen.push(args);
+        return red;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(seen.map((x) => x.headSha)).toEqual(["shaSAME"]);
+    expect(concluded.action).toBe("needs-human");
+    expect(gh._.labels.has(LABELS.ready)).toBe(false);
+  });
+
+  it("concludes without a verdict line when no checks ran at all (#113 N6)", async () => {
+    // The guard on the new summary line is load-bearing, and the path that
+    // needs it is reachable: a resumed run already at its round cap with
+    // blocking findings standing at the same head concludes straight from
+    // `nextStep` — `blocking.length === 0` is false, so the branch that would
+    // have run the checks is never entered and `checkResult` is still null.
+    // Interpolating it unguarded would crash the one comment that tells the
+    // owner why the loop stopped.
+    const spent = {
+      round: 2,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "one left", findings: [blocking("still broken")] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(spent) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    let checksRan = 0;
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: async () => {
+        checksRan += 1;
+        return { ok: true, summary: "All checks passed." };
+      },
+      commit: async () => null,
+      diff: async () => "d",
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(checksRan).toBe(0);
+    expect(concluded.action).toBe("needs-human");
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("still broken");
+  });
+
+  it("publishes the CI verdict from the conclusion on the `check` path (#113 N6)", async () => {
+    // That path posts no review and no Writer response, so the conclusion is
+    // its only comment. Before this it carried `concluded.reason` alone — "the
+    // repository checks are failing" — which does not say the failure was CI
+    // rather than the manifest, does not distinguish a red build from a
+    // timeout, and carries no run URL.
+    const interrupted = {
+      round: 1,
+      phase: "review",
+      headSha: "shaSAME",
+      riskLevel: "L2",
+      issueNumber: 42,
+      registry: {},
+      lastReview: { summary: "clean", findings: [] },
+      checksOk: true,
+      runId: null,
+      updatedAt: null,
+    };
+    const gh = fakeGitHub({
+      comments: [{ id: 7, body: renderStatusComment(interrupted) }],
+    });
+    gh._.pr.head.sha = "shaSAME";
+    await runLoop({
+      gh,
+      agent: fakeAgent({}),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      ci: async () => ({
+        ok: false,
+        conclusion: "timed_out",
+        url: "https://example/run/9",
+        summary: "- `repository-checks` on `shaSAME`: no run appeared on this head",
+      }),
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const conclusion = gh._.comments
+      .map((c) => c.body)
+      .find((b) => b.includes("Stopped — a human is needed"));
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("no run appeared on this head");
+    // No review or Writer comment exists to carry it instead.
+    // No review or Writer comment exists to carry it instead. Matched on the
+    // heading, not the body: the state marker's own text mentions Writer
+    // responses, and a looser filter picks it up.
+    const headings = gh._.comments.map((c) => c.body.split("\n")[0]);
+    expect(headings).toEqual(["## Agent loop state", "## Stopped — a human is needed"]);
+  });
+
+  it("asks CI once for a head reached by two different paths (#113 B2)", async () => {
+    // The memo has to key on the head, not on the call site. A Writer turn
+    // that pushes nothing leaves the head unmoved, so the fix path and the
+    // review path that follows it both conclude on the same commit — and the
+    // CI wait is minutes, so asking twice spends it twice for one fact.
+    const gh = fakeGitHub();
+    const seen = [];
+    await runLoop({
+      gh,
+      agent: fakeAgent({
+        reviewer: [review([blocking("one")]), review([])],
+        writer: [{ responses: [{ id: "B1", action: "declined" }], summary: "r1" }],
+      }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async (args) => {
+        seen.push(args);
+        return green;
+      },
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const heads = seen.map((x) => x.headSha);
+    expect(heads.length).toBe(new Set(heads).size);
+  });
+
+  it("concludes ready through the review path when CI on that head is green", async () => {
+    // The other half: the new fold must not turn every clean review into
+    // needs-human.
+    const gh = fakeGitHub();
+    const concluded = await runLoop({
+      gh,
+      agent: fakeAgent({ reviewer: [review([])], writer: [] }),
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ci: async () => green,
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    expect(concluded.action).toBe("ready-for-human-merge");
   });
 });
 
@@ -1407,5 +1956,209 @@ describe("parsing the paths a Writer turn changed", () => {
     expect(parseStatusPaths("?? scripts/we\nird.mjs\0")).toEqual([
       "scripts/we\nird.mjs",
     ]);
+  });
+});
+
+// #33's first defect, at the loop level. The prompt tests pin the rendering;
+// these pin that the orchestrator asks for the right list at all. The loop
+// already called `listComments` — for the PULL REQUEST, to find its own state
+// marker — so "it calls listComments" was true before this change and meant
+// nothing. What was missing is the call with the ISSUE's number.
+
+describe("the loop reads the Issue's comments, not only its body (#33)", () => {
+  const issueComments = [
+    { user: { login: "OKJ1105" }, created_at: "2026-09-01T00:00:00Z", body: "DECISION: keep it opt-in." },
+  ];
+
+  const drive = (extra = {}) => {
+    const gh = fakeGitHub({ issueComments, ...extra });
+    const prompts = [];
+    const result = runLoop({
+      gh,
+      agent: async ({ role, prompt }) => {
+        prompts.push({ role, prompt });
+        return role === "reviewer"
+          ? { text: JSON.stringify(review([blocking("one")])), sessionId: "s" }
+          : {
+              text: JSON.stringify({ responses: [{ id: "B1", action: "fixed" }], summary: "r" }),
+              sessionId: "s",
+            };
+      },
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { gh, prompts, result };
+  };
+
+  it("asks for the Issue's number, not just the pull request's", async () => {
+    const { gh, result } = drive();
+    await result;
+    // 42 is the Issue the fake pull request closes; 7 is the pull request.
+    expect(gh._.listedNumbers).toContain(42);
+    expect(gh._.listedNumbers).toContain(7);
+  });
+
+  it("puts the Issue's comment in front of the Reviewer", async () => {
+    const { prompts, result } = drive();
+    await result;
+    const reviewer = prompts.find((p) => p.role === "reviewer");
+    expect(reviewer.prompt).toContain("DECISION: keep it opt-in.");
+  });
+
+  it("puts it in front of the Writer too", async () => {
+    const { prompts, result } = drive();
+    await result;
+    const writer = prompts.find((p) => p.role === "writer");
+    expect(writer).not.toBeUndefined();
+    expect(writer.prompt).toContain("DECISION: keep it opt-in.");
+  });
+
+  it("does not leak the pull request's own comments into either prompt", async () => {
+    // The loop's state marker and its published reviews live there. Feeding a
+    // Reviewer its own prior output as Issue discussion would seed the verdict
+    // from state, which BF2 exists to stop.
+    const { prompts, result } = drive({
+      comments: [{ id: 1, body: "PR-ONLY: the loop's own state marker." }],
+    });
+    await result;
+    for (const p of prompts) {
+      expect(p.prompt).not.toContain("PR-ONLY:");
+    }
+  });
+
+  // The read is deliberately non-fatal, and the first version of this slice
+  // paid for that by collapsing "could not read" into "there are none" — the
+  // one claim the loop must never make on this path, since a decision recorded
+  // in a comment is the case the read exists for. Round 1 of #126 caught it.
+
+  const throwingGitHub = (message = "502 Bad Gateway") => {
+    const gh = fakeGitHub();
+    gh.listComments = async (number) => {
+      if (number === gh._.issue.number) throw new Error(message);
+      return gh._.comments;
+    };
+    return gh;
+  };
+
+  const driveWith = async (gh) => {
+    const prompts = [];
+    const concluded = await runLoop({
+      gh,
+      agent: async ({ role, prompt }) => {
+        prompts.push({ role, prompt });
+        return { text: JSON.stringify(review([])), sessionId: "s" };
+      },
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    return { prompts, concluded };
+  };
+
+  it("runs anyway when the comments cannot be read", async () => {
+    // The body is still the specification. Losing the discussion is worse than
+    // losing the run, so the read is not allowed to be fatal.
+    const { concluded } = await driveWith(throwingGitHub());
+    expect(concluded.action).toBe("ready-for-human-merge");
+  });
+
+  it("tells the agents the comments are unknown, never that there are none", async () => {
+    const { prompts } = await driveWith(throwingGitHub());
+    expect(prompts[0].prompt).toContain("could not be read");
+    expect(prompts[0].prompt).toContain("unknown, not as none");
+    expect(prompts[0].prompt).not.toContain("The Issue has no comments");
+  });
+
+  it("names the reason the read failed, rather than only that it did", async () => {
+    const { prompts } = await driveWith(throwingGitHub("403 rate limited"));
+    expect(prompts[0].prompt).toContain("403 rate limited");
+  });
+
+  it("puts the failure in the published record, not only the Actions log", async () => {
+    // The owner decides from the pull request. A run whose agents reasoned
+    // without the discussion has to say so where the merge decision is made.
+    const gh = throwingGitHub();
+    await driveWith(gh);
+    const published = gh._.comments.map((c) => c.body).join("\n\n");
+    expect(published).toContain("The Issue's comments could not be read");
+    expect(published).toContain("502 Bad Gateway");
+  });
+
+  it("says nothing about an unread discussion when the read worked", async () => {
+    const gh = fakeGitHub({ issueComments });
+    await driveWith(gh);
+    const published = gh._.comments.map((c) => c.body).join("\n\n");
+    expect(published).not.toContain("could not be read");
+  });
+
+  // Every comment the run publishes, separately. Asserting over the joined
+  // text was the weaker guard it looks like: dropping the notice from any one
+  // of the three left the other two carrying it and the test still passed.
+  // A round-2 mutation caught that, not a round-1 review.
+
+  const driveFullRound = async (gh) => {
+    const prompts = [];
+    await runLoop({
+      gh,
+      agent: async ({ role, prompt }) => {
+        prompts.push({ role, prompt });
+        return role === "reviewer"
+          ? { text: JSON.stringify(review([blocking("one")])), sessionId: "s" }
+          : {
+              text: JSON.stringify({
+                responses: [{ id: "B1", action: "fixed" }],
+                summary: "r",
+              }),
+              sessionId: "s",
+            };
+      },
+      checks: passingChecks,
+      commit: async () => null,
+      diff: async () => "d",
+      changedPaths: async () => [],
+      ctx: baseCtx(),
+      log: () => {},
+    });
+    const find = (heading) =>
+      gh._.comments.find((c) => c.body.startsWith(heading))?.body;
+    return { prompts, find };
+  };
+
+  it("carries the notice in the published review comment", async () => {
+    const { find } = await driveFullRound(throwingGitHub());
+    expect(find("## Independent review")).toContain("could not be read");
+  });
+
+  it("carries it in the published Writer response comment", async () => {
+    const { find } = await driveFullRound(throwingGitHub());
+    expect(find("## Writer response")).toContain("could not be read");
+  });
+
+  it("carries it in the concluding comment", async () => {
+    // A run that concludes through `check` publishes neither of the other two,
+    // so this is the one that can be a run's only comment.
+    const { find } = await driveFullRound(throwingGitHub());
+    const conclusion =
+      find("## Awaiting human merge") ?? find("## Stopped — a human is needed");
+    expect(conclusion).not.toBeUndefined();
+    expect(conclusion).toContain("could not be read");
+  });
+
+  it("tells the Writer the read failed, not the Reviewer alone", async () => {
+    // The role that reverted the amendment on #32 was the Writer, and a run
+    // with no blocking finding never spawns one — so the earlier tests here
+    // could not have seen a Writer prompt at all.
+    const { prompts } = await driveFullRound(throwingGitHub());
+    const writer = prompts.find((p) => p.role === "writer");
+    expect(writer).not.toBeUndefined();
+    expect(writer.prompt).toContain("could not be read");
+    expect(writer.prompt).not.toContain("The Issue has no comments");
   });
 });

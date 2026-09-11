@@ -1,10 +1,20 @@
-"""Builders that keep the assertions in each test about one thing.
+"""What more than one test module needs, defined once.
 
-Every test needs a complete, valid result before it can break one field, and
-spelling out a full evidence bundle in each one hides the assertion inside its
-setup. These builders produce the contract-conforming default; a test passes
-only the field it is about.
+**Builders.** Every test needs a complete, valid result before it can break
+one field, and spelling out a full evidence bundle in each one hides the
+assertion inside its setup. These builders produce the contract-conforming
+default; a test passes only the field it is about.
+
+**The fixture-identifier enumeration.** `tests/test_adapter_vocabulary.py`
+and `tests/test_adapter_evaluation.py` each carried their own copy of the
+glob, the pattern and the set comprehension (#69). Two tests that both mean
+"every identifier the fixtures load" must read one definition, or a change to
+the convention -- the pattern, the glob, a field to exclude -- updates one
+copy and leaves the other passing on a stale assumption.
 """
+
+import pathlib
+import re
 
 from evidence_first_rag import (
     EvidenceBundle,
@@ -16,6 +26,21 @@ from evidence_first_rag import (
 )
 
 RUNTIME_ROLE = "SAMPLE_RUNTIME_ROLE"
+
+FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
+SAMPLE = re.compile(r"SAMPLE_[A-Za-z0-9_]+")
+
+
+def loaded_identifiers() -> set[str]:
+    """Every `SAMPLE_*` identifier the registered fixture files contain.
+
+    Read rather than imported from the loader: the question is what a reader
+    of `fixtures/` would find, and a test that asked the code instead would
+    agree with it by construction.
+    """
+    return {
+        token for path in FIXTURES.glob("*.jsonl") for token in SAMPLE.findall(path.read_text())
+    }
 
 
 def scope(**overrides):

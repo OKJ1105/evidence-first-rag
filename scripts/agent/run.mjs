@@ -472,6 +472,198 @@ async function setOutcomeLabel(gh, prNumber, label) {
   if (label) await gh.addLabels(prNumber, [label]);
 }
 
+/** The CI workflow the loop dispatches after a Writer push (#21). */
+export const ciWorkflowFile = "repository-checks.yml";
+
+/**
+ * The `timeout-minutes` on the loop job, mirrored here so the CI wait can be
+ * bounded by it. `workflow.test.mjs` asserts the two agree; a value that drifts
+ * from the workflow would make the bound below meaningless in the one direction
+ * that matters.
+ */
+export const jobBudgetMs = 60 * 60_000;
+
+/**
+ * How long the CI wait may take without being the thing that crosses the
+ * ceiling (#113 N3).
+ *
+ * A job that hits `timeout-minutes` is cancelled rather than failed, and a
+ * cancelled job publishes no conclusion. The wait is the one step long enough
+ * to cause that on its own, so it is capped at the time actually left, minus a
+ * reserve for the conclusion the run still has to write. Never negative: a run
+ * already past its budget asks for no wait at all and takes whatever verdict is
+ * already on the head.
+ *
+ * @returns {number} milliseconds, never below zero
+ */
+/**
+ * The `ci` dependency `runLoop` calls, with the wait already bounded.
+ *
+ * A factory rather than an inline closure in `main()`, for the reason #30 gave
+ * for `agentRunner`: `main()` is wiring and is not otherwise covered, and a
+ * bound nothing checks is how a cap comes to be computed and never passed. A
+ * mutation that dropped `timeoutMs` from an inline closure failed no test.
+ *
+ * @param {{gh: object, startedAt: string, log?: Function, awaitCi?: Function}} deps
+ */
+export function ciRunner({ gh, startedAt, log = () => {}, awaitCi = awaitCiOnHead }) {
+  return ({ branch, headSha }) =>
+    awaitCi({
+      gh,
+      branch,
+      headSha,
+      // #113 N3: never let the wait be what crosses the job ceiling.
+      timeoutMs: ciBudgetMs({ startedAt }),
+      log,
+    });
+}
+
+export function ciBudgetMs({
+  startedAt,
+  now = Date.now(),
+  ceilingMs = jobBudgetMs,
+  reserveMs = 2 * 60_000,
+  requestedMs = 10 * 60_000,
+}) {
+  const spent = now - Date.parse(startedAt);
+  const left = ceilingMs - spent - reserveMs;
+  if (!Number.isFinite(left)) return requestedMs;
+  return Math.max(0, Math.min(requestedMs, left));
+}
+
+/**
+ * Resolve CI's verdict on one head, dispatching a run only if none exists yet.
+ *
+ * #21: the Writer pushes with `GITHUB_TOKEN`, and GitHub starts no workflow
+ * from an event that token raised. So `repository-checks` — which
+ * `docs/agent-loop.md` calls authoritative for merge — never ran on a
+ * loop-fixed head, and the loop labelled that head
+ * `agent:ready-for-human-merge` anyway. Observed on #18: head `03ba0c4` had
+ * zero check runs and was labelled ready.
+ *
+ * The loop's own manifest checks are not a substitute. They are read from the
+ * base branch by design (BF4), so they are exactly the checks that cannot
+ * cover what the branch changed about checking.
+ *
+ * **It looks before it dispatches (B2 on #113).** The question this answers is
+ * "did CI pass on this commit", and a `pull_request` run already on the head
+ * answers it — which is why `listWorkflowRuns` is deliberately unfiltered by
+ * event. Dispatching anyway would burn a second runner on every human-pushed
+ * head for no new information. The caller is therefore free to ask about any
+ * head it is about to conclude on, not only one this run pushed, and that is
+ * what makes the verdict a property of the head rather than of the push.
+ *
+ * A listing that throws is not read as "no run": it falls through to the
+ * dispatch, because not knowing is not a reason to skip the check.
+ *
+ * Everything is injected so the whole wait is testable without a network: a
+ * fake client, a fake clock and a fake sleep drive every branch below.
+ *
+ * @returns {Promise<{ok: boolean, conclusion: string, url: string|null, summary: string}>}
+ */
+export async function awaitCiOnHead({
+  gh,
+  branch,
+  headSha,
+  workflowFile = ciWorkflowFile,
+  timeoutMs = 10 * 60_000,
+  pollMs = 15_000,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  now = () => Date.now(),
+  log = () => {},
+}) {
+  const say = (conclusion, ok, detail, url = null) => ({
+    ok,
+    conclusion,
+    url,
+    summary: `- \`${workflowFile}\` on \`${headSha}\`: ${detail}`,
+  });
+  const runOnHead = async () => {
+    const runs = await gh.listWorkflowRuns(workflowFile, branch);
+    return (runs?.workflow_runs ?? []).find((r) => r.head_sha === headSha) ?? null;
+  };
+  const verdictOf = (run) =>
+    say(
+      run.conclusion ?? "unknown",
+      run.conclusion === "success",
+      `**${run.conclusion}**`,
+      run.html_url ?? null,
+    );
+
+  // Look first. An existing run on this head — dispatched or raised by the
+  // pull request — is the answer, and a second one would add nothing.
+  let seen = null;
+  let existed = false;
+  try {
+    seen = await runOnHead();
+    existed = seen !== null;
+    if (seen?.status === "completed") return verdictOf(seen);
+  } catch (err) {
+    log(`CI listing failed before dispatch, dispatching anyway: ${err.message}`);
+  }
+
+  if (!existed) {
+    try {
+      await gh.dispatchWorkflow(workflowFile, branch);
+    } catch (err) {
+      return say("not_dispatched", false, `could not be dispatched — ${err.message}`);
+    }
+  }
+
+  // #113 N9: out of job time is a different answer from "nothing ever
+  // appeared", and the owner acts on them differently. With no budget left the
+  // poll below never runs, and falling through to the timeout message would
+  // publish `no run appeared on this head within 0 minutes` -- the exact
+  // sentence `docs/agent-loop.md` teaches the owner to read as "this branch
+  // predates the trigger, rebase it". The dispatch above has already happened,
+  // so CI is running and will post its own status; what ran out was the loop.
+  if (timeoutMs < pollMs) {
+    return say(
+      "budget_exhausted",
+      false,
+      "was dispatched, but this run had no job time left to wait for it",
+      seen?.html_url ?? null,
+    );
+  }
+
+  const deadline = now() + timeoutMs;
+  while (now() < deadline) {
+    await sleep(pollMs);
+    try {
+      seen = await runOnHead();
+    } catch (err) {
+      log(`CI poll failed, retrying: ${err.message}`);
+      continue;
+    }
+    if (seen?.status === "completed") return verdictOf(seen);
+  }
+  return say(
+    "timed_out",
+    false,
+    seen
+      ? `started but did not finish within ${Math.round(timeoutMs / 60_000)} minutes`
+      : `no run appeared on this head within ${Math.round(timeoutMs / 60_000)} minutes`,
+    seen?.html_url ?? null,
+  );
+}
+
+export function withCiVerdict(checkResult, ci) {
+  if (!ci) return checkResult;
+  return {
+    ...checkResult,
+    ok: checkResult.ok && ci.ok,
+    ci,
+    summary: [
+      checkResult.summary,
+      "",
+      "CI on the head this run is concluding on (#21):",
+      "",
+      ci.summary,
+      ci.url ? `\n${ci.url}` : "",
+    ].join("\n"),
+  };
+}
+
 /**
  * Fail the run if anything approved the pull request while the loop held it.
  *
@@ -513,6 +705,10 @@ export async function runLoop({
   checks,
   commit,
   diff,
+  // #21. Null means "do not dispatch CI", which is what every test that is
+  // not about CI wants and what a local run has no credential for. `main()`
+  // wires the real one.
+  ci = null,
   changedPaths = async () => [],
   docs = "",
   reviewerOnlyDocs = "",
@@ -532,6 +728,40 @@ export async function runLoop({
   const issue = await gh.getIssue(issueNumber);
   const issueBody = issue.body ?? "";
 
+  // #33: the body was all either role ever saw, so a decision recorded as an
+  // Issue comment was structurally invisible. On #32 that made the Writer
+  // revert a contract amendment because "no such decision is present in this
+  // session's context" — correct on its inputs, and the inputs were missing it.
+  //
+  // `listComments` is the same paginated read the state marker relies on, and
+  // GitHub serves an Issue's comments from the same path as a pull request's.
+  // A failure here is not fatal: the Issue's body is still the specification,
+  // and losing the discussion is worse than losing the run.
+  //
+  // But the failure is CARRIED, not swallowed (#126 B1). The first version left
+  // `issueComments = []`, and an empty list renders as "None. The Issue has no
+  // comments." — so a 502 reached both agents as an affirmative claim that
+  // nothing was recorded, on exactly the case this read exists for. Unread and
+  // empty are different states and both prompts now say which one they got.
+  let issueComments = [];
+  let issueCommentsUnread = null;
+  try {
+    issueComments = await gh.listComments(issueNumber);
+  } catch (err) {
+    issueCommentsUnread = err.message;
+    log(`Could not read Issue #${issueNumber}'s comments: ${err.message}`);
+  }
+
+  // The owner reads the pull request, not the Actions log. A run whose agents
+  // reasoned without the discussion has to say so where the merge decision is
+  // made, or the gap is invisible at exactly the moment it matters.
+  const unreadNotice = issueCommentsUnread
+    ? `> **The Issue's comments could not be read** (${issueCommentsUnread}). ` +
+      "Both agents were told the discussion is unknown rather than empty, so " +
+      "anything recorded only in an Issue comment was not in front of either " +
+      "of them on this run."
+    : null;
+
   let { state, commentId } = await loadState(gh, prNumber);
   if (reset) {
     log("Reset requested: clearing the recorded round count.");
@@ -544,8 +774,33 @@ export async function runLoop({
   // BF2: never seeded from state. A verdict recorded on a previous run belongs
   // to a different commit, and reusing it let the loop call a red head ready.
   let checkResult = null;
+
+  // B2 on #113: the CI verdict is a property of the head the loop is about to
+  // conclude on, not of "this run pushed something". Folding it in only on the
+  // fix path left a hole: if the job is cut off during the CI wait, the marker
+  // still records the pre-fix head, and the next run re-reviews the pushed head
+  // through the review path — which took no CI verdict — and can conclude
+  // `ready` over a head no CI has ever seen. That is the defect #21 exists to
+  // remove, so every path that produces a verdict folds CI in.
+  //
+  // Memoised per head, because CI's conclusion on a given commit is a fixed
+  // fact once it completes. Re-asking would re-spend the wait for the same
+  // answer; `awaitCiOnHead` looks before dispatching, so the second ask would
+  // not even start a run.
+  const ciByHead = new Map();
+  const withCi = async (result, head) => {
+    if (!ci) return result;
+    if (!ciByHead.has(head)) ciByHead.set(head, await ci({ branch, headSha: head }));
+    const verdict = ciByHead.get(head);
+    log(`CI on ${head}: ${verdict.conclusion}`);
+    return withCiVerdict(result, verdict);
+  };
   let concluded = null;
   let currentHead = pr.head.sha;
+  // #82 / N1 on #92: what the Writer touched behind the owner-decision fence,
+  // observed during the fix step and handed to `nextStep` on the iteration
+  // after, so the terminal decision stays in the state machine.
+  let fencedEdits = [];
 
   // Two steps per round (fix, review), plus the opening review, plus the
   // conclusion — and one more for the `check` step a resumed run inserts
@@ -560,6 +815,7 @@ export async function runLoop({
       headSha: currentHead,
       stateHeadSha: state.headSha,
       phase: state.phase,
+      fencedEdits,
     });
     log(`step: ${step.action} - ${step.reason}`);
 
@@ -587,14 +843,14 @@ export async function runLoop({
     // The state machine asked for a verdict before it will conclude. Running
     // the checks is the whole step; the next iteration decides on the result.
     if (step.action === ACTIONS.check) {
-      checkResult = await checks();
+      checkResult = await withCi(await checks(), currentHead);
       log(`checks: ${checkResult.ok ? "pass" : "FAIL"}`);
       continue;
     }
 
     if (step.action === ACTIONS.review) {
       if (checkResult === null) {
-        checkResult = await checks();
+        checkResult = await withCi(await checks(), currentHead);
         // Whether the checks ran, and what they said, is otherwise invisible
         // in the run log — `runChecks` captures output rather than streaming
         // it, so a failure after this point gives no way to tell.
@@ -605,6 +861,8 @@ export async function runLoop({
         prompt: reviewerPrompt({
           issueNumber,
           issueBody,
+          issueComments,
+          issueCommentsUnread,
           riskLevel,
           branch,
           diff: await diff(),
@@ -636,6 +894,7 @@ export async function runLoop({
           `Head \`${currentHead}\` · Issue #${issueNumber} · risk \`${riskLevel}\``,
           `Reviewer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
+          ...(unreadNotice ? [unreadNotice, ""] : []),
           parsed.summary,
           "",
           renderFindings(findings),
@@ -654,6 +913,8 @@ export async function runLoop({
         prompt: writerPrompt({
           issueNumber,
           issueBody,
+          issueComments,
+          issueCommentsUnread,
           riskLevel,
           branch,
           findings: blocking,
@@ -677,20 +938,9 @@ export async function runLoop({
             "so the run is aborted rather than executing them.",
         );
       }
-      // A separate fence with a separate reason: nothing here is executed and
-      // nothing carries a credential. The edit is refused because amending an
-      // `Accepted` contract is a recorded human decision under its Section 10,
-      // which is not a Writer's to make. Reporting it under the message above
-      // would state the wrong reason.
-      const needsOwner = ownerDecisionEdits(changedNow);
-      if (needsOwner.length > 0) {
-        throw new Error(
-          `The Writer edited paths that require a recorded human decision: ${needsOwner.join(", ")}. ` +
-            "Amending an accepted contract is the repository owner's decision, not a review-finding fix, " +
-            "so the run is aborted rather than publishing a conclusion built on one.",
-        );
-      }
-
+      // The reply is read before the second fence, so a Writer turn that
+      // trips that fence can still have its proposal published (N2 on #92).
+      // Parsing is pure; nothing here acts on the reply.
       let responses = [];
       let summary;
       try {
@@ -712,6 +962,57 @@ export async function runLoop({
           "The Writer's reply could not be parsed; its edits are in the diff.";
       }
 
+      // A separate fence with a separate reason: nothing under it is executed
+      // and nothing carries a credential. The edit is refused because amending
+      // an `Accepted` contract is a recorded human decision under its Section
+      // 10, which is not a Writer's to make.
+      //
+      // It records rather than throws (#82). BF7 is reached by a contract-only
+      // pull request doing exactly what it is supposed to do, so it is a
+      // designed terminus, not a crash — and every throw is labelled
+      // `agent:failed` by `main()`, which is this repository's word for a
+      // crash and the one its queue teaches the owner to restart. Restarting
+      // this case aborts identically every time.
+      //
+      // BF7 still holds where it matters: `commit()` is below this point and
+      // is never reached, so the Writer's edit to a fenced path is discarded
+      // with the runner rather than committed or pushed. The BF3 fence above
+      // keeps throwing, because a Writer reaching for the machinery is a fault
+      // and should read as one.
+      const needsOwner = ownerDecisionEdits(changedNow);
+      if (needsOwner.length > 0) {
+        // N2 on #92: publish what the Writer proposed. That proposal is the
+        // input to the decision the fence reserves for the owner, and without
+        // it the record says an edit was attempted but never what it was.
+        await gh.createComment(
+          prNumber,
+          [
+            `## Writer proposal — discarded at the owner-decision fence`,
+            "",
+            `Head \`${currentHead}\` · nothing from this turn was committed or pushed`,
+            `Writer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
+            "",
+            `The Writer's fix reached ${needsOwner.map((p) => `\`${p}\``).join(", ")}, which is behind the owner-decision fence. ` +
+              "Its edit was **discarded**. What it proposed is recorded here because that proposal is the input to the decision the fence reserves for you — it is not a change to the branch.",
+            "",
+            summary,
+            "",
+            ...(responses.length
+              ? [
+                  "| Finding | Proposed action | Note |",
+                  "| --- | --- | --- |",
+                  ...responses.map(
+                    (r) =>
+                      `| ${r.id} | ${r.action} | ${(r.note ?? "").replace(/\|/g, "/")} |`,
+                  ),
+                ]
+              : ["_No structured response._"]),
+          ].join("\n"),
+        );
+        fencedEdits = needsOwner;
+        continue;
+      }
+
       const newHead = await commit(
         `Address review findings (round ${state.round + 1})\n\n` +
           responses
@@ -719,7 +1020,13 @@ export async function runLoop({
             .join("\n"),
       );
       if (newHead) currentHead = newHead;
-      checkResult = await checks();
+      // #21: the push above raised no workflow run, because GitHub starts none
+      // from an event `GITHUB_TOKEN` raised. `withCi` dispatches on the pushed
+      // head and waits, so `ready` is never published over a head no CI has
+      // seen. It is no longer gated on there being a new head: a Writer turn
+      // that changed nothing still concludes on this head, and asking about a
+      // head CI already ran on costs one listing and starts nothing.
+      checkResult = await withCi(await checks(), currentHead);
 
       state = {
         ...state,
@@ -738,6 +1045,7 @@ export async function runLoop({
           `Head \`${currentHead}\``,
           `Writer model: \`${raw.model ?? "not reported"}\` · session: \`${raw.sessionId ?? "not reported by the CLI"}\``,
           "",
+          ...(unreadNotice ? [unreadNotice, ""] : []),
           summary,
           "",
           ...(responses.length
@@ -787,10 +1095,22 @@ export async function runLoop({
       "",
       concluded.reason,
       "",
+      // A run that concludes through `check` posts neither a review nor a
+      // Writer response, so this can be the only comment it writes. The notice
+      // has to be here too or a whole run can go by with the gap recorded
+      // nowhere the owner looks.
+      ...(unreadNotice ? [unreadNotice, ""] : []),
       ready
         ? "No blocking findings remain and the checks pass. **Merging is the owner's act; nothing here approves or merges.**"
         : "The loop stopped without clearing every blocking finding. The comments above are the record the owner decides from.",
       "",
+      // #113 N6: the verdict has to reach the owner from here too. A run that
+      // concludes through the `check` action posts no review and no Writer
+      // response, so this is its only comment — and since #21 the verdict it
+      // carries includes CI, whose run URL and whose distinction between a red
+      // build and a timeout are exactly what the owner needs to act. Without
+      // this they are told only that "the checks are failing".
+      ...(checkResult ? [checkResult.summary, ""] : []),
       ...(state.lastReview ? [renderFindings(state.lastReview.findings)] : []),
     ].join("\n"),
   );
@@ -942,6 +1262,19 @@ async function main() {
         runChecks({ cwd: worktree, manifestDir: baseDir, baseDir, baseRef }),
       diff: () => git(["diff", `origin/${baseRef}...HEAD`], worktree),
       changedPaths: () => changedPathsOf(git, worktree),
+      // #21. Thin by design: everything worth asserting is in
+      // `awaitCiOnHead`, which is driven by fakes in the tests. `main()` is
+      // wiring and is not otherwise covered.
+      // #113 N8: budget from the JOB's start, not this process's. The ceiling
+      // `ciBudgetMs` subtracts from is the job's `timeout-minutes`, and this
+      // process begins after the job's checkouts, setup and CLI install.
+      // `startedAt` stays as it is for `assertNothingApproved`, which is about
+      // when the loop took custody rather than about the job's budget.
+      ci: ciRunner({
+        gh,
+        startedAt: process.env.CI_AGENT_JOB_STARTED_AT || startedAt,
+        log: console.log,
+      }),
       commit: async (message) => {
         const dirty = await git(["status", "--porcelain"], worktree);
         if (dirty === "") return null;

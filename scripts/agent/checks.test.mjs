@@ -9,12 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "./test-kit.mjs";
-import {
-  checksManifestPath,
-  loadChecksManifest,
-  modelFor,
-  runChecks,
-} from "./run.mjs";
+import { awaitCiOnHead, checksManifestPath, ciBudgetMs, ciRunner, ciWorkflowFile, loadChecksManifest, modelFor, runChecks, withCiVerdict } from "./run.mjs";
 
 function tempRepo(manifestBody) {
   const dir = mkdtempSync(join(tmpdir(), "agent-checks-"));
@@ -287,5 +282,375 @@ describe("modelFor pins the model per role", () => {
     expect(modelFor("auditor", { CI_AGENT_MODEL: "claude-opus-5" })).toBe(
       "claude-opus-5",
     );
+  });
+});
+
+// #21. The loop's Writer pushes with GITHUB_TOKEN, and GitHub starts no
+// workflow from an event that token raised. So `repository-checks` never ran
+// on a loop-fixed head and the loop labelled it ready anyway — observed on
+// #18, head `03ba0c4`, zero check runs. These drive the dispatch-and-wait
+// with a fake client, a fake clock and a fake sleep, so every branch is
+// exercised without a network.
+
+function fakeActions({ runs = [], dispatchError = null, listError = null } = {}) {
+  const calls = { dispatched: [], listed: 0 };
+  const pages = Array.isArray(runs[0]) ? [...runs] : [runs];
+  return {
+    calls,
+    dispatchWorkflow: async (file, ref) => {
+      calls.dispatched.push({ file, ref });
+      if (dispatchError) throw new Error(dispatchError);
+      return null;
+    },
+    listWorkflowRuns: async () => {
+      calls.listed += 1;
+      if (listError && calls.listed === 1) throw new Error(listError);
+      const page = pages.length > 1 ? pages.shift() : pages[0];
+      return { workflow_runs: page };
+    },
+  };
+}
+
+const fastClock = () => {
+  let t = 0;
+  return { now: () => t, sleep: async (ms) => { t += ms; } };
+};
+
+const completed = (sha, conclusion) => ({
+  head_sha: sha,
+  status: "completed",
+  conclusion,
+  html_url: `https://example/run/${conclusion}`,
+});
+
+describe("awaitCiOnHead dispatches CI and waits for its verdict", () => {
+  it("dispatches the CI workflow on the branch that was pushed to", async () => {
+    // No run exists on this head yet, which is the loop-pushed case: the push
+    // used `GITHUB_TOKEN` and raised nothing.
+    const gh = fakeActions({ runs: [] });
+    await awaitCiOnHead({ gh, branch: "agent/1-x", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched).toEqual([
+      { file: ciWorkflowFile, ref: "agent/1-x" },
+    ]);
+  });
+
+  it("does not dispatch when a run already exists on that head (#113 B2)", async () => {
+    // A `pull_request` run on the head answers the same question, which is why
+    // `listWorkflowRuns` is unfiltered by event. Dispatching anyway would burn
+    // a second runner on every human-pushed head for no new information — and
+    // looking first is what lets the caller ask about any head it concludes on,
+    // not only one this run pushed.
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not dispatch when a run is already in progress on that head (#113 B2)", async () => {
+    // The case the completed-run test cannot reach: a run exists but has not
+    // finished. Dispatching a second one would race it and prove nothing.
+    const gh = fakeActions({
+      runs: [{ head_sha: "headsha", status: "in_progress", conclusion: null }],
+    });
+    await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched).toEqual([]);
+  });
+
+  it("says the budget ran out rather than that no run appeared (#113 N9)", async () => {
+    // Two different things for the owner to do. "No run appeared" is the
+    // stale-branch diagnosis `docs/agent-loop.md` teaches; an exhausted budget
+    // means CI was dispatched and is running normally, and the pull request's
+    // own checks will say so a minute later. Reporting the second as the first
+    // sends the owner to rebase a branch that is fine.
+    const gh = fakeActions({ runs: [] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 0,
+      pollMs: 15_000,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("budget_exhausted");
+    expect(r.summary).toContain("no job time left");
+    expect(r.summary).not.toContain("no run appeared");
+    // The dispatch still happened, so CI posts its own status to the head.
+    expect(gh.calls.dispatched.length).toBe(1);
+  });
+
+  it("still waits when the budget is merely small, not gone (#113 N9)", async () => {
+    // The boundary matters: a budget shorter than one poll cannot observe
+    // anything, but anything longer should still be spent looking.
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 60_000,
+      pollMs: 15_000,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(r.conclusion).toBe("success");
+  });
+
+  it("retries a listing that throws DURING the wait, not only before it (#113 O6)", async () => {
+    // The gap this closes was mine twice over: the retry branch inside the poll
+    // loop had no test, and my own mutation pass never mutated it either — both
+    // existing listing-failure cases throw on the first call, which is the
+    // pre-dispatch look, so the `catch { log; continue }` in the wait was never
+    // entered. A transient 502 mid-wait would then have turned a head whose CI
+    // passed into `timed_out` → `needs-human`.
+    let n = 0;
+    const gh = {
+      calls: { dispatched: [] },
+      dispatchWorkflow: async (file, ref) => {
+        gh.calls.dispatched.push({ file, ref });
+      },
+      listWorkflowRuns: async () => {
+        n += 1;
+        if (n === 1) return { workflow_runs: [] };
+        if (n === 2) throw new Error("502 Bad Gateway");
+        return { workflow_runs: [completed("headsha", "success")] };
+      },
+    };
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(n).toBe(3);
+    expect(r.ok).toBe(true);
+    expect(r.conclusion).toBe("success");
+  });
+
+  it("answers from an existing completed run without waiting at all (#113 B2)", async () => {
+    // The look-first path has to be a shortcut, not just a different route to
+    // the same poll loop: the wait is minutes, and re-entering it for a run
+    // that has already concluded spends them for an answer already in hand.
+    let slept = 0;
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({
+      gh,
+      branch: "b",
+      headSha: "headsha",
+      timeoutMs: 60_000,
+      pollMs: 1_000,
+      sleep: async () => {
+        slept += 1;
+      },
+      now: () => 0,
+    });
+    expect(slept).toBe(0);
+    expect(r.ok).toBe(true);
+  });
+
+  it("dispatches anyway when the listing throws, rather than reading it as no run", async () => {
+    // Not knowing is not a reason to skip the check.
+    let first = true;
+    const inner = fakeActions({ runs: [completed("headsha", "success")] });
+    const gh = {
+      calls: inner.calls,
+      dispatchWorkflow: inner.dispatchWorkflow,
+      listWorkflowRuns: async (...args) => {
+        if (first) {
+          first = false;
+          throw new Error("502");
+        }
+        return inner.listWorkflowRuns(...args);
+      },
+    };
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(gh.calls.dispatched.length).toBe(1);
+    expect(r.ok).toBe(true);
+  });
+
+  it("passes when the run on that exact head concludes success", async () => {
+    const gh = fakeActions({ runs: [completed("headsha", "success")] });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(true);
+    expect(r.conclusion).toBe("success");
+    expect(r.url).toBe("https://example/run/success");
+  });
+
+  it("fails when that run concludes anything else", async () => {
+    const gh = fakeActions({ runs: [completed("headsha", "failure")] });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("failure");
+  });
+
+  it("ignores a completed run on a different head", async () => {
+    // The stale-evidence mistake BF2 exists to stop. A green run on the
+    // previous commit says nothing about the one about to be labelled.
+    const gh = fakeActions({ runs: [completed("an-older-head", "success")] });
+    const r = await awaitCiOnHead({
+      gh, branch: "b", headSha: "headsha", timeoutMs: 60_000, pollMs: 15_000, ...fastClock(),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("timed_out");
+    expect(r.summary).toMatch(/no run appeared on this head/);
+  });
+
+  it("keeps waiting while the run is still in progress, then takes its verdict", async () => {
+    const gh = fakeActions({
+      runs: [
+        [{ head_sha: "headsha", status: "in_progress", conclusion: null }],
+        [completed("headsha", "success")],
+      ],
+    });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(true);
+    expect(gh.calls.listed).toBe(2);
+  });
+
+  it("reports a run that starts but never finishes as a timeout, not a pass", async () => {
+    const gh = fakeActions({
+      runs: [{ head_sha: "headsha", status: "in_progress", conclusion: null, html_url: "u" }],
+    });
+    const r = await awaitCiOnHead({
+      gh, branch: "b", headSha: "headsha", timeoutMs: 60_000, pollMs: 15_000, ...fastClock(),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("timed_out");
+    expect(r.summary).toMatch(/did not finish/);
+  });
+
+  it("reports a dispatch it could not raise, rather than passing silently", async () => {
+    // The failure mode the Issue is about: an unchecked head reaching a ready
+    // label. A swallowed dispatch error would recreate it exactly.
+    const gh = fakeActions({ dispatchError: "403 Resource not accessible" });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(false);
+    expect(r.conclusion).toBe("not_dispatched");
+    expect(r.summary).toMatch(/403 Resource not accessible/);
+  });
+
+  it("retries a failed poll rather than giving up on the run", async () => {
+    const gh = fakeActions({
+      listError: "502 Bad Gateway",
+      runs: [completed("headsha", "success")],
+    });
+    const r = await awaitCiOnHead({ gh, branch: "b", headSha: "headsha", ...fastClock() });
+    expect(r.ok).toBe(true);
+    expect(gh.calls.listed).toBe(2);
+  });
+});
+
+describe("withCiVerdict folds CI into the verdict the state machine reads", () => {
+  const passing = { ok: true, summary: "All checks passed." };
+
+  it("keeps a pass a pass when CI passed", () => {
+    const r = withCiVerdict(passing, { ok: true, conclusion: "success", url: null, summary: "- ci: pass" });
+    expect(r.ok).toBe(true);
+  });
+
+  it("turns a pass into a failure when CI failed", () => {
+    // The whole point: `nextStep` concludes needs-human on `checks.ok === false`,
+    // so a red CI can no longer be labelled ready.
+    const r = withCiVerdict(passing, { ok: false, conclusion: "failure", url: null, summary: "- ci: FAIL" });
+    expect(r.ok).toBe(false);
+  });
+
+  it("keeps the two summaries apart", () => {
+    // "the loop's checks passed and CI failed" and "a check failed" are
+    // different facts and the owner acts differently on them.
+    const r = withCiVerdict(passing, { ok: false, conclusion: "failure", url: "https://example/run/1", summary: "- ci: FAIL" });
+    expect(r.summary).toContain("All checks passed.");
+    expect(r.summary).toContain("- ci: FAIL");
+    expect(r.summary).toContain("https://example/run/1");
+  });
+
+  it("leaves the verdict untouched when no CI verdict was taken", () => {
+    expect(withCiVerdict(passing, null)).toBe(passing);
+  });
+});
+
+// N3 on #113. The CI wait is the one step long enough to cross the job's
+// ceiling on its own, and a job that hits `timeout-minutes` is cancelled rather
+// than failed — so it publishes nothing at all. Capping the wait by what is
+// actually left is what stops the wait from being the cause.
+
+describe("the CI wait is bounded by the job's remaining time (#113 N3)", () => {
+  const t0 = "2026-01-01T00:00:00Z";
+  const at = (min) => Date.parse(t0) + min * 60_000;
+
+  it("asks for the full wait early in the job", () => {
+    expect(ciBudgetMs({ startedAt: t0, now: at(1) })).toBe(10 * 60_000);
+  });
+
+  it("shortens the wait once the ceiling is close", () => {
+    // 60 minute ceiling, 53 spent, 2 reserved for the conclusion -> 5 left.
+    expect(ciBudgetMs({ startedAt: t0, now: at(53) })).toBe(5 * 60_000);
+  });
+
+  it("never returns a negative wait", () => {
+    // A run already past its budget asks for no wait and takes whatever
+    // verdict is already on the head.
+    expect(ciBudgetMs({ startedAt: t0, now: at(75) })).toBe(0);
+  });
+
+  it("keeps a reserve, so the wait is never the whole of what is left", () => {
+    // Without it the wait could end exactly at the ceiling, leaving no time to
+    // write the conclusion the run exists to publish.
+    const left = 60 * 60_000 - 58 * 60_000;
+    expect(ciBudgetMs({ startedAt: t0, now: at(58) })).toBe(0);
+    expect(left > 0).toBe(true);
+  });
+
+  it("is computed from the job's start, so setup time is not counted as spare", () => {
+    // #113 N8. The ceiling is the job's `timeout-minutes`, measured from job
+    // start; the orchestrator only learns the time once it begins, after the
+    // checkouts, toolchain setup and CLI install. Budgeting from process start
+    // is optimistic by exactly that setup, and the guarantee this cap exists to
+    // give — that the wait is never what crosses the ceiling — does not hold.
+    const jobStart = "2026-01-01T00:00:00Z";
+    const processStart = "2026-01-01T00:04:00Z";
+    const now = Date.parse(jobStart) + 53 * 60_000;
+    // From the job's start there are 5 minutes left after the reserve.
+    expect(ciBudgetMs({ startedAt: jobStart, now })).toBe(5 * 60_000);
+    // From the process's start it looks like 9, which would run 4 minutes past.
+    expect(ciBudgetMs({ startedAt: processStart, now })).toBe(9 * 60_000);
+  });
+
+  it("falls back to the requested wait when the start time is unreadable", () => {
+    // A malformed marker should not silently mean "do not wait for CI".
+    expect(ciBudgetMs({ startedAt: "not a date" })).toBe(10 * 60_000);
+  });
+});
+
+describe("the ci dependency main() wires in carries the bound (#113 N3)", () => {
+  // `main()` is wiring and is not otherwise covered. #30 made `agentRunner` a
+  // factory for exactly this reason, after an unpinned model was read and never
+  // set; a bound computed and never passed is the same defect one slice over.
+
+  it("passes the budgeted timeout, not the raw default", () => {
+    let got = null;
+    const run = ciRunner({
+      gh: {},
+      startedAt: new Date(Date.now() - 53 * 60_000).toISOString(),
+      awaitCi: async (args) => {
+        got = args;
+        return { ok: true };
+      },
+    });
+    return run({ branch: "b", headSha: "h" }).then(() => {
+      expect(got.timeoutMs <= 5 * 60_000).toBe(true);
+      expect(got.timeoutMs > 0).toBe(true);
+    });
+  });
+
+  it("passes the branch and head it was asked about", () => {
+    let got = null;
+    const run = ciRunner({
+      gh: {},
+      startedAt: new Date().toISOString(),
+      awaitCi: async (args) => {
+        got = args;
+        return { ok: true };
+      },
+    });
+    return run({ branch: "agent/1-x", headSha: "sha" }).then(() => {
+      expect(got.branch).toBe("agent/1-x");
+      expect(got.headSha).toBe("sha");
+    });
   });
 });

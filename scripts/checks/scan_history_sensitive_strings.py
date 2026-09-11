@@ -156,6 +156,69 @@ def contents(names):
     The stream is `<name> <type> <size>\\n<size bytes>\\n` per request. It is
     parsed by the declared size rather than by looking for the next header,
     because a blob's own content can contain a line that looks like one.
+
+    Every way the stream can disappoint that parse is turned into a
+    `RuntimeError` here rather than left to escape as whatever the arithmetic
+    happened to raise, because `main()` answers a `RuntimeError` with
+    `CANNOT RUN` and that is the true answer in all of them: git exited 0 and
+    what it wrote could not be read. Converting at the source rather than
+    widening the handler keeps the reason attached to the object it happened
+    on, and keeps `main()` from catching some unrelated `ValueError` under a
+    message about git.
+
+    The length check is the one that matters most: of every guard here it is
+    the only one whose absence is *silent*. A short final frame leaves
+    Python's slice quietly returning fewer bytes than the header declared,
+    with no exception anywhere: the scan would then read part of a file
+    version, find nothing in the part it read, and report PASS. A security
+    check that says "nothing found" when it did not look is the one failure
+    this module exists to avoid. Every other guard here fails loud; this is
+    the one that would fail open.
+
+    The other half of that is a frame whose declared size is *short* of what
+    git wrote. It passes the length check — the slice is exactly as long as
+    the header claimed — and leaves `at` inside the leftover content, where
+    the parse reads file content as a header. That does not raise: it ends
+    in a body mapped to the wrong name, and the path is what decides which
+    rules apply to it, so content could be exempted under a rule meant for a
+    file it does not come from.
+
+    **Three guards bear on a desynchronised cursor — the field count, the
+    name, and the separator — and none of them closes it.** Each only makes
+    a bypass need more of the leftover bytes than the last. Saying otherwise
+    has been this function's recurring bug: pull request #108 claimed the
+    separator check closed desynchronisation, pull request #114 replaced
+    that with two checks closing it together, and Issue #115 is the third
+    pass. So what follows says what each guard *demands* of a bypass, and
+    ranks nothing.
+
+    The two guards above are not in that set. The mid-header search and the
+    length check each reject their own failure mode outright — which is why
+    the length check is described above as the one whose absence is silent,
+    rather than as one more narrowing.
+
+    The separator check is the cheap one: git writes its separator after
+    every frame, including the last and including a blob whose own content
+    does not end in a newline, so asserting it costs nothing on any real
+    stream. What it demands is a newline at the offset the declared size
+    computes — which leftover content can supply, and this suite commits a
+    blob whose content is a batch header repeated for exactly that reason.
+
+    The name check demands more: leftover content reproducing **the exact
+    object name being requested**, at exactly the offset the cursor landed
+    on. That is a real shape rather than an impossible one — a committed
+    `git ls-tree` dump, an object-name manifest, or a CI log would carry it,
+    and this repository already commits content matching `<40 hex> blob `,
+    in this check's own test file. None of it names a *requested* object
+    today, which is the whole distance between "narrowed" and "closed".
+
+    **No diagnostic here prints what the stream carried.** Each reports a
+    position, a length, or a field count. A desynchronised parse is reading
+    blob content as a header, so the bytes at hand may be a file's contents
+    rather than git's framing — and this module masks every finding to four
+    characters and a length precisely so a credential is not published a
+    second time in a CI log. A diagnostic printed to the same log has no
+    licence to do otherwise.
     """
     if not names:
         return {}
@@ -170,14 +233,57 @@ def contents(names):
     body = {}
     at = 0
     for name in names:
-        end = stream.index(b"\n", at)
+        end = stream.find(b"\n", at)
+        if end == -1:
+            raise RuntimeError(
+                f"git ended the batch stream mid-header for {name} at offset "
+                f"{at}, with {len(stream) - at} bytes left"
+            )
         header = stream[at:end].split()
         if len(header) < 3:
             # `<name> missing`. Cannot happen for a name git just listed, but
             # a silent mis-parse of the rest of the stream would be worse.
-            raise RuntimeError(f"git could not read {name}: {stream[at:end]!r}")
-        size = int(header[2])
-        body[name] = stream[end + 1 : end + 1 + size]
+            raise RuntimeError(
+                f"git could not read {name}: the header at offset {at} has "
+                f"{len(header)} fields rather than 3"
+            )
+        # Compared as bytes, never decoded. In the case this guard exists
+        # for, `header[0]` is blob content, and this scan deliberately reads
+        # binary history — `node_modules`, build output, anything committed —
+        # so decoding it raises `UnicodeDecodeError`, which is a `ValueError`
+        # and would escape `main()` as the traceback every other guard here
+        # exists to avoid. `name` is hex ASCII from `git ls-tree`, so the
+        # byte comparison is exactly equivalent on anything well-formed.
+        #
+        # Safe only because every element of `names` is a full object name
+        # read from `git ls-tree`, which `--batch` echoes back verbatim. An
+        # abbreviated name or a rev expression would come back resolved and
+        # turn this guard into a false failure, so a caller passing anything
+        # else has to revisit it.
+        if header[0] != name.encode():
+            raise RuntimeError(
+                f"git answered for a different object than {name} at offset "
+                f"{at}; the batch stream is desynchronised"
+            )
+        try:
+            size = int(header[2])
+        except ValueError:
+            raise RuntimeError(
+                f"git declared an unreadable size for {name}: the size field "
+                f"at offset {at} is {len(header[2])} bytes and is not a number"
+            ) from None
+        blob = stream[end + 1 : end + 1 + size]
+        if len(blob) != size:
+            raise RuntimeError(
+                f"git declared {size} bytes for {name} and wrote {len(blob)}; "
+                "the batch stream is truncated"
+            )
+        if stream[end + 1 + size : end + 2 + size] != b"\n":
+            raise RuntimeError(
+                f"git did not terminate the frame for {name} at offset "
+                f"{end + 1 + size}; the batch stream is misframed"
+            )
+        body[name] = blob
         at = end + 1 + size + 1
     return body
 
