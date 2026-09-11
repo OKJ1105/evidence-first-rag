@@ -183,17 +183,28 @@ def contents(names):
     rules apply to it, so content could be exempted under a rule meant for a
     file it does not come from.
 
-    **Two checks close that, and only together.** The separator check is the
-    cheap one: git writes its separator after every frame, including the last
-    and including a blob whose own content does not end in a newline, so
-    asserting it costs nothing on any real stream. But it is *probabilistic*
-    — it catches a desynchronised cursor only when the leftover bytes fail to
-    look like a frame, and they can look like one. This suite commits a blob
-    whose content is a batch header repeated, for exactly that reason. The
-    name check is the *definitive* one: whatever the leftover bytes resemble,
-    they do not begin with the object name that was asked for. #110 added it
-    after #108 shipped the separator check alone and said, wrongly, that the
-    separator closed this.
+    **Every guard here narrows. None of them closes anything**, and saying
+    otherwise has been this function's recurring bug — #108 claimed the
+    separator check closed desynchronisation, #110 corrected that and claimed
+    two checks closed it together, and #115 is the third pass. What follows
+    says what each guard costs an attacker, not what it forbids.
+
+    The separator check is the cheap one: git writes its separator after
+    every frame, including the last and including a blob whose own content
+    does not end in a newline, so asserting it costs nothing on any real
+    stream. It is also the weakest — it catches a desynchronised cursor only
+    when the leftover bytes fail to look like a frame, and they can look like
+    one. This suite commits a blob whose content is a batch header repeated,
+    for exactly that reason.
+
+    The name check is the strongest of the three, and it still only narrows.
+    A bypass now needs leftover content that reproduces **the exact object
+    name being requested**, at exactly the offset the cursor landed on. That
+    is a real shape rather than an impossible one: a committed `git ls-tree`
+    dump, an object-name manifest, or a CI log would carry it, and this
+    repository already commits content matching `<40 hex> blob ` — in this
+    check's own test file. None of it names a *requested* object today, which
+    is the whole distance between "narrowed" and "closed".
 
     **No diagnostic here prints what the stream carried.** Each reports a
     position, a length, or a field count. A desynchronised parse is reading
