@@ -32,9 +32,13 @@ from .fixtures import FixtureError
 from .loader import SCHEMA, UnresolvedReference
 from .registry_fixtures import RegistrySet
 
-# Section 4.2, the entity keys every digest line carries. `signal_key` is
-# null for a message.
+# Section 4.2, the seven entity keys every digest line carries -- the
+# `approved_entity` line's nine keys less its own `approval_reference` and
+# `approved_at`. `entity_kind` is one of the seven: an alias line and a match
+# term line carry it too, as the Section 4.8 candidate object does.
+# `signal_key` is null for a message.
 _ENTITY_KEYS = (
+    "entity_kind",
     "project_code",
     "revision_label",
     "network_name",
@@ -235,7 +239,8 @@ _ENTITY_LINES = f"""
 """
 
 _ALIAS_LINES = f"""
-    SELECT s.project_code, s.revision_label, s.network_name, s.snapshot_label,
+    SELECT e.entity_kind,
+           s.project_code, s.revision_label, s.network_name, s.snapshot_label,
            COALESCE(m.message_key, pm.message_key) AS message_key,
            g.signal_key,
            a.alias_text, a.alias_kind,
@@ -251,7 +256,8 @@ _ALIAS_LINES = f"""
 """
 
 _TERM_LINES = f"""
-    SELECT s.project_code, s.revision_label, s.network_name, s.snapshot_label,
+    SELECT e.entity_kind,
+           s.project_code, s.revision_label, s.network_name, s.snapshot_label,
            COALESCE(m.message_key, pm.message_key) AS message_key,
            g.signal_key,
            x.match_kind, x.match_text, x.match_tokens,
@@ -294,15 +300,15 @@ def compute_digest(cursor) -> str:
 
 
 def _entity_keys(row) -> dict:
-    return dict(zip(_ENTITY_KEYS, row[:6]))
+    """The seven Section 4.2 entity keys, from a row whose leading columns are
+    `entity_kind` and the six reference keys in `_ENTITY_KEYS` order."""
+    return dict(zip(_ENTITY_KEYS, row[:7]))
 
 
 def _entity_line(row) -> dict:
-    kind, *rest = row
-    keys = _entity_keys(rest)
-    approval_reference, approved_at = rest[6], rest[7]
+    keys = _entity_keys(row)
+    approval_reference, approved_at = row[7], row[8]
     return {
-        "entity_kind": kind,
         **keys,
         "approval_reference": approval_reference,
         "approved_at": timestamp(approved_at),
@@ -312,7 +318,7 @@ def _entity_line(row) -> dict:
 def _alias_line(row) -> dict:
     keys = _entity_keys(row)
     (alias_text, alias_kind, a_project, a_revision, a_network, a_snapshot,
-     approval_reference, approved_at) = row[6:]
+     approval_reference, approved_at) = row[7:]
     return {
         **keys,
         "alias_text": alias_text,
@@ -328,7 +334,7 @@ def _alias_line(row) -> dict:
 
 def _term_line(row) -> dict:
     keys = _entity_keys(row)
-    match_kind, match_text, match_tokens, alias_text = row[6:]
+    match_kind, match_text, match_tokens, alias_text = row[7:]
     return {
         **keys,
         "match_kind": match_kind,

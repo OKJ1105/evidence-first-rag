@@ -358,14 +358,19 @@ def independent_digest(database: str) -> str:
                     WHERE g.signal_occurrence_id = %s
                 """, (signal_id,))
                 project, revision, network, snapshot, message_key, signal_key = cursor.fetchone()
+            # The seven entity keys of the Section 4.2 table: the
+            # `approved_entity` line's nine less `approval_reference` and
+            # `approved_at`, so `entity_kind` is one of them and an alias line
+            # and a match term line carry it too.
             keys = {
+                "entity_kind": kind,
                 "project_code": project, "revision_label": revision, "network_name": network,
                 "snapshot_label": snapshot, "message_key": message_key, "signal_key": signal_key,
             }
             entities[entity_id] = (kind, keys, approval, approved_at)
 
         entity_lines = sorted(
-            line({"entity_kind": kind, **keys, "approval_reference": approval, "approved_at": stamp(at)})
+            line({**keys, "approval_reference": approval, "approved_at": stamp(at)})
             for kind, keys, approval, at in entities.values()
         )
 
