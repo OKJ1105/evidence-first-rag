@@ -4,6 +4,8 @@ import pathlib
 import re
 import unittest
 
+from .support import closed_safeguards
+
 from evidence_first_rag import (
     COLLATION,
     CONTRACT_IDENTIFIER,
@@ -226,3 +228,24 @@ class TheLimitationEntries(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheDispatchedSelectionAdditions(unittest.TestCase):
+    """entity-discovery-v0.1 Section 3.3 extension 3 and Section 4.8: three
+    optional fields this contract's own routes never set. Default-empty, so
+    every result Sections 5 and 7 describe constructs exactly as before."""
+
+    def test_they_default_empty(self):
+        bundle = EvidenceBundle(route="message_facts", read_only_safeguards=closed_safeguards())
+        self.assertIsNone(bundle.selection)
+        trace = SourceTrace()
+        self.assertEqual(trace.alias_provenance, ())
+        self.assertEqual(trace.entity_approval_reference, "")
+
+    def test_when_set_they_are_frozen(self):
+        bundle = EvidenceBundle(route="message_facts", read_only_safeguards=closed_safeguards(), selection={"candidate_count": 2})
+        with self.assertRaises(TypeError):
+            bundle.selection["candidate_count"] = 3
+        trace = SourceTrace(alias_provenance=({"approval_reference": "SAMPLE_A"},), entity_approval_reference="SAMPLE_B")
+        with self.assertRaises(TypeError):
+            trace.alias_provenance[0]["approval_reference"] = "x"

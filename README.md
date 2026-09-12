@@ -61,7 +61,7 @@ The table below says how much of the contract executes today, section by section
 | 4.4 Registered templates | `TPL_REGISTRY_STATE_V1`, `TPL_DISCOVERY_EXACT_V1`, `TPL_DISCOVERY_LEXICAL_V1`, under `mvp-v0.1` Section 4.4's safeguards | Implemented |
 | 4.5 Match tiers | Tiers 1–4 computed in the registered SQL; `M-LEX-1` exact-then-lexical | Implemented |
 | 4.6–4.7 Candidates and auto-resolution | One entity per candidate, `k` = 10, tier-1-and-2 uniqueness; `candidate_set_id` per Section 4.8 | Implemented |
-| 4.8 The verified selection path | `entity_selection` | Contracted |
+| 4.8 The verified selection path | `entity_selection`: re-derivation, the digest check, dispatch to the `mvp-v0.1` route with the `selection` record | Implemented |
 | 5, 7 Outcomes and evidence (discovery) | Seven statuses, never `success`; both contracts' identities, alias provenance, the required limitations | Implemented |
 | 4.9–4.11 Methods, evaluation set, metrics | `M-LEX-1`, the runner | Contracted |
 

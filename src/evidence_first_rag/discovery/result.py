@@ -17,6 +17,9 @@ from .candidate import AUTO_RESOLVABLE_TIERS, Candidate
 from .evidence import DiscoveryEvidence, DiscoveryLimitation, DiscoveryLimitationKind, DiscoveryTrace
 from .status import EXECUTES_NO_DISCOVERY_TEMPLATE, OPENS_NO_CONNECTION, DiscoveryStatus
 
+DISCOVERY_ROUTE = "entity_discovery"
+SELECTION_ROUTE = "entity_selection"
+
 # Section 4.6: k = 10, fixed by the contract and not a caller argument.
 K = 10
 
@@ -53,10 +56,17 @@ class DiscoveryResult:
         object.__setattr__(self, "candidate_scopes", tuple(self.candidate_scopes))
         bundle = self.evidence_bundle
 
-        if self.status in OPENS_NO_CONNECTION and bundle.read_only_safeguards.connection_opened:
-            raise ValueError(f"{self.status.value} opens no database connection (Section 5)")
-        if self.status in EXECUTES_NO_DISCOVERY_TEMPLATE and bundle.registry_digest != "":
-            raise ValueError(f"{self.status.value} executes no discovery template, so it cites no registry state")
+        # Section 5's closing paragraph is about a discovery request. A
+        # selection refused at step 4, 5 or 6 (Section 4.8) is also this
+        # contract's `invalid_request`, and Section 7 requires it to report
+        # the re-run it made, so for `route` = `entity_selection` an opened
+        # connection and a cited registry state are what the contract asks
+        # for rather than what it forbids.
+        if bundle.route == DISCOVERY_ROUTE:
+            if self.status in OPENS_NO_CONNECTION and bundle.read_only_safeguards.connection_opened:
+                raise ValueError(f"{self.status.value} opens no database connection (Section 5)")
+            if self.status in EXECUTES_NO_DISCOVERY_TEMPLATE and bundle.registry_digest != "":
+                raise ValueError(f"{self.status.value} executes no discovery template, so it cites no registry state")
 
         if self.status is DiscoveryStatus.RESOLVED:
             if self.resolved is None or self.candidates:
