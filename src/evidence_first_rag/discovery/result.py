@@ -67,6 +67,12 @@ class DiscoveryResult:
                 raise ValueError(f"{self.status.value} opens no database connection (Section 5)")
             if self.status in EXECUTES_NO_DISCOVERY_TEMPLATE and bundle.registry_digest != "":
                 raise ValueError(f"{self.status.value} executes no discovery template, so it cites no registry state")
+            # Section 7 records the cited selection on a refused selection.
+            # A discovery result has no selection to cite, so carrying one
+            # would be a claim about a request nobody made.
+            for field in ("cited_candidate_set_id", "selected_rank", "target_route", "refusal_detail"):
+                if getattr(bundle, field) != "":
+                    raise ValueError(f"{field} belongs to a refused {SELECTION_ROUTE} (Section 7)")
 
         if self.status is DiscoveryStatus.RESOLVED:
             if self.resolved is None or self.candidates:

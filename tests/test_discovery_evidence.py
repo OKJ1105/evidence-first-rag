@@ -117,6 +117,19 @@ class TheBundle(unittest.TestCase):
         with self.assertRaises(ValueError):
             executed(matched_text="x")
 
+    def test_a_refused_selection_records_its_citation_with_no_connection_opened(self):
+        # Section 4.8 step 1 opens nothing, and Section 7 still requires the
+        # `candidate_set_id` cited, the `selected_rank` and the `target_route`
+        # named: those are the caller's own values, not anything the runtime
+        # bound, so the no-connection empty-value rule does not reach them.
+        bundle = DiscoveryEvidence(
+            route="entity_selection", read_only_safeguards=CLOSED,
+            cited_candidate_set_id="c" * 64, selected_rank="1",
+            target_route="signal_facts", refusal_detail="SAMPLE reason",
+        )
+        self.assertEqual(bundle.selected_rank, "1")
+        self.assertEqual(bundle.cited_candidate_set_id, "c" * 64)
+
     def test_both_contracts_are_named(self):
         bundle = executed()
         self.assertEqual(bundle.contract_identifier, "entity-discovery-v0.1")
@@ -217,6 +230,18 @@ class AResult(unittest.TestCase):
                     status=status, evidence_bundle=executed(resolved_scope=None),
                     source_trace=DiscoveryTrace(),
                     limitations=(limitation(DiscoveryLimitationKind.COVERAGE_NOT_ESTABLISHED),),
+                )
+
+    def test_the_cited_selection_belongs_to_a_refused_selection(self):
+        # Section 7 puts the citation on a refused `entity_selection`. A
+        # discovery result carrying one would name a selection nobody made.
+        for field in ("cited_candidate_set_id", "selected_rank", "target_route", "refusal_detail"):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                DiscoveryResult(
+                    status=DiscoveryStatus.NOT_FOUND,
+                    evidence_bundle=executed(row_count=0, **{field: "SAMPLE"}),
+                    source_trace=DiscoveryTrace(resolved_scope=SCOPE),
+                    limitations=(limitation(DiscoveryLimitationKind.NOT_IN_REGISTRY),),
                 )
 
     def test_only_ambiguous_lists_candidate_scopes(self):

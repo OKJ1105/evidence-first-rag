@@ -92,10 +92,21 @@ class TheAllowlist(unittest.TestCase):
 class StepOneOpensNoConnection(unittest.TestCase):
     def assert_refused_closed(self, arguments, fragment):
         db, result = select(arguments)
+        bundle = result.evidence_bundle
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
-        self.assertEqual(result.evidence_bundle.route, "entity_selection")
+        self.assertEqual(bundle.route, "entity_selection")
         self.assertEqual(db.sessions, 0)
-        self.assertFalse(result.evidence_bundle.read_only_safeguards.connection_opened)
+        self.assertFalse(bundle.read_only_safeguards.connection_opened)
+        # Section 7: a refusal that opened nothing still names the selection
+        # it refused -- the caller's citation is not something the runtime
+        # bound, so the no-connection empty-value rule does not reach it --
+        # and states why. A result that named neither could not be traced
+        # back to the request that produced it.
+        self.assertIn(fragment, bundle.refusal_detail)
+        for name, field in (("candidate_set_id", "cited_candidate_set_id"),
+                            ("selected_rank", "selected_rank"),
+                            ("target_route", "target_route")):
+            self.assertEqual(getattr(bundle, field), arguments.get(name, ""))
         with self.assertRaises(Exception) as raised:
             validate(SelectionRequest(arguments=arguments))
         self.assertIn(fragment, str(raised.exception))
@@ -110,7 +121,10 @@ class StepOneOpensNoConnection(unittest.TestCase):
         self.assert_refused_closed(DISCOVERY | {"candidate_set_id": "a" * 64, "target_route": "signal_facts"}, "missing")
 
     def test_a_rank_that_is_not_a_positive_integer(self):
-        for rank in ("0", "-1", "one", "1.5"):
+        # "²" and "٣" are `str.isdigit()` but not ASCII: the first
+        # raises in `int()`, the second would smuggle a rank past a runtime
+        # whose comparisons are byte-defined.
+        for rank in ("0", "-1", "one", "1.5", "²", "٣"):
             with self.subTest(rank=rank):
                 self.assert_refused_closed(DISCOVERY | {"candidate_set_id": "a" * 64, "selected_rank": rank, "target_route": "signal_facts"}, "selected_rank")
 
@@ -137,43 +151,67 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
     def setUp(self):
         self.cid = digest_for(DISCOVERY, exact=TWO_SIGNALS)
 
-    def assert_refused_reporting_the_rerun(self, db, result):
+    def assert_refused_reporting_the_rerun(self, db, result, arguments, fragment):
+        bundle = result.evidence_bundle
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
-        self.assertEqual(result.evidence_bundle.route, "entity_selection")
+        self.assertEqual(bundle.route, "entity_selection")
         # Section 7 (as #88 amended it): the re-run is reported.
-        self.assertTrue(result.evidence_bundle.read_only_safeguards.connection_opened)
-        self.assertEqual(result.evidence_bundle.template_name, "TPL_DISCOVERY_EXACT_V1")
-        self.assertEqual(result.evidence_bundle.registry_digest, "a" * 64)
-        self.assertEqual(result.evidence_bundle.row_count, 2)
+        self.assertTrue(bundle.read_only_safeguards.connection_opened)
+        self.assertEqual(bundle.template_name, "TPL_DISCOVERY_EXACT_V1")
+        self.assertEqual(bundle.registry_digest, "a" * 64)
+        self.assertEqual(bundle.row_count, 2)
+        self.assert_names_the_selection(result, arguments, fragment)
         # And no fact template executed.
         self.assertEqual(fact_templates_ran(db), [])
 
+    def assert_names_the_selection(self, result, arguments, fragment):
+        """Section 7: the citation a refusal has to carry, and its reason.
+
+        The re-run's own `limitations` describe the re-run -- its
+        `no_reference_resolved` entry tells the caller a selection is
+        required, which is what this caller just attempted -- so the reason
+        the selection was refused has to be stated by the refusal itself.
+        """
+        bundle = result.evidence_bundle
+        self.assertEqual(bundle.cited_candidate_set_id, arguments["candidate_set_id"])
+        self.assertEqual(bundle.selected_rank, arguments["selected_rank"])
+        self.assertEqual(bundle.target_route, arguments["target_route"])
+        self.assertIn(fragment, bundle.refusal_detail)
+
     def test_dx_018_a_digest_that_does_not_re_derive(self):
-        db, result = select(DISCOVERY | {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"})
-        self.assert_refused_reporting_the_rerun(db, result)
+        arguments = DISCOVERY | {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"}
+        db, result = select(arguments)
+        self.assert_refused_reporting_the_rerun(db, result, arguments, "does not re-derive")
         self.assertNotIn(DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST, [l.kind for l in result.limitations])
+        # Both digests are on the bundle, and they are what did not match.
+        self.assertEqual(result.evidence_bundle.candidate_set_id, self.cid)
+        self.assertNotEqual(result.evidence_bundle.candidate_set_id, result.evidence_bundle.cited_candidate_set_id)
 
     def test_dx_019_a_rank_naming_no_candidate(self):
-        db, result = select(DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "3", "target_route": "signal_facts"})
-        self.assert_refused_reporting_the_rerun(db, result)
+        arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "3", "target_route": "signal_facts"}
+        db, result = select(arguments)
+        self.assert_refused_reporting_the_rerun(db, result, arguments, "names no candidate")
 
     def test_dx_021_a_signal_candidate_with_message_facts(self):
-        db, result = select(DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "message_facts"})
-        self.assert_refused_reporting_the_rerun(db, result)
+        arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "message_facts"}
+        db, result = select(arguments)
+        self.assert_refused_reporting_the_rerun(db, result, arguments, "does not permit target_route")
 
     def test_dx_021_a_message_candidate_with_signal_facts(self):
         rows = (discovery_row(match_tier=4), discovery_row(message_key="SAMPLE_MSG_X", match_tier=4))
-        arguments = MESSAGE | {"term": "sample"}
-        cid = digest_for(arguments, lexical=rows)
-        db, result = select(arguments | {"candidate_set_id": cid, "selected_rank": "1", "target_route": "signal_facts"}, exact=(), lexical=rows)
+        cid = digest_for(MESSAGE | {"term": "sample"}, lexical=rows)
+        arguments = MESSAGE | {"term": "sample", "candidate_set_id": cid, "selected_rank": "1", "target_route": "signal_facts"}
+        db, result = select(arguments, exact=(), lexical=rows)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assert_names_the_selection(result, arguments, "does not permit target_route")
         self.assertEqual(fact_templates_ran(db), [])
 
     def test_dx_023_a_rerun_that_produced_no_list_is_named(self):
         # The re-run resolves (one tier-1 row), so there is no list.
-        db, result = select(DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "signal_facts"}, exact=(TWO_SIGNALS[0],))
-        self.assert_refused_reporting_the_rerun.__func__  # documentation of intent; asserted below
+        arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "signal_facts"}
+        db, result = select(arguments, exact=(TWO_SIGNALS[0],))
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assert_names_the_selection(result, arguments, "not a candidate list")
         entry = [l for l in result.limitations if l.kind is DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST]
         self.assertEqual(len(entry), 1)
         self.assertIn("'resolved'", entry[0].detail)

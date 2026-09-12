@@ -94,6 +94,19 @@ class DiscoveryEvidence:
     matched_text: str = ""
     candidate_set_id: str = ""
     candidate_count: int = 0
+    # Section 7, for a refused `entity_selection` (Section 4.8): "the
+    # `candidate_set_id` cited, the `selected_rank`, and the `target_route`
+    # named", so the refusal can be traced back to the request that produced
+    # it, plus the statement of why it was refused. These are the caller's own
+    # values and the runtime's own reason -- nothing the runtime bound or
+    # executed -- so a step-1 refusal that opened no connection still records
+    # them. `cited_candidate_set_id` is separate from `candidate_set_id`
+    # because a step-4 refusal carries both: the digest the caller cited and
+    # the one the re-run derived, which are precisely what did not match.
+    cited_candidate_set_id: str = ""
+    selected_rank: str = ""
+    target_route: str = ""
+    refusal_detail: str = ""
     contract_identifier: str = CONTRACT_IDENTIFIER
     contract_version: str = CONTRACT_VERSION
     runtime_contract_identifier: str = RUNTIME_CONTRACT_IDENTIFIER
@@ -107,7 +120,8 @@ class DiscoveryEvidence:
         _count("row_count", self.row_count)
         _count("candidate_count", self.candidate_count)
         for field in ("template_name", "template_version", "registry_digest", "registry_built_at",
-                      "method_identifier", "method_version", "matched_text", "candidate_set_id"):
+                      "method_identifier", "method_version", "matched_text", "candidate_set_id",
+                      "cited_candidate_set_id", "selected_rank", "target_route", "refusal_detail"):
             optional_text(field, getattr(self, field))
         if self.resolved_scope is not None and not isinstance(self.resolved_scope, SnapshotScope):
             raise ValueError("resolved_scope must be a SnapshotScope or None")

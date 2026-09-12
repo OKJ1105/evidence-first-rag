@@ -109,31 +109,55 @@ class SelectionCases(unittest.TestCase):
         self.assertEqual(result.evidence_bundle.route, "signal_mapping")
         self.assertIsNotNone(result.evidence_bundle.selection)
 
+    def assert_names_the_selection(self, result, arguments, fragment):
+        """Section 7: a refused selection names the `candidate_set_id` cited,
+        the `selected_rank` and the `target_route`, and says why it refused --
+        the re-run's own limitations describe the re-run, not this outcome."""
+        bundle = result.evidence_bundle
+        self.assertEqual(bundle.cited_candidate_set_id, arguments["candidate_set_id"])
+        self.assertEqual(bundle.selected_rank, arguments["selected_rank"])
+        self.assertEqual(bundle.target_route, arguments["target_route"])
+        self.assertIn(fragment, bundle.refusal_detail)
+
     def test_dx_018_a_digest_that_does_not_re_derive_executes_no_fact_template(self):
-        result = select(self.selection(candidate_set_id="0" * 64))
+        arguments = self.selection(candidate_set_id="0" * 64)
+        result = select(arguments)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
         self.assertEqual(result.evidence_bundle.route, "entity_selection")
         self.assertEqual(result.evidence_bundle.template_name, "TPL_DISCOVERY_EXACT_V1")
+        self.assert_names_the_selection(result, arguments, "does not re-derive")
+        # The digest the re-run derived is beside the one cited.
+        self.assertEqual(result.evidence_bundle.candidate_set_id, self.cid)
 
     def test_dx_019_a_rank_naming_no_candidate(self):
-        result = select(self.selection(selected_rank="3"))
+        arguments = self.selection(selected_rank="3")
+        result = select(arguments)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assert_names_the_selection(result, arguments, "names no candidate")
 
     def test_dx_021_a_kind_that_does_not_permit_the_route_both_halves(self):
-        result = select(self.selection(target_route="message_facts"))
+        arguments = self.selection(target_route="message_facts")
+        result = select(arguments)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assert_names_the_selection(result, arguments, "does not permit target_route")
         # And a message candidate with signal_facts.
         discovered = discover(POWERTRAIN | {"entity_kind": "message", "term": "sample msg"})
         self.assertIs(discovered.status, DiscoveryStatus.CANDIDATES)
-        result = select(POWERTRAIN | {"entity_kind": "message", "term": "sample msg", "candidate_set_id": discovered.evidence_bundle.candidate_set_id, "selected_rank": "1", "target_route": "signal_facts"})
+        arguments = POWERTRAIN | {"entity_kind": "message", "term": "sample msg", "candidate_set_id": discovered.evidence_bundle.candidate_set_id, "selected_rank": "1", "target_route": "signal_facts"}
+        result = select(arguments)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assert_names_the_selection(result, arguments, "does not permit target_route")
 
     def test_dx_022_both_halves_are_refused_before_any_connection(self):
-        for overrides in ({"target_route": "entity_discovery"}, {"mapping_key": "SAMPLE_MAP_SPEED_TO_GEAR"}):
+        for overrides, fragment in (({"target_route": "entity_discovery"}, "target_route"),
+                                    ({"mapping_key": "SAMPLE_MAP_SPEED_TO_GEAR"}, "mapping_key")):
             with self.subTest(overrides=overrides):
-                result = select(self.selection(**overrides))
+                arguments = self.selection(**overrides)
+                result = select(arguments)
                 self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
                 self.assertFalse(result.evidence_bundle.read_only_safeguards.connection_opened)
+                # Step 1 opened nothing and still names what it refused.
+                self.assert_names_the_selection(result, arguments, fragment)
 
     def test_a_changed_registry_changes_the_candidate_set_id(self):
         # Section 8's row, over the digest's inputs: the same request against
@@ -197,9 +221,16 @@ class DX023AgainstAReprovisionedRegistry(unittest.TestCase):
         shutil.rmtree(cls.directory, ignore_errors=True)
 
     def test_dx_023_the_rerun_yields_not_found_and_the_refusal_names_it(self):
-        result = select(DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "signal_facts"}, self.DATABASE)
+        arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "signal_facts"}
+        result = select(arguments, self.DATABASE)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
         self.assertEqual(result.evidence_bundle.route, "entity_selection")
+        # Section 7: the selection cited, and the reason it was refused.
+        bundle = result.evidence_bundle
+        self.assertEqual(bundle.cited_candidate_set_id, self.cid)
+        self.assertEqual(bundle.selected_rank, "1")
+        self.assertEqual(bundle.target_route, "signal_facts")
+        self.assertIn("not a candidate list", bundle.refusal_detail)
         entries = [l for l in result.limitations if l.kind is DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST]
         self.assertEqual(len(entries), 1)
         self.assertIn("'not_found'", entries[0].detail)
