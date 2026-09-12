@@ -54,10 +54,21 @@ MINIMUM_PER_CLASS = 5
 
 SAMPLE = re.compile(r"\ASAMPLE_[A-Za-z0-9_.\-]+\Z")
 
-# The arguments rule 1 does not govern, because neither is a name a case
-# could invent: the term is free text, and `entity_kind` is one of the two
-# values Section 4.1 enumerates.
-NOT_AN_IDENTIFIER = frozenset({"term", "entity_kind"})
+# The argument rule 1 does not govern, because it is not a name a case could
+# invent: `entity_kind` is one of the two values Section 4.1 enumerates, and
+# a Q-OUT case registers one outside them on purpose.
+NOT_AN_IDENTIFIER = frozenset({"entity_kind"})
+
+# The classes whose registered term *is* an identifier, so rule 1 governs it
+# too. Section 4.10's table fixes Q-EXACT's term as "a term equal to an
+# approved entity's lookup key, byte for byte", Q-ALIAS's as a registered
+# alias byte for byte, Q-COLLIDE's as "a fully scoped request for a key",
+# and Q-NOMATCH's as a name that matches nothing -- which rule 1's "or
+# reserved there as absent" clause is what covers. The other three register
+# a description (Q-SEMANTIC), a request discovery does not represent
+# (Q-OUT), or a term under a scope that never resolves (Q-SCOPE, where the
+# term need not be a key), so none of them is a name rule 1 governs.
+TERM_IS_AN_IDENTIFIER = frozenset({"Q-EXACT", "Q-ALIAS", "Q-COLLIDE", "Q-NOMATCH"})
 
 # The classes whose registered request is refused before any term is
 # normalized -- an `entity_kind` outside the two, or a scope that never
@@ -127,8 +138,16 @@ class EvaluationCase:
 def authoring_failures(cases) -> list[str]:
     """Every Section 4.10 authoring rule a program can check, over `cases`.
 
-    Returns one line per violation; an empty list means the set satisfies
-    rules 1, 2 (as far as the type enforces it), 3, 4 and 6.
+    Returns one line per violation. An empty list means the set satisfies
+    rule 1's first half -- every name a case registers is `SAMPLE_*` -- and
+    rules 2 (as far as the type enforces it), 3, 4 and 6.
+
+    What it does not establish: rule 1's second half, that each of those
+    names "is either loaded by the `mvp-v0.1` Section 4.11 fixture files or
+    reserved there as absent". That is a claim about the fixtures a run
+    executes against, not about the cases, and nothing here reads them; the
+    registration slice records it, and the `registry_digest` the runner
+    writes is how a later change to those files is detected.
     """
     failures: list[str] = []
     cases = tuple(cases)
@@ -144,14 +163,16 @@ def authoring_failures(cases) -> list[str]:
 
         # Rule 1: "Every identifier is `SAMPLE_*` and is either loaded by
         # the `mvp-v0.1` Section 4.11 fixture files or reserved there as
-        # absent. No case invents a name." Two arguments are not identifiers
-        # a case could invent and are exempt: `term`, which is the user's
-        # free text and for a Q-SEMANTIC case is a description rather than a
-        # name; and `entity_kind`, whose two values Section 4.1 enumerates.
-        # Everything else -- the four scope dimensions and
-        # `parent_message_key` -- names a row.
+        # absent. No case invents a name." `entity_kind` is exempt, whose
+        # two values Section 4.1 enumerates. The `term` is exempt only where
+        # its class registers a description or a request that never reaches
+        # a key; in the four classes whose term is itself an identifier it
+        # is governed like any other name. Everything else -- the four scope
+        # dimensions and `parent_message_key` -- names a row.
         for name, value in case.arguments.items():
             if name in NOT_AN_IDENTIFIER:
+                continue
+            if name == "term" and case.query_class not in TERM_IS_AN_IDENTIFIER:
                 continue
             if not isinstance(value, str) or not SAMPLE.match(value):
                 failures.append(f"{case.identifier}: argument {name}={value!r} is not a SAMPLE_* identifier (rule 1)")

@@ -18,6 +18,7 @@ from evidence_first_rag.discovery.evaluation import (
     EXPECTED_OUTCOME,
     MINIMUM_PER_CLASS,
     NAMES_A_TARGET,
+    TERM_IS_AN_IDENTIFIER,
 )
 
 SCOPE = {
@@ -158,16 +159,42 @@ class TheAuthoringRules(unittest.TestCase):
 
     def test_rule_1_every_identifier_is_sample(self):
         cases = self.full_set()
-        cases[0] = case("Q-EXACT-0", "Q-EXACT", arguments=SCOPE | {"entity_kind": "message", "term": "x", "parent_message_key": "MSG_REAL_NAME"})
+        cases[0] = case("Q-EXACT-0", "Q-EXACT", arguments=SCOPE | {"entity_kind": "message", "term": "SAMPLE_MSG_X", "parent_message_key": "MSG_REAL_NAME"})
         failures = authoring_failures(cases)
         self.assertTrue(any("rule 1" in failure for failure in failures), failures)
 
-    def test_rule_1_exempts_the_term_which_is_free_text(self):
-        # The term is the user's words, not an identifier; a Q-SEMANTIC case
-        # is a description and could not satisfy SAMPLE_*.
-        cases = self.full_set()
-        cases[10] = case("Q-SEMANTIC-0", "Q-SEMANTIC", term="the engine speed signal")
-        self.assertEqual(authoring_failures(cases), [])
+    def test_rule_1_governs_the_term_where_the_class_makes_it_an_identifier(self):
+        # Section 4.10's table fixes the term of these four as a name: a
+        # lookup key byte for byte (Q-EXACT), a registered alias byte for
+        # byte (Q-ALIAS), "a fully scoped request for a key" (Q-COLLIDE),
+        # and a name the fixtures reserve as absent (Q-NOMATCH). A
+        # real-world name in that position is what rule 1 forbids.
+        for name in TERM_IS_AN_IDENTIFIER:
+            with self.subTest(query_class=name):
+                cases = self.full_set()
+                index = next(i for i, registered in enumerate(cases) if registered.query_class == name)
+                cases[index] = case(f"{name}-0", name, term="EngineStatus_HS")
+                failures = authoring_failures(cases)
+                self.assertTrue(
+                    any("rule 1" in failure and "term=" in failure for failure in failures),
+                    failures,
+                )
+
+    def test_rule_1_exempts_the_term_where_the_class_makes_it_free_text(self):
+        # A Q-SEMANTIC term "describes the entity without equalling any
+        # match_text", so it could not satisfy SAMPLE_* and rule 1 does not
+        # ask it to. The same holds for Q-OUT and Q-SCOPE, whose registered
+        # request never reaches a key.
+        for name, term in (
+            ("Q-SEMANTIC", "the engine speed signal"),
+            ("Q-SCOPE", "the gearbox state message"),
+            ("Q-OUT", "the colour of the wiring harness"),
+        ):
+            with self.subTest(query_class=name):
+                cases = self.full_set()
+                index = next(i for i, registered in enumerate(cases) if registered.query_class == name)
+                cases[index] = case(f"{name}-0", name, term=term)
+                self.assertEqual(authoring_failures(cases), [])
 
     def test_rule_4_at_least_five_per_class(self):
         cases = [c for c in self.full_set() if c.identifier != "Q-MULTI-0"]
@@ -181,7 +208,7 @@ class TheAuthoringRules(unittest.TestCase):
     def test_rule_6_no_two_texts_are_equal_after_normalization(self):
         cases = self.full_set()
         # Different bytes, same tokens: exactly what rule 6 forbids.
-        cases[1] = case("Q-EXACT-1", "Q-EXACT", term="sample-term-Q-EXACT-0")
+        cases[1] = case("Q-EXACT-1", "Q-EXACT", term="SAMPLE_TERM.Q-EXACT.0")
         failures = authoring_failures(cases)
         self.assertTrue(any("rule 6" in f for f in failures), failures)
 
