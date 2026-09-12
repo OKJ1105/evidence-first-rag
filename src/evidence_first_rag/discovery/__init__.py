@@ -35,7 +35,8 @@ from .evidence import (
 )
 from .normalize import normalize
 from .request import DiscoveryRefusal, DiscoveryRequest, ValidatedDiscovery, validate
-from .result import K, DiscoveryResult
+from .result import DISCOVERY_ROUTE, K, SELECTION_ROUTE, DiscoveryResult
+from .selection import Selection, SelectionRequest, ValidatedSelection
 from .service import Discovery, candidate_set_id
 from .status import DiscoveryStatus
 
@@ -45,6 +46,7 @@ __all__ = [
     "CONTRACT_VERSION",
     "Candidate",
     "CanonicalError",
+    "DISCOVERY_ROUTE",
     "Discovery",
     "DiscoveryEvidence",
     "DiscoveryLimitation",
@@ -57,7 +59,11 @@ __all__ = [
     "K",
     "METHOD_IDENTIFIER",
     "METHOD_VERSION",
+    "SELECTION_ROUTE",
+    "Selection",
+    "SelectionRequest",
     "ValidatedDiscovery",
+    "ValidatedSelection",
     "candidate_set_id",
     "canonical_json",
     "normalize",

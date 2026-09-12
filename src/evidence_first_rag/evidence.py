@@ -150,9 +150,20 @@ class EvidenceBundle:
     contract_identifier: str = CONTRACT_IDENTIFIER
     contract_version: str = CONTRACT_VERSION
     collation: str = COLLATION
+    # entity-discovery-v0.1 Section 3.3 extension 3 and Section 4.8: the one
+    # key a dispatched selection adds to this bundle -- the `selection`
+    # record, whose contents that contract fixes. None on every result this
+    # contract's own routes produce; only the verified selection path
+    # (`discovery/selection.py`) sets it, after re-deriving the list the
+    # caller selected from. Held as a frozen mapping rather than a typed
+    # record so that this module, the type surface of mvp-v0.1, imports
+    # nothing from the discovery package.
+    selection: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         required_text("route", self.route)
+        if self.selection is not None:
+            object.__setattr__(self, "selection", _frozen_parameters(self.selection))
         if not isinstance(self.read_only_safeguards, ReadOnlySafeguards):
             raise ValueError("read_only_safeguards must be a ReadOnlySafeguards")
         # bool is an int; a row_count of True would pass a bare int check.
@@ -204,12 +215,20 @@ def _frozen_parameters(value: object) -> Mapping[str, object]:
     bound. A bundle that shares a caller's dict can be edited after the fact,
     which would make the record of what was bound depend on who still holds a
     reference to it.
+
+    Recursive, because the `selection` record entity-discovery-v0.1 Section
+    4.8 puts on a dispatched bundle nests one mapping of its own -- the step-2
+    re-run's `discovery_bound_parameters`. Freezing only the top level would
+    leave the record of what the re-run bound editable, which is the one thing
+    this function exists to prevent.
     """
     if not isinstance(value, Mapping):
         raise ValueError("bound_parameters must be a mapping")
-    for name in value:
+    frozen = {}
+    for name, item in value.items():
         required_text("bound_parameters key", name)
-    return types.MappingProxyType(dict(value))
+        frozen[name] = _frozen_parameters(item) if isinstance(item, Mapping) else item
+    return types.MappingProxyType(frozen)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -251,8 +270,19 @@ class SourceTrace:
     mapping_provenance: tuple[MappingProvenance, ...] = ()
     producing_layer: ProducingLayer | None = None
     fixture_provenance: tuple[str, ...] = ()
+    # entity-discovery-v0.1 Section 4.8: on a dispatched selection, the
+    # selected candidate's alias provenance (when its match was not the
+    # lookup key) and the approved entity's own `approval_reference`. Empty
+    # on every result this contract's own routes produce. Frozen mappings,
+    # for the reason `EvidenceBundle.selection` gives.
+    alias_provenance: tuple[Mapping[str, object], ...] = ()
+    entity_approval_reference: str = ""
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "alias_provenance", tuple(_frozen_parameters(item) for item in self.alias_provenance)
+        )
+        optional_text("entity_approval_reference", self.entity_approval_reference)
         object.__setattr__(
             self,
             "contributing_scopes",

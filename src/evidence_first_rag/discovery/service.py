@@ -84,203 +84,232 @@ class Discovery:
         try:
             validated = validate(request)
         except DiscoveryRefusal as refusal:
-            return self._refused(refusal)
+            return refused(refusal, ROUTE, self.fixture_provenance)
         return self._answer(validated)
 
     # -- the path that opens a connection -------------------------------
 
     def _answer(self, request: ValidatedDiscovery) -> DiscoveryResult:
         with self.database.session() as session:
-            safeguards = ReadOnlySafeguards(
-                role_name=session.role_name,
-                read_only_transaction=session.read_only_transaction,
-                connection_opened=True,
-            )
-            # Section 4.3: the mvp-v0.1 candidate query, "exactly as it
-            # stands", on every request, complete scope included -- it is
-            # what tells coverage_gap from not_found.
-            candidates_template = get(CANDIDATES_TEMPLATE)
-            found = session.execute(candidates_template, request.scope_arguments)
-            scopes = tuple(
-                SnapshotScope(**{name: row[name] for name in SCOPE_DIMENSIONS}) for row in found.rows
-            )
-            if not scopes:
-                return self._coverage_gap(request, safeguards, found, candidates_template)
-            if not request.scope_is_complete:
-                return self._ambiguous(request, safeguards, found, scopes, candidates_template)
-            if len(scopes) != 1:
-                raise DataFault(
-                    f"a complete scope matched {len(scopes)} snapshots; mvp-v0.1 Section 4.1"
-                    f" makes the four dimensions unique"
-                )
-            scope = scopes[0]
+            return discover(session, request, self.fixture_provenance)
 
-            state = session.execute(get(STATE_TEMPLATE), {})
-            if len(state.rows) != 1:
-                raise DataFault(
-                    f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
-                    f" exactly one after provisioning"
-                )
-            registry_digest = state.rows[0]["registry_digest"]
-            registry_built_at = _timestamp(state.rows[0]["built_at"])
 
-            # Section 4.9 M-LEX-1: exact for tiers 1 and 2, then lexical for
-            # tiers 3 and 4 when E(T) is empty.
-            template = get(EXACT_TEMPLATE)
-            run = session.execute(template, dict(request.arguments))
-            if not run.rows:
-                template = get(LEXICAL_TEMPLATE)
-                run = session.execute(
-                    template,
-                    {
-                        **{k: v for k, v in request.arguments.items() if k != "term"},
-                        "normalized_term": list(request.normalized_term),
-                    },
-                )
+def discover(session, request: ValidatedDiscovery, fixture_provenance: tuple[str, ...] = ()) -> DiscoveryResult:
+    """Steps 2 to 5 of the module docstring over one open session.
 
-        rows = run.rows
-        truncated = template.truncated(len(rows))
-        listed = rows[:K]
-        candidates = tuple(_candidate(rank, row) for rank, row in enumerate(listed, 1))
-        limitations = list(_superseded(rows))
-
-        common = dict(
-            route=ROUTE,
-            read_only_safeguards=safeguards,
-            row_count=len(rows),
-            template_name=template.name,
-            template_version=template.version,
-            bound_parameters=run.bound_parameters,
-            resolved_scope=scope,
-            registry_digest=registry_digest,
-            registry_built_at=registry_built_at,
-            method_identifier=METHOD_IDENTIFIER,
-            method_version=METHOD_VERSION,
+    Module-level rather than a method so that Section 4.8's step 2 -- "re-
+    executes the discovery request deterministically" -- is literally the
+    same code the `entity_discovery` route runs, not a second implementation
+    that could drift from it.
+    """
+    if True:
+        safeguards = ReadOnlySafeguards(
+            role_name=session.role_name,
+            read_only_transaction=session.read_only_transaction,
+            connection_opened=True,
         )
-        trace = dict(
-            resolved_scope=scope,
-            contributing_scopes=(scope,) if rows else (),
-            parent_messages=tuple(
-                c.reference.message for c in candidates if c.entity_kind == "signal"
-            ),
-            alias_provenance=tuple(c.alias for c in candidates if c.alias is not None),
-            fixture_provenance=self.fixture_provenance,
+        # Section 4.3: the mvp-v0.1 candidate query, "exactly as it
+        # stands", on every request, complete scope included -- it is
+        # what tells coverage_gap from not_found.
+        candidates_template = get(CANDIDATES_TEMPLATE)
+        found = session.execute(candidates_template, request.scope_arguments)
+        scopes = tuple(
+            SnapshotScope(**{name: row[name] for name in SCOPE_DIMENSIONS}) for row in found.rows
         )
+        if not scopes:
+            return _coverage_gap(request, safeguards, found, candidates_template, fixture_provenance)
+        if not request.scope_is_complete:
+            return _ambiguous(request, safeguards, found, scopes, candidates_template, fixture_provenance)
+        if len(scopes) != 1:
+            raise DataFault(
+                f"a complete scope matched {len(scopes)} snapshots; mvp-v0.1 Section 4.1"
+                f" makes the four dimensions unique"
+            )
+        scope = scopes[0]
 
-        if not rows:
-            limitations.append(
-                DiscoveryLimitation(kind=DiscoveryLimitationKind.NOT_IN_REGISTRY, detail=NOT_IN_REGISTRY)
+        state = session.execute(get(STATE_TEMPLATE), {})
+        if len(state.rows) != 1:
+            raise DataFault(
+                f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
+                f" exactly one after provisioning"
             )
-            return DiscoveryResult(
-                status=DiscoveryStatus.NOT_FOUND,
-                evidence_bundle=DiscoveryEvidence(**common),
-                source_trace=DiscoveryTrace(**trace),
-                limitations=tuple(limitations),
+        registry_digest = state.rows[0]["registry_digest"]
+        registry_built_at = _timestamp(state.rows[0]["built_at"])
+
+        # Section 4.9 M-LEX-1: exact for tiers 1 and 2, then lexical for
+        # tiers 3 and 4 when E(T) is empty.
+        template = get(EXACT_TEMPLATE)
+        run = session.execute(template, dict(request.arguments))
+        if not run.rows:
+            template = get(LEXICAL_TEMPLATE)
+            run = session.execute(
+                template,
+                {
+                    **{k: v for k, v in request.arguments.items() if k != "term"},
+                    "normalized_term": list(request.normalized_term),
+                },
             )
 
-        # Section 4.7: E(T) is the set of entities matching at tier 1 or 2.
-        # The exact template returns exactly those, one row per entity; the
-        # lexical template runs only when E(T) is empty. So a single exact
-        # row is a unique tier-1-or-2 match, and everything else abstains.
-        one = candidates[0]
-        if len(rows) == 1 and one.match_tier in (1, 2):
-            return DiscoveryResult(
-                status=DiscoveryStatus.RESOLVED,
-                evidence_bundle=DiscoveryEvidence(
-                    **common, match_tier=one.match_tier, matched_text=one.matched_text
-                ),
-                source_trace=DiscoveryTrace(**trace, entity_approval_reference=one.entity_approval_reference),
-                limitations=tuple(limitations),
-                resolved=one,
-            )
+    return _decide(request, safeguards, scope, registry_digest, registry_built_at, template, run, fixture_provenance)
 
-        if truncated:
-            limitations.append(
-                DiscoveryLimitation(
-                    kind=DiscoveryLimitationKind.TRUNCATED_BY_LIMIT,
-                    detail=f"{template.name} returned more than {K} matching entities; the list"
-                    f" is truncated to {K} and further matches exist and were not returned"
-                    f" (Sections 4.4 and 4.6).",
-                )
-            )
+
+def _decide(request, safeguards, scope, registry_digest, registry_built_at, template, run, fixture_provenance) -> DiscoveryResult:
+    """Section 4.7 over what the templates returned, and Section 7 around it."""
+    rows = run.rows
+    truncated = template.truncated(len(rows))
+    listed = rows[:K]
+    candidates = tuple(_candidate(rank, row) for rank, row in enumerate(listed, 1))
+    limitations = list(_superseded(rows))
+
+    common = dict(
+        route=ROUTE,
+        read_only_safeguards=safeguards,
+        row_count=len(rows),
+        template_name=template.name,
+        template_version=template.version,
+        bound_parameters=run.bound_parameters,
+        resolved_scope=scope,
+        registry_digest=registry_digest,
+        registry_built_at=registry_built_at,
+        method_identifier=METHOD_IDENTIFIER,
+        method_version=METHOD_VERSION,
+    )
+    trace = dict(
+        resolved_scope=scope,
+        contributing_scopes=(scope,) if rows else (),
+        parent_messages=tuple(
+            c.reference.message for c in candidates if c.entity_kind == "signal"
+        ),
+        alias_provenance=tuple(c.alias for c in candidates if c.alias is not None),
+        fixture_provenance=fixture_provenance,
+    )
+
+    if not rows:
         limitations.append(
-            DiscoveryLimitation(kind=DiscoveryLimitationKind.NO_REFERENCE_RESOLVED, detail=NO_REFERENCE_RESOLVED)
+            DiscoveryLimitation(kind=DiscoveryLimitationKind.NOT_IN_REGISTRY, detail=NOT_IN_REGISTRY)
         )
         return DiscoveryResult(
-            status=DiscoveryStatus.CANDIDATES,
-            evidence_bundle=DiscoveryEvidence(
-                **common,
-                candidate_set_id=candidate_set_id(request, registry_digest, candidates),
-                candidate_count=len(candidates),
-            ),
+            status=DiscoveryStatus.NOT_FOUND,
+            evidence_bundle=DiscoveryEvidence(**common),
             source_trace=DiscoveryTrace(**trace),
             limitations=tuple(limitations),
-            candidates=candidates,
         )
 
-    def _coverage_gap(self, request, safeguards, found, template) -> DiscoveryResult:
-        named = ", ".join(
-            f"{name}={request.arguments[name]}" for name in SCOPE_DIMENSIONS if name in request.arguments
-        )
-        return self._scope_only(
-            request, safeguards, found, template, DiscoveryStatus.COVERAGE_GAP,
-            (
-                DiscoveryLimitation(
-                    kind=DiscoveryLimitationKind.COVERAGE_NOT_ESTABLISHED,
-                    detail=f"no snapshot in the approved data scope matches {named}, so the"
-                    f" coverage this request needs could not be established (Sections 4.3 and 5).",
-                ),
+    # Section 4.7: E(T) is the set of entities matching at tier 1 or 2.
+    # The exact template returns exactly those, one row per entity; the
+    # lexical template runs only when E(T) is empty. So a single exact
+    # row is a unique tier-1-or-2 match, and everything else abstains.
+    one = candidates[0]
+    if len(rows) == 1 and one.match_tier in (1, 2):
+        return DiscoveryResult(
+            status=DiscoveryStatus.RESOLVED,
+            evidence_bundle=DiscoveryEvidence(
+                **common, match_tier=one.match_tier, matched_text=one.matched_text
             ),
+            source_trace=DiscoveryTrace(**trace, entity_approval_reference=one.entity_approval_reference),
+            limitations=tuple(limitations),
+            resolved=one,
         )
 
-    def _ambiguous(self, request, safeguards, found, scopes, template) -> DiscoveryResult:
-        limitations = ()
-        if template.truncated(len(found.rows)):
-            limitations = (
-                DiscoveryLimitation(
-                    kind=DiscoveryLimitationKind.TRUNCATED_BY_LIMIT,
-                    detail=f"{template.name} returned its registered limit of {template.row_limit}"
-                    f" candidate scopes; further candidates exist and are not listed.",
-                ),
+    if truncated:
+        limitations.append(
+            DiscoveryLimitation(
+                kind=DiscoveryLimitationKind.TRUNCATED_BY_LIMIT,
+                detail=f"{template.name} returned more than {K} matching entities; the list"
+                f" is truncated to {K} and further matches exist and were not returned"
+                f" (Sections 4.4 and 4.6).",
             )
-        return self._scope_only(
-            request, safeguards, found, template, DiscoveryStatus.AMBIGUOUS, limitations, scopes
         )
+    limitations.append(
+        DiscoveryLimitation(kind=DiscoveryLimitationKind.NO_REFERENCE_RESOLVED, detail=NO_REFERENCE_RESOLVED)
+    )
+    return DiscoveryResult(
+        status=DiscoveryStatus.CANDIDATES,
+        evidence_bundle=DiscoveryEvidence(
+            **common,
+            candidate_set_id=candidate_set_id(request, registry_digest, candidates),
+            candidate_count=len(candidates),
+        ),
+        source_trace=DiscoveryTrace(**trace),
+        limitations=tuple(limitations),
+        candidates=candidates,
+    )
 
-    def _scope_only(self, request, safeguards, found, template, status, limitations, scopes=()):
-        """An outcome the mvp-v0.1 candidate query decided alone: no discovery
-        template executed, so no registry state is cited (Section 5)."""
-        return DiscoveryResult(
-            status=status,
-            evidence_bundle=DiscoveryEvidence(
-                route=ROUTE,
-                read_only_safeguards=safeguards,
-                row_count=len(found.rows),
-                template_name=template.name,
-                template_version=template.version,
-                bound_parameters=found.bound_parameters,
-                resolved_scope=None,
+def _coverage_gap(request, safeguards, found, template, fixture_provenance) -> DiscoveryResult:
+    named = ", ".join(
+        f"{name}={request.arguments[name]}" for name in SCOPE_DIMENSIONS if name in request.arguments
+    )
+    return _scope_only(
+        request, safeguards, found, template, DiscoveryStatus.COVERAGE_GAP, fixture_provenance,
+        (
+            DiscoveryLimitation(
+                kind=DiscoveryLimitationKind.COVERAGE_NOT_ESTABLISHED,
+                detail=f"no snapshot in the approved data scope matches {named}, so the"
+                f" coverage this request needs could not be established (Sections 4.3 and 5).",
             ),
-            source_trace=DiscoveryTrace(contributing_scopes=scopes, fixture_provenance=self.fixture_provenance),
-            limitations=limitations,
-            candidate_scopes=scopes,
+        ),
+    )
+
+def _ambiguous(request, safeguards, found, scopes, template, fixture_provenance) -> DiscoveryResult:
+    limitations = ()
+    if template.truncated(len(found.rows)):
+        limitations = (
+            DiscoveryLimitation(
+                kind=DiscoveryLimitationKind.TRUNCATED_BY_LIMIT,
+                detail=f"{template.name} returned its registered limit of {template.row_limit}"
+                f" candidate scopes; further candidates exist and are not listed.",
+            ),
         )
+    return _scope_only(
+        request, safeguards, found, template, DiscoveryStatus.AMBIGUOUS, fixture_provenance, limitations, scopes
+    )
 
-    # -- the path that opens nothing ------------------------------------
 
-    def _refused(self, refusal: DiscoveryRefusal) -> DiscoveryResult:
-        return DiscoveryResult(
-            status=refusal.status,
-            evidence_bundle=DiscoveryEvidence(
-                route=ROUTE,
-                read_only_safeguards=ReadOnlySafeguards(
-                    role_name="", read_only_transaction=False, connection_opened=False
-                ),
+def _scope_only(request, safeguards, found, template, status, fixture_provenance, limitations, scopes=()):
+    """An outcome the mvp-v0.1 candidate query decided alone: no discovery
+    template executed, so no registry state is cited (Section 5)."""
+    return DiscoveryResult(
+        status=status,
+        evidence_bundle=DiscoveryEvidence(
+            route=ROUTE,
+            read_only_safeguards=safeguards,
+            row_count=len(found.rows),
+            template_name=template.name,
+            template_version=template.version,
+            bound_parameters=found.bound_parameters,
+            resolved_scope=None,
+        ),
+        source_trace=DiscoveryTrace(contributing_scopes=scopes, fixture_provenance=fixture_provenance),
+        limitations=limitations,
+        candidate_scopes=scopes,
+    )
+
+
+def refused(
+    refusal: DiscoveryRefusal, route: str, fixture_provenance: tuple[str, ...], **citation: str
+) -> DiscoveryResult:
+    """A request refused before any connection: Section 5's two no-connection
+    statuses, with every execution field the explicit empty value.
+
+    `citation` is what a refused `entity_selection` records over and above
+    that (Section 7): the values the caller cited. None of them is something
+    the runtime bound or executed, so recording them does not weaken the
+    empty-value rule above. `entity_discovery` has nothing to cite and passes
+    none.
+    """
+    return DiscoveryResult(
+        status=refusal.status,
+        evidence_bundle=DiscoveryEvidence(
+            route=route,
+            read_only_safeguards=ReadOnlySafeguards(
+                role_name="", read_only_transaction=False, connection_opened=False
             ),
-            source_trace=DiscoveryTrace(
-                producing_layer=refusal.producing_layer, fixture_provenance=self.fixture_provenance
-            ),
-        )
+            **citation,
+        ),
+        source_trace=DiscoveryTrace(
+            producing_layer=refusal.producing_layer, fixture_provenance=fixture_provenance
+        ),
+    )
 
 
 def candidate_set_id(request: ValidatedDiscovery, registry_digest: str, candidates) -> str:

@@ -14,8 +14,17 @@ import types
 
 from ..evidence import ProducingLayer
 from .candidate import AUTO_RESOLVABLE_TIERS, Candidate
-from .evidence import DiscoveryEvidence, DiscoveryLimitation, DiscoveryLimitationKind, DiscoveryTrace
+from .evidence import (
+    DISCOVERY_ROUTE,
+    SELECTION_ROUTE,
+    DiscoveryEvidence,
+    DiscoveryLimitation,
+    DiscoveryLimitationKind,
+    DiscoveryTrace,
+)
 from .status import EXECUTES_NO_DISCOVERY_TEMPLATE, OPENS_NO_CONNECTION, DiscoveryStatus
+
+__all__ = ["DISCOVERY_ROUTE", "SELECTION_ROUTE", "K", "DiscoveryResult"]
 
 # Section 4.6: k = 10, fixed by the contract and not a caller argument.
 K = 10
@@ -53,10 +62,49 @@ class DiscoveryResult:
         object.__setattr__(self, "candidate_scopes", tuple(self.candidate_scopes))
         bundle = self.evidence_bundle
 
-        if self.status in OPENS_NO_CONNECTION and bundle.read_only_safeguards.connection_opened:
-            raise ValueError(f"{self.status.value} opens no database connection (Section 5)")
-        if self.status in EXECUTES_NO_DISCOVERY_TEMPLATE and bundle.registry_digest != "":
-            raise ValueError(f"{self.status.value} executes no discovery template, so it cites no registry state")
+        # Section 5's closing paragraph is about a discovery request. A
+        # selection refused at step 4, 5 or 6 (Section 4.8) is also this
+        # contract's `invalid_request`, and Section 7 requires it to report
+        # the re-run it made, so for `route` = `entity_selection` an opened
+        # connection and a cited registry state are what the contract asks
+        # for rather than what it forbids.
+        #
+        # Stated as "anything that is not the selection route", not as "the
+        # discovery route": a rule that named only `entity_discovery` would
+        # let an unknown route string skip all three checks, and these are
+        # construction errors precisely so that no path can forget them.
+        if bundle.route != SELECTION_ROUTE:
+            if self.status in OPENS_NO_CONNECTION and bundle.read_only_safeguards.connection_opened:
+                raise ValueError(f"{self.status.value} opens no database connection (Section 5)")
+            if self.status in EXECUTES_NO_DISCOVERY_TEMPLATE and bundle.registry_digest != "":
+                raise ValueError(f"{self.status.value} executes no discovery template, so it cites no registry state")
+            # Section 7 records the cited selection on a refused selection.
+            # A discovery result has no selection to cite, so carrying one
+            # would be a claim about a request nobody made.
+            for field in ("selected_rank", "target_route"):
+                if getattr(bundle, field) != "":
+                    raise ValueError(f"{field} belongs to a refused {SELECTION_ROUTE} (Section 7)")
+        else:
+            # The selection route's own Section 5 and 4.8 rules, which the
+            # branch above cannot state because they are about a different
+            # shape of outcome.
+            #
+            # `unsupported` on this route can come only from `validate()`,
+            # which runs before any session (Section 4.8 step 1).
+            if self.status is DiscoveryStatus.UNSUPPORTED and bundle.read_only_safeguards.connection_opened:
+                raise ValueError(f"{SELECTION_ROUTE} refuses an unsupported request before any connection (Section 4.8 step 1)")
+            # And a refusal is internally consistent: either it opened
+            # nothing and executed nothing, or it opened a connection and
+            # reports the re-run it made (Section 7, as #88 amended it).
+            executed = (bundle.template_name != "", bundle.registry_digest != "")
+            if bundle.read_only_safeguards.connection_opened:
+                if not all(executed):
+                    raise ValueError(
+                        f"a {SELECTION_ROUTE} outcome that opened a connection reports the re-run's"
+                        f" template and registry state (Section 7)"
+                    )
+            elif any(executed):
+                raise ValueError("nothing may be recorded as executed when no database was opened")
 
         if self.status is DiscoveryStatus.RESOLVED:
             if self.resolved is None or self.candidates:
