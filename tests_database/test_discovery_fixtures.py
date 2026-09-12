@@ -382,5 +382,81 @@ class DX016OverATestBuiltTree(unittest.TestCase):
         self.assertEqual(result.candidates[-1].reference.signal_key, "SAMPLE_SIG_PROBE_09")
 
 
+class AnAliasEqualToItsOwnEntitysLookupKey(unittest.TestCase):
+    """Section 4.6's "one entity appears at most once", where its two stated
+    keys tie.
+
+    `entity_match_term` is unique on (entity, `match_kind`, `match_text`), and
+    nothing in Section 4.1 or 4.2 forbids an approved alias whose `alias_text`
+    is its own entity's lookup key -- `registry_invariants.py` checks the
+    asserting snapshot and the derivation, not this. One entity can therefore
+    hold one text twice, once as `lookup_key` and once as `approved_alias`
+    (and, given `approved_alias`'s unique (entity, `alias_text`), only so; two
+    alias rows of one entity cannot share a text). The two rows
+    normalize alike, so the lexical template gives both the same tier,
+    and a dedup comparing tier and text alone would keep both: the entity
+    listed twice, the two rows tied on all four registered ORDER BY keys, and
+    a `candidate_set_id` that PostgreSQL may compute either way round. Not
+    reachable from the committed `fixtures/registry/` files, so the tree is
+    built here as DX-016's is."""
+
+    DATABASE = "mvp_test_discovery_alias_is_key"
+    KEY = "SAMPLE_MSG_ENGINE_STATUS"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = pathlib.Path(tempfile.mkdtemp())
+        fixtures = cls.directory / "fixtures"
+        shutil.copytree(support.FIXTURES, fixtures)
+        path = fixtures / "registry" / "approved_alias.jsonl"
+        aliases = [json.loads(l) for l in path.read_text().splitlines()]
+        aliases.append({
+            "entity_kind": "message",
+            "reference": POWERTRAIN | {"message_key": cls.KEY},
+            "alias_text": cls.KEY,
+            "alias_kind": "approved_alias",
+            "asserting_snapshot": POWERTRAIN,
+            "approval_reference": "SAMPLE_APPROVAL_PROBE_ALIAS_IS_KEY",
+            "approved_at": "2026-03-05T00:00:00Z",
+        })
+        path.write_text("".join(json.dumps(r) + "\n" for r in aliases))
+        support.build(cls.DATABASE, fixtures)
+
+    @classmethod
+    def tearDownClass(cls):
+        support.drop(cls.DATABASE)
+        shutil.rmtree(cls.directory, ignore_errors=True)
+
+    def answer(self, term):
+        return discovery(self.DATABASE).execute(
+            DiscoveryRequest(arguments=POWERTRAIN | {"entity_kind": "message", "term": term})
+        )
+
+    def test_the_lexical_template_lists_that_entity_once_at_its_lowest_kind(self):
+        # A case-only difference, so the exact template matches nothing and
+        # the lexical one runs (DX-007's path). Both of the entity's rows
+        # match at tier 3; one candidate comes back, carrying the lookup_key
+        # row, which is the lowest of Section 4.6's kind order.
+        result = self.answer("sample_msg_engine_status")
+        self.assertIs(result.status, DiscoveryStatus.CANDIDATES)
+        self.assertEqual(result.evidence_bundle.template_name, "TPL_DISCOVERY_LEXICAL_V1")
+        self.assertEqual(
+            [(c.reference.message_key, c.match_tier, c.match_kind) for c in result.candidates],
+            [(self.KEY, 3, "lookup_key")],
+        )
+        self.assertEqual(result.evidence_bundle.row_count, 1)
+
+    def test_the_exact_template_still_resolves_it_once(self):
+        # The same two rows at tier 1 and tier 2. There the tiers differ, so
+        # the dedup's first element already separates them -- and the result
+        # must be one entity, hence `resolved` and not `candidates`
+        # (Section 4.7 counts entities, not match terms).
+        result = self.answer(self.KEY)
+        self.assertIs(result.status, DiscoveryStatus.RESOLVED)
+        self.assertEqual(result.evidence_bundle.template_name, "TPL_DISCOVERY_EXACT_V1")
+        self.assertEqual(result.resolved.match_tier, 1)
+        self.assertEqual(result.resolved.match_kind, "lookup_key")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
