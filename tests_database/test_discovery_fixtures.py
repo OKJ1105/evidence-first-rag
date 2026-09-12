@@ -10,6 +10,13 @@ test builds, because the registered occurrences cannot reach eleven (#143).
 
 Every case asserts the three Section 7 structures with their required keys,
 `registry_digest` included (Section 8, row "Sections 5 and 7").
+
+Section 8's "Section 6 determinism" row is discharged here too, because its
+three clauses need a real database: two runs byte-identical with
+`registry_built_at` removed, the same `registry_digest` and
+`candidate_set_id` from a second provisioning of the same fixture files, and
+the mvp-v0.1 Section 4.10 state digest -- extended to the four registry
+tables in `conformance/probes.py` -- unchanged across a discovery run.
 """
 
 import json
@@ -20,6 +27,7 @@ import tempfile
 import unittest
 
 from evidence_first_rag import ProducingLayer, SnapshotScope
+from evidence_first_rag.conformance import probes
 from evidence_first_rag.discovery import (
     Discovery,
     DiscoveryLimitationKind,
@@ -65,6 +73,20 @@ def stored_digest(database=DATABASE):
     with support.connect(database, "runtime") as connection, connection.cursor() as cursor:
         cursor.execute("SELECT registry_digest FROM mvp.entity_registry_state")
         return cursor.fetchone()[0]
+
+
+def read_only_state_digest(database=DATABASE):
+    """mvp-v0.1 Section 4.10's state digest, as the runtime identity sees it.
+
+    Section 6 of this contract extends it to the four registry tables, which
+    `conformance/probes.py` carries; this reads it from there rather than
+    restating the statements, so that a table added to the digest is watched
+    across a discovery run without a second edit here.
+    """
+    with support.connect(database, "runtime") as connection:
+        digest = probes.state_digest(connection)
+        connection.rollback()
+    return digest
 
 
 class FixtureCase(unittest.TestCase):
@@ -249,12 +271,73 @@ class TheCandidateSetAndProvenance(FixtureCase):
         arguments = POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_TEMPERATURE"}
         self.assertEqual(self.answer(arguments), self.answer(arguments))
 
+    def test_the_state_digest_is_unchanged_across_a_discovery_run(self):
+        # Section 6, as Section 8's determinism row states it: "the read-only
+        # state digest of mvp-v0.1 Section 4.10 is extended to the four
+        # registry tables and must be unchanged across a discovery run". The
+        # bundle's `read_only_transaction` is the session describing itself;
+        # this is the database describing itself, before and after.
+        before = read_only_state_digest()
+        # The extension is what makes the comparison mean anything: an
+        # unchanged digest over the mvp-v0.1 four would say nothing about a
+        # write to the registry. Every watched table must have been counted.
+        self.assertEqual(set(before["row_counts"]), set(probes.TABLES))
+        for table in ("approved_entity", "approved_alias", "entity_match_term", "entity_registry_state"):
+            self.assertGreater(before["row_counts"][table], 0)
+        for arguments in (
+            POWERTRAIN | {"entity_kind": "message", "term": "SAMPLE_MSG_ENGINE_STATUS"},
+            POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_GEAR_POSITION"},
+            POWERTRAIN | {"entity_kind": "message", "term": "sample_msg_engine_status"},
+            POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_NOTHING_LIKE_THIS"},
+        ):
+            discovery().execute(DiscoveryRequest(arguments=arguments))
+        self.assertEqual(before, read_only_state_digest())
+
     def test_no_surrogate_key_and_no_attribute_reaches_a_candidate(self):
         result = self.answer(POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_TEMPERATURE"})
         for candidate in result.candidates:
             fields = candidate.digest_fields()
             self.assertFalse(any(k.endswith("_id") for k in fields))
             self.assertNotIn("scale_factor", fields)
+
+
+class ASecondProvisioningFromTheSameFixtureFiles(unittest.TestCase):
+    """Section 6's repeatability clause, over two databases rather than two
+    calls against one.
+
+    `TheCandidateSetAndProvenance` compares two runs against one provisioning,
+    which cannot see a digest that depended on a surrogate key, an insertion
+    order, or a clock: all three are identical within one database. This
+    builds a second database from the same fixture files and requires the same
+    `registry_digest` and the same `candidate_set_id` for the same request.
+    `registry_built_at` is provisioning provenance and is excluded, as Section
+    6 excludes it."""
+
+    DATABASE = "mvp_test_discovery_repeat"
+
+    @classmethod
+    def setUpClass(cls):
+        support.build(cls.DATABASE)
+
+    @classmethod
+    def tearDownClass(cls):
+        support.drop(cls.DATABASE)
+
+    def test_the_registry_digest_and_the_candidate_set_id_are_the_same(self):
+        self.assertEqual(stored_digest(), stored_digest(self.DATABASE))
+        arguments = POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_GEAR_POSITION"}
+        first = discovery().execute(DiscoveryRequest(arguments=arguments))
+        second = discovery(self.DATABASE).execute(DiscoveryRequest(arguments=arguments))
+        self.assertIs(second.status, DiscoveryStatus.CANDIDATES)
+        self.assertEqual(first.evidence_bundle.registry_digest, second.evidence_bundle.registry_digest)
+        self.assertNotEqual(second.evidence_bundle.candidate_set_id, "")
+        self.assertEqual(
+            first.evidence_bundle.candidate_set_id, second.evidence_bundle.candidate_set_id
+        )
+        self.assertEqual(
+            [c.digest_fields() for c in first.candidates],
+            [c.digest_fields() for c in second.candidates],
+        )
 
 
 class DX016OverATestBuiltTree(unittest.TestCase):

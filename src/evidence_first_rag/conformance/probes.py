@@ -19,10 +19,29 @@ probes are expected to be refused, and run on their own connection so that a
 refusal cannot poison the transaction a fixture is using.
 """
 
-# Section 4.1's four tables. Written out rather than discovered, so that a
-# table added to the schema without being added here fails the digest's own
-# test instead of quietly leaving a table unwatched.
-TABLES = ("source_snapshot", "message_occurrence", "signal_occurrence", "signal_mapping")
+# Section 4.1's four tables, and the four registry tables of
+# `entity-discovery-v0.1` Section 4.1. Written out rather than discovered, so
+# that a table added to the schema without being added here fails the digest's
+# own test instead of quietly leaving a table unwatched.
+#
+# The second group is `entity-discovery-v0.1` Section 6, whose Section 8
+# determinism row requires "the read-only state digest of `mvp-v0.1` Section
+# 4.10 is extended to the four registry tables and must be unchanged across a
+# discovery run". A digest that watched only the first four would report
+# "unchanged" across a discovery run that had written to the registry, which
+# is the one thing a discovery run must not do. Widening it keeps the mvp-v0.1
+# obligation intact -- the four tables are still each counted -- and makes the
+# discovery obligation checkable from the same function.
+TABLES = (
+    "source_snapshot",
+    "message_occurrence",
+    "signal_occurrence",
+    "signal_mapping",
+    "approved_entity",
+    "approved_alias",
+    "entity_match_term",
+    "entity_registry_state",
+)
 
 SCHEMA = "mvp"
 
@@ -49,7 +68,7 @@ def state_digest(connection) -> dict:
     **Which transaction identifier, and why it matters.** Section 4.10 asks for
     "the highest transaction identifier visible to the runtime identity", and
     there are two candidates. `pg_snapshot_xmax(pg_current_snapshot())` reads
-    the cluster's counter; `max(xmin)` over the four tables reads the newest
+    the cluster's counter; `max(xmin)` over the watched tables reads the newest
     transaction that wrote a row this identity can select. This uses the
     second, and the choice is forced rather than stylistic.
 
