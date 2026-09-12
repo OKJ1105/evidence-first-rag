@@ -63,7 +63,11 @@ The table below says how much of the contract executes today, section by section
 | 4.6–4.7 Candidates and auto-resolution | One entity per candidate, `k` = 10, tier-1-and-2 uniqueness; `candidate_set_id` per Section 4.8 | Implemented |
 | 4.8 The verified selection path | `entity_selection`: re-derivation, the digest check, dispatch to the `mvp-v0.1` route with the `selection` record | Implemented |
 | 5, 7 Outcomes and evidence (discovery) | Seven statuses, never `success`; both contracts' identities, alias provenance, the required limitations | Implemented |
-| 4.9–4.11 Methods, evaluation set, metrics | `M-LEX-1`, the runner | Contracted |
+| 4.9 Retrieval methods | `M-LEX-1`, exact then lexical, recorded on every result | Implemented |
+| 4.10 The evaluation set | The case type, the eight classes, the authoring rules a program can check, and the run artifact | Implemented |
+| 4.10 The registered cases | The set itself, and `N` | Contracted — Section 8.3 reserved |
+| 4.11 Metric definitions | `recall_at_k`, `mrr`, `false_resolution`, `correct_abstention`, `over_abstention`, `task_completion`, `latency`, per class and over the set | Implemented |
+| 8.3 Adoption thresholds | The numbers each adopted method must meet | Contracted — Section 8.3 reserved |
 
 The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges all sixteen registered fixture cases against a committed expected result and writes one artifact carrying its verdict. Provisioning, the data-level invariant check and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
 
