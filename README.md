@@ -57,7 +57,12 @@ The table below says how much of the contract executes today, section by section
 | 4.2 Provenance, integrity, refresh | Registry fixtures under `fixtures/registry/`, loaded in the provisioning transaction; the five load-time rules; the data-level check | Implemented |
 | 4.2 The registry digest | Canonical JSON and `registry_digest` over the loaded rows | Implemented |
 | 4.5 Normalization | `normalize()` as the derived surface's tokenizer | Implemented |
-| 4.3–4.8 Discovery, tiers, candidates, selection | The two routes and three templates | Contracted |
+| 4.3 The discovery request | `entity_discovery` validated before any connection; scope as a precondition via the `mvp-v0.1` candidate query | Implemented |
+| 4.4 Registered templates | `TPL_REGISTRY_STATE_V1`, `TPL_DISCOVERY_EXACT_V1`, `TPL_DISCOVERY_LEXICAL_V1`, under `mvp-v0.1` Section 4.4's safeguards | Implemented |
+| 4.5 Match tiers | Tiers 1–4 computed in the registered SQL; `M-LEX-1` exact-then-lexical | Implemented |
+| 4.6–4.7 Candidates and auto-resolution | One entity per candidate, `k` = 10, tier-1-and-2 uniqueness; `candidate_set_id` per Section 4.8 | Implemented |
+| 4.8 The verified selection path | `entity_selection` | Contracted |
+| 5, 7 Outcomes and evidence (discovery) | Seven statuses, never `success`; both contracts' identities, alias provenance, the required limitations | Implemented |
 | 4.9–4.11 Methods, evaluation set, metrics | `M-LEX-1`, the runner | Contracted |
 
 The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges all sixteen registered fixture cases against a committed expected result and writes one artifact carrying its verdict. Provisioning, the data-level invariant check and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.

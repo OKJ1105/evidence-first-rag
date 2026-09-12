@@ -1,4 +1,5 @@
-"""Section 4.4: the four registered templates and the registry safeguards."""
+"""Section 4.4: the registered templates and the registry safeguards -- mvp-v0.1's
+four, and entity-discovery-v0.1's three registered under the same rules."""
 
 import unittest
 
@@ -14,7 +15,10 @@ from evidence_first_rag.registry import (
     names,
 )
 from evidence_first_rag.registry.registry import (
+    TPL_DISCOVERY_EXACT_V1,
+    TPL_DISCOVERY_LEXICAL_V1,
     TPL_MESSAGE_FACTS_V1,
+    TPL_REGISTRY_STATE_V1,
     TPL_SIGNAL_FACTS_V1,
     TPL_SIGNAL_MAPPING_V1,
     TPL_SNAPSHOT_CANDIDATES_V1,
@@ -55,8 +59,8 @@ def valid_template(**overrides):
     return Template(**values)
 
 
-class TheRegistryHoldsExactlyTheFourOfSection44(unittest.TestCase):
-    def test_the_names_are_section_4_4s(self):
+class TheRegistryHoldsExactlyTheSevenOfTheTwoContracts(unittest.TestCase):
+    def test_the_names_are_the_two_section_4_4s(self):
         self.assertEqual(
             names(),
             (
@@ -64,6 +68,9 @@ class TheRegistryHoldsExactlyTheFourOfSection44(unittest.TestCase):
                 "TPL_MESSAGE_FACTS_V1",
                 "TPL_SIGNAL_FACTS_V1",
                 "TPL_SIGNAL_MAPPING_V1",
+                "TPL_REGISTRY_STATE_V1",
+                "TPL_DISCOVERY_EXACT_V1",
+                "TPL_DISCOVERY_LEXICAL_V1",
             ),
         )
 
@@ -91,6 +98,13 @@ class TheAllowedParameters(unittest.TestCase):
         "TPL_SIGNAL_MAPPING_V1": (
             set(SCOPE) | {"message_key", "signal_key"},
             {"mapping_key"},
+        ),
+        # entity-discovery-v0.1 Section 4.4.
+        "TPL_REGISTRY_STATE_V1": (set(), set()),
+        "TPL_DISCOVERY_EXACT_V1": (set(SCOPE) | {"entity_kind", "term"}, {"parent_message_key"}),
+        "TPL_DISCOVERY_LEXICAL_V1": (
+            set(SCOPE) | {"entity_kind", "normalized_term"},
+            {"parent_message_key"},
         ),
     }
 
@@ -296,6 +310,11 @@ class TheLimitsAndTheirMeanings(unittest.TestCase):
         "TPL_MESSAGE_FACTS_V1": (2, LimitMeaning.DETECTS_OVERFLOW),
         "TPL_SIGNAL_FACTS_V1": (2, LimitMeaning.DETECTS_OVERFLOW),
         "TPL_SIGNAL_MAPPING_V1": (200, LimitMeaning.TRUNCATES),
+        # entity-discovery-v0.1 Section 4.4: "The row limit is 11 because k
+        # is 10", the truncation pattern; the state row is at most one.
+        "TPL_REGISTRY_STATE_V1": (1, LimitMeaning.DETECTS_OVERFLOW),
+        "TPL_DISCOVERY_EXACT_V1": (11, LimitMeaning.TRUNCATES),
+        "TPL_DISCOVERY_LEXICAL_V1": (11, LimitMeaning.TRUNCATES),
     }
 
     def test_each_template_carries_the_limit_section_4_4_fixes(self):
@@ -405,6 +424,9 @@ class TheOrderingIsTotal(unittest.TestCase):
             "asserting_snapshot_id",
             "source_signal_occurrence_id",
             "target_signal_occurrence_id",
+            "approved_entity_id",
+            "approved_alias_id",
+            "entity_match_term_id",
         }
         for template in REGISTERED:
             with self.subTest(template=template.name):
