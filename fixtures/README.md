@@ -52,6 +52,10 @@ The three names above are reserved as absent. `validate_fixtures.py` fails if a 
 
 `transmit_period_ms` is null on the event-mode message, and `unit_label` is null on two signals. Section 6 requires every registered template to write `NULLS LAST` explicitly rather than rely on a database default, so the fixtures have to contain nulls in orderable columns for that clause to mean anything.
 
+## The registry
+
+The Milestone 3 approved entity registry — [`entity-discovery-v0.1`](../docs/contracts/entity-discovery-v0.1.md) Sections 4.1 and 4.2 — loads from [`registry/`](registry/README.md), in the same transaction as the four files above and after them, since every registry row is a foreign key into one of them. The files are in a subdirectory because the check below pins this directory's `*.jsonl` to exactly the four `mvp-v0.1` tables.
+
 ## Checking
 
 ```

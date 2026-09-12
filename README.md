@@ -49,6 +49,17 @@ The table below says how much of the contract executes today, section by section
 | 8.1 Required fixture cases | Registered expected results per fixture | Implemented |
 | 8.3 Milestone 2 comparison | The curated request set and the adoption thresholds | Implemented |
 
+[Milestone 3 Entity Discovery Contract v0.1](docs/contracts/entity-discovery-v0.1.md) is `Accepted 2026-09-11`. Its implementation has started, and the same table continues for it:
+
+| Contract section | Surface | State |
+| --- | --- | --- |
+| 4.1 The approved entity registry | Four tables, constraints, the runtime identity's `SELECT` on them (3.3 extension 2) | Implemented |
+| 4.2 Provenance, integrity, refresh | Registry fixtures under `fixtures/registry/`, loaded in the provisioning transaction; the five load-time rules; the data-level check | Implemented |
+| 4.2 The registry digest | Canonical JSON and `registry_digest` over the loaded rows | Implemented |
+| 4.5 Normalization | `normalize()` as the derived surface's tokenizer | Implemented |
+| 4.3–4.8 Discovery, tiers, candidates, selection | The two routes and three templates | Contracted |
+| 4.9–4.11 Methods, evaluation set, metrics | `M-LEX-1`, the runner | Contracted |
+
 The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges all sixteen registered fixture cases against a committed expected result and writes one artifact carrying its verdict. Provisioning, the data-level invariant check and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
 
 The adapter is built, its refusals are registered as fixture cases, and **the Section 4.7 comparison has been run**: the curated request set and the adoption thresholds contract Section 9 once left open were registered in Section 8.3 at `0.6.0`, and the run judged against them is committed at [`docs/acceptance/milestone-2/comparison.json`](docs/acceptance/milestone-2/comparison.json). Charter Section 9 requires a numeric threshold to be registered before the run it judges, so the harness refuses to produce a verdict without thresholds, and refuses again when the thresholds carry a registration timestamp that is not earlier than the run. Adopting the adapter remains a recorded human decision at the Milestone 2 gate: the [Milestone 2 acceptance record](docs/acceptance/milestone-2.md) collects the evidence for each gate item, and its disposition line is the repository owner's.

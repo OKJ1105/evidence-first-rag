@@ -14,7 +14,10 @@ Two directories, applied in order, because they have different targets:
 
 Then the loader runs, as the provisioning identity, in one transaction —
 Section 3.4 puts it "inside the same provisioning step ... before the runtime
-identity ever connects", and Section 4.11 forbids a partial load.
+identity ever connects", and Section 4.11 forbids a partial load. The
+approved entity registry of entity-discovery-v0.1 (Sections 4.1 and 4.2)
+loads in that same transaction, from fixtures/registry/, after the tables it
+references.
 
 Passwords come from the environment and are passed to psql as variables. No
 password is committed, and none appears in a SQL file.
@@ -28,7 +31,7 @@ import sys
 
 import psycopg
 
-from . import fixtures, loader
+from . import fixtures, loader, registry_fixtures
 from .commands import psql_command
 
 MAINTENANCE_DATABASE = "postgres"
@@ -106,8 +109,11 @@ def main(argv: list[str] | None = None) -> int:
     os.environ["MVP_RUNTIME_PASSWORD"]
 
     # Section 4.11: parse every file before opening a transaction. A file that
-    # cannot be parsed must not reach a database that is half built.
+    # cannot be parsed must not reach a database that is half built. The
+    # registry files (entity-discovery-v0.1 Section 4.2) are parsed here for
+    # the same reason and loaded in the same transaction below.
     parsed = fixtures.read(arguments.fixtures)
+    registry = registry_fixtures.read(arguments.fixtures)
 
     if arguments.recreate:
         _drop_database(superuser, superuser_password, arguments.database)
@@ -135,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         host=os.environ.get("PGHOST"),
         port=os.environ.get("PGPORT"),
     ) as connection:
-        counts = loader.load(connection, parsed)
+        counts = loader.load(connection, parsed, registry)
 
     print(
         "Provisioned: "
