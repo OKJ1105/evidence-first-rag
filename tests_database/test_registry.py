@@ -61,6 +61,15 @@ class TheRegistryIsLoaded(unittest.TestCase):
 # Each entry removes one thing Section 4.1 requires and names the text the
 # invariant check must produce. The restore DDL puts it back so the module's
 # one database is unchanged for the next test.
+#
+# Every named constraint registry_invariants.py looks for -- by introspection
+# or by probe -- has an entry here: the two partial unique indexes, the three
+# unique constraints, the seven check constraints and the six foreign keys. So
+# none of them is a check nobody has seen fail. Two families of assertion in
+# that module are outside this table, and are said so rather than left implied:
+# the per-column NOT NULL list, and the identity columns, whose DROP IDENTITY
+# cannot be restored without restarting the sequence at 1 and colliding with
+# the loaded rows.
 DROPPABLE = {
     "approved once (message)": (
         "DROP INDEX mvp.approved_entity_message_once",
@@ -87,6 +96,12 @@ DROPPABLE = {
         " CHECK (entity_kind IN ('message', 'signal'))",
         "approved_entity_kind_enumerated",
     ),
+    "alias_kind enumerated": (
+        "ALTER TABLE mvp.approved_alias DROP CONSTRAINT approved_alias_kind_enumerated",
+        "ALTER TABLE mvp.approved_alias ADD CONSTRAINT approved_alias_kind_enumerated"
+        " CHECK (alias_kind IN ('approved_alias', 'spelling_variant'))",
+        "approved_alias_kind_enumerated",
+    ),
     "(approved_entity_id, alias_text)": (
         "ALTER TABLE mvp.approved_alias DROP CONSTRAINT approved_alias_text_per_entity",
         "ALTER TABLE mvp.approved_alias ADD CONSTRAINT approved_alias_text_per_entity"
@@ -98,6 +113,18 @@ DROPPABLE = {
         "ALTER TABLE mvp.entity_match_term ADD CONSTRAINT entity_match_term_per_entity"
         " UNIQUE (approved_entity_id, match_kind, match_text)",
         "entity_match_term has no unique constraint",
+    ),
+    "match_kind enumerated": (
+        "ALTER TABLE mvp.entity_match_term DROP CONSTRAINT entity_match_term_kind_enumerated",
+        "ALTER TABLE mvp.entity_match_term ADD CONSTRAINT entity_match_term_kind_enumerated"
+        " CHECK (match_kind IN ('lookup_key', 'approved_alias', 'spelling_variant'))",
+        "entity_match_term_kind_enumerated",
+    ),
+    "alias reference exactly when not a lookup key": (
+        "ALTER TABLE mvp.entity_match_term DROP CONSTRAINT entity_match_term_alias_when_not_key",
+        "ALTER TABLE mvp.entity_match_term ADD CONSTRAINT entity_match_term_alias_when_not_key"
+        " CHECK ((match_kind = 'lookup_key') = (approved_alias_id IS NULL))",
+        "entity_match_term_alias_when_not_key",
     ),
     "match_tokens never empty": (
         "ALTER TABLE mvp.entity_match_term DROP CONSTRAINT entity_match_term_has_a_token",
@@ -111,11 +138,47 @@ DROPPABLE = {
         " UNIQUE (only_row)",
         "at most one row",
     ),
+    "state only_row is true": (
+        "ALTER TABLE mvp.entity_registry_state DROP CONSTRAINT entity_registry_state_only_row_is_true",
+        "ALTER TABLE mvp.entity_registry_state ADD CONSTRAINT entity_registry_state_only_row_is_true"
+        " CHECK (only_row)",
+        "entity_registry_state_only_row_is_true",
+    ),
     "foreign key into message_occurrence": (
         "ALTER TABLE mvp.approved_entity DROP CONSTRAINT approved_entity_message_occurrence_id_fkey",
         "ALTER TABLE mvp.approved_entity ADD CONSTRAINT approved_entity_message_occurrence_id_fkey"
         " FOREIGN KEY (message_occurrence_id) REFERENCES mvp.message_occurrence (message_occurrence_id)",
         "no foreign key approved_entity.message_occurrence_id",
+    ),
+    "foreign key into signal_occurrence": (
+        "ALTER TABLE mvp.approved_entity DROP CONSTRAINT approved_entity_signal_occurrence_id_fkey",
+        "ALTER TABLE mvp.approved_entity ADD CONSTRAINT approved_entity_signal_occurrence_id_fkey"
+        " FOREIGN KEY (signal_occurrence_id) REFERENCES mvp.signal_occurrence (signal_occurrence_id)",
+        "no foreign key approved_entity.signal_occurrence_id",
+    ),
+    "foreign key approved_alias -> approved_entity": (
+        "ALTER TABLE mvp.approved_alias DROP CONSTRAINT approved_alias_approved_entity_id_fkey",
+        "ALTER TABLE mvp.approved_alias ADD CONSTRAINT approved_alias_approved_entity_id_fkey"
+        " FOREIGN KEY (approved_entity_id) REFERENCES mvp.approved_entity (approved_entity_id)",
+        "no foreign key approved_alias.approved_entity_id",
+    ),
+    "foreign key approved_alias -> source_snapshot": (
+        "ALTER TABLE mvp.approved_alias DROP CONSTRAINT approved_alias_asserting_snapshot_id_fkey",
+        "ALTER TABLE mvp.approved_alias ADD CONSTRAINT approved_alias_asserting_snapshot_id_fkey"
+        " FOREIGN KEY (asserting_snapshot_id) REFERENCES mvp.source_snapshot (snapshot_id)",
+        "no foreign key approved_alias.asserting_snapshot_id",
+    ),
+    "foreign key entity_match_term -> approved_entity": (
+        "ALTER TABLE mvp.entity_match_term DROP CONSTRAINT entity_match_term_approved_entity_id_fkey",
+        "ALTER TABLE mvp.entity_match_term ADD CONSTRAINT entity_match_term_approved_entity_id_fkey"
+        " FOREIGN KEY (approved_entity_id) REFERENCES mvp.approved_entity (approved_entity_id)",
+        "no foreign key entity_match_term.approved_entity_id",
+    ),
+    "foreign key entity_match_term -> approved_alias": (
+        "ALTER TABLE mvp.entity_match_term DROP CONSTRAINT entity_match_term_approved_alias_id_fkey",
+        "ALTER TABLE mvp.entity_match_term ADD CONSTRAINT entity_match_term_approved_alias_id_fkey"
+        " FOREIGN KEY (approved_alias_id) REFERENCES mvp.approved_alias (approved_alias_id)",
+        "no foreign key entity_match_term.approved_alias_id",
     ),
 }
 
