@@ -17,6 +17,7 @@ from evidence_first_rag.discovery import (
     Selection,
     SelectionRequest,
 )
+from evidence_first_rag.discovery.request import DiscoveryRefusal
 from evidence_first_rag.discovery.selection import allowed_parameters, validate
 
 from .discovery_support import BASE, MESSAGE, SIGNAL, database, discovery_row
@@ -70,6 +71,24 @@ class TheAllowlist(unittest.TestCase):
         self.assertEqual(db.sessions, 0)
 
 
+    def test_an_unknown_argument_is_refused_against_this_routes_own_allowlist(self):
+        # Section 4.8 gives `entity_selection` its own argument table. Leaving
+        # the check to the discovery validator would still refuse, but against
+        # Section 4.3's shorter list and in that route's name, so a caller
+        # reading the refusal is told the wrong table.
+        arguments = DISCOVERY | {"candidate_set_id": "a" * 64, "selected_rank": "1", "target_route": "signal_facts", "snapshot_id": "SAMPLE"}
+        db, result = select(arguments)
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assertEqual(db.sessions, 0)
+        # A refusal before any connection carries no limitations, so the
+        # allowlist it was measured against is asserted at the validator.
+        with self.assertRaises(DiscoveryRefusal) as raised:
+            validate(SelectionRequest(arguments=arguments))
+        self.assertIn("entity_selection", raised.exception.detail)
+        for name in ("candidate_set_id", "selected_rank", "target_route", "mapping_key"):
+            self.assertIn(name, raised.exception.detail)
+
+
 class StepOneOpensNoConnection(unittest.TestCase):
     def assert_refused_closed(self, arguments, fragment):
         db, result = select(arguments)
@@ -94,6 +113,18 @@ class StepOneOpensNoConnection(unittest.TestCase):
         for rank in ("0", "-1", "one", "1.5"):
             with self.subTest(rank=rank):
                 self.assert_refused_closed(DISCOVERY | {"candidate_set_id": "a" * 64, "selected_rank": rank, "target_route": "signal_facts"}, "selected_rank")
+
+    def test_a_selection_argument_that_is_not_a_string_is_refused_not_coerced(self):
+        # Every request argument is text. Coercing an int rank to "3" would
+        # accept a request shape the contract does not describe, and would
+        # make `selected_rank` the one argument with two accepted types.
+        arguments = DISCOVERY | {"candidate_set_id": "a" * 64, "selected_rank": 1, "target_route": "signal_facts"}
+        db, result = select(arguments)
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assertEqual(db.sessions, 0)
+        with self.assertRaises(DiscoveryRefusal) as raised:
+            validate(SelectionRequest(arguments=arguments))
+        self.assertIn("must be a string", raised.exception.detail)
 
     def test_the_discovery_half_is_validated_as_entity_discovery_validates_it(self):
         db, result = select(DISCOVERY | {"entity_kind": "frame", "candidate_set_id": "a" * 64, "selected_rank": "1", "target_route": "signal_facts"})
@@ -159,6 +190,30 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
         # which is the actionable fact (discover again).
         db, result = select(DISCOVERY | {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"}, exact=(TWO_SIGNALS[0],))
         self.assertIn(DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST, [l.kind for l in result.limitations])
+
+
+    def test_the_reruns_own_limitations_survive_into_the_refusal(self):
+        # Section 7 as #88 amended it: a refusal reports the re-run. A
+        # superseded snapshot the re-run recorded is a fact about the list
+        # the caller selected from, so dropping it on the way out would hide
+        # why the digest or the rank no longer fits.
+        successor = BASE | {"snapshot_label": "SAMPLE_SNAP_SUCCESSOR"}
+        rows = tuple(discovery_row(entity_kind="signal", message_key=m, signal_key=s, superseded_by=successor)
+                     for m, s in (("SAMPLE_MSG_TRANSMISSION_STATE", "SAMPLE_SIG_GEAR_POSITION"),
+                                  ("SAMPLE_MSG_DIAGNOSTIC_EVENT", "SAMPLE_SIG_FAULT_CODE")))
+        cid = digest_for(DISCOVERY, exact=rows)
+        db, result = select(DISCOVERY | {"candidate_set_id": cid, "selected_rank": "9", "target_route": "signal_facts"}, exact=rows)
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assertIn(DiscoveryLimitationKind.SUPERSEDED_SNAPSHOT, [l.kind for l in result.limitations])
+        self.assertEqual(fact_templates_ran(db), [])
+
+    def test_the_rerun_is_told_the_fixture_provenance_the_route_holds(self):
+        # Section 7 requires the fixture provenance on every trace. The
+        # re-run is this route's only discovery execution, so a re-run driven
+        # without it produces a refusal that cites no fixtures at all.
+        db, result = select(DISCOVERY | {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"})
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assertEqual(tuple(result.source_trace.fixture_provenance), PROVENANCE)
 
 
 class StepSevenDispatches(unittest.TestCase):
