@@ -105,6 +105,25 @@ class TheDiscoveryTemplates(unittest.TestCase):
             self.assertIn("NOT EXISTS", template.sql)
             self.assertIn("y.approved_entity_id = x.approved_entity_id", template.sql)
 
+    def test_the_dedup_comparison_is_total_because_it_names_match_kind(self):
+        # Section 4.6's two stated keys -- tier, then match_text -- tie when
+        # one entity holds one match_text under two kinds, which the unique
+        # constraint on (entity, match_kind, match_text) permits: an approved
+        # alias equal to its own entity's lookup key. Both rows normalize
+        # alike, so both take the same lexical tier, and a two-element
+        # comparison holds neither below the other and keeps both -- one
+        # entity listed twice, tied on all four ORDER BY keys. The third
+        # element is Section 4.6's own last ordering key: match_kind ranked
+        # lookup_key, approved_alias, spelling_variant.
+        for template in self.TEMPLATES:
+            with self.subTest(template=template.name):
+                dedup = template.sql.split("NOT EXISTS", 1)[1].split("ORDER BY", 1)[0]
+                for side in ("x", "y"):
+                    self.assertIn(f"CASE {side}.match_kind", dedup)
+                self.assertIn("WHEN 'lookup_key' THEN 1", dedup)
+                self.assertIn("WHEN 'approved_alias' THEN 2", dedup)
+                self.assertIn("ELSE 3 END", dedup)
+
     def test_a_parameter_outside_the_allowlist_is_refused(self):
         with self.assertRaises(ParameterError):
             TPL_DISCOVERY_EXACT_V1.bind(FULL | {"entity_kind": "message", "term": "x", "k": "3"})

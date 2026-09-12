@@ -325,6 +325,32 @@ SELECT a.project_code    AS asserting_project_code,
 # limit is the truncation signal Section 4.4 describes ("an eleventh row means
 # the candidate list was truncated") rather than eleven rows that might
 # collapse to fewer entities.
+#
+# Section 4.6's two keys tie, and the tie is reachable. `entity_match_term`
+# is unique on (entity, `match_kind`, `match_text`), so one entity may hold
+# one `match_text` twice under two kinds; `approved_alias` is unique on
+# (entity, `alias_text`), which leaves exactly one such pair -- an approved
+# alias whose text equals its own entity's lookup key. Nothing in Section
+# 4.1/4.2 or `db/registry_invariants.py` forbids that alias, and the two rows
+# carry the same `match_tokens`, hence the same tier from `_LEXICAL_TIER`. A
+# two-element comparison then holds neither row below the other and keeps
+# both -- one entity twice, tied on all four ORDER BY keys, so PostgreSQL may
+# return them in either order and `candidate_set_id` is no longer
+# reproducible. The dedup is therefore made total by Section 4.6's own last
+# ordering key: `match_kind` in the order `lookup_key`, `approved_alias`,
+# `spelling_variant`, ranked here for all three so the comparison is total
+# over the enumeration rather than over the pair reachable today. Section
+# 4.4's registered ordering is unchanged; with one row per entity surviving,
+# its four declared keys are total over what the ORDER BY sees.
+_KIND_RANK = (
+    "CASE {alias}.match_kind"
+    " WHEN 'lookup_key' THEN 1"
+    " WHEN 'approved_alias' THEN 2"
+    " ELSE 3 END"
+)
+_KIND_RANK_X = _KIND_RANK.format(alias="x")
+_KIND_RANK_Y = _KIND_RANK.format(alias="y")
+
 _DISCOVERY_COLUMNS = _SCOPE + (
     "entity_kind",
     "message_key",
@@ -380,7 +406,8 @@ SELECT s.project_code,
            FROM {SCHEMA}.entity_match_term AS y
           WHERE y.approved_entity_id = x.approved_entity_id
             AND {{match_y}}
-            AND ({{tier_y}}, y.match_text) < ({{tier}}, x.match_text))
+            AND ({{tier_y}}, y.match_text, {_KIND_RANK_Y})
+              < ({{tier}}, x.match_text, {_KIND_RANK_X}))
  ORDER BY match_tier NULLS LAST,
           message_key NULLS LAST,
           signal_key NULLS LAST,
