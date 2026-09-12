@@ -26,6 +26,8 @@ import sys
 
 import psycopg
 
+from . import registry_invariants
+
 SCHEMA = "mvp"
 
 # Section 4.1. Each entry is (table, columns) for a constraint the contract
@@ -81,6 +83,10 @@ def check(connection) -> list[str]:
         _check_superseded_by_resolves(cursor, failures)
         _check_runtime_role_settings(cursor, failures)
         _probe_unique_enforcement(cursor, failures)
+        # entity-discovery-v0.1 Sections 4.1 and 4.2: the registry's own
+        # constraints, its derived surface, and its digest. One command is the
+        # data-level check for both contracts.
+        registry_invariants.check(cursor, failures)
     return failures
 
 

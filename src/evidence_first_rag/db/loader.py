@@ -11,6 +11,7 @@ before the runtime identity ever connects (Section 3.4).
 """
 
 from .fixtures import FixtureSet
+from .registry_fixtures import RegistrySet
 from ..references import MessageReference, SignalReference, SnapshotScope
 
 SCHEMA = "mvp"
@@ -25,25 +26,42 @@ class UnresolvedReference(Exception):
     """
 
 
-def load(connection, fixtures: FixtureSet) -> dict[str, int]:
-    """Load every row of `fixtures`. Returns the row count per table.
+def load(
+    connection, fixtures: FixtureSet, registry: RegistrySet | None = None
+) -> dict[str, int]:
+    """Load every row of `fixtures`, then of `registry`. Returns the row
+    count per table.
 
     The caller owns the transaction. `provision.py` wraps this in one and
     rolls back on any exception, which is what Section 4.11's all-or-nothing
     rule requires; a caller that committed per table would defeat it.
+
+    The registry (entity-discovery-v0.1 Section 4.2) loads inside the same
+    transaction, after the four tables it references, and a failure in it
+    rolls back those four as well: "a refresh is a re-provision", and there
+    is no state in which the mvp-v0.1 rows are loaded and the registry that
+    names them is not. `registry` is optional so that a caller with only the
+    mvp-v0.1 files still has a loader; provisioning always passes it.
     """
     with connection.cursor() as cursor:
         snapshots = _load_snapshots(cursor, fixtures)
         messages = _load_messages(cursor, fixtures, snapshots)
         signals = _load_signals(cursor, fixtures, messages)
         mappings = _load_mappings(cursor, fixtures, snapshots, signals)
+        counts = {
+            "source_snapshot": len(snapshots),
+            "message_occurrence": len(messages),
+            "signal_occurrence": len(signals),
+            "signal_mapping": len(mappings),
+        }
+        if registry is not None:
+            # Imported here rather than at the top: registry.py imports this
+            # module for SCHEMA and UnresolvedReference.
+            from . import registry as registry_loader
 
-    return {
-        "source_snapshot": len(snapshots),
-        "message_occurrence": len(messages),
-        "signal_occurrence": len(signals),
-        "signal_mapping": len(mappings),
-    }
+            counts.update(registry_loader.load(cursor, registry, snapshots, messages, signals))
+
+    return counts
 
 
 def _load_snapshots(cursor, fixtures: FixtureSet) -> dict[SnapshotScope, int]:

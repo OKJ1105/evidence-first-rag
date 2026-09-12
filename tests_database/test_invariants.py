@@ -144,8 +144,17 @@ class TheCheckFailsOnAMissingConstraint(unittest.TestCase):
         # the FX-102 case would not, and the schema would acquire a
         # prohibition nobody noticed. Removing the duplicate first is what
         # lets this test reach the check rather than the database.
+        #
+        # The entity-discovery-v0.1 registry (#141) references signal
+        # occurrences by foreign key, so its three authored tables are
+        # cleared first, in dependency order, or the delete below is refused
+        # for a reason that has nothing to do with the prohibition under
+        # test. The check then also reports the emptied registry; the
+        # assertion looks for the one failure this test is about.
         self.mutate("DELETE FROM mvp.signal_mapping")
         try:
+            for table in ("entity_match_term", "approved_alias", "approved_entity"):
+                self.cursor.execute(f"DELETE FROM mvp.{table}")
             self.cursor.execute(
                 "DELETE FROM mvp.signal_occurrence a USING mvp.signal_occurrence b"
                 " WHERE a.signal_key = b.signal_key"

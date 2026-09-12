@@ -92,6 +92,52 @@ CONTRACT_VISIBLE = {
         JOIN mvp.source_snapshot q ON q.snapshot_id = tm.snapshot_id
         ORDER BY x.mapping_key, x.signal_mapping_id
     """,
+    # entity-discovery-v0.1 Section 4.1. Every surrogate projected to the
+    # natural key of the occurrence, alias or snapshot it stands for, so the
+    # Section 6 repeatability comparison covers the registry too.
+    "approved_entity": """
+        SELECT e.entity_kind,
+               s.project_code, s.revision_label, s.network_name, s.snapshot_label,
+               COALESCE(m.message_key, pm.message_key), g.signal_key,
+               e.approval_reference, e.approved_at
+        FROM mvp.approved_entity e
+        LEFT JOIN mvp.message_occurrence m ON m.message_occurrence_id = e.message_occurrence_id
+        LEFT JOIN mvp.signal_occurrence g ON g.signal_occurrence_id = e.signal_occurrence_id
+        LEFT JOIN mvp.message_occurrence pm ON pm.message_occurrence_id = g.message_occurrence_id
+        JOIN mvp.source_snapshot s ON s.snapshot_id = COALESCE(m.snapshot_id, pm.snapshot_id)
+        ORDER BY 1, 2, 3, 4, 5, 6, 7
+    """,
+    "approved_alias": """
+        SELECT s.project_code, s.revision_label, s.network_name, s.snapshot_label,
+               COALESCE(m.message_key, pm.message_key), g.signal_key,
+               a.alias_text, a.alias_kind,
+               t.project_code, t.revision_label, t.network_name, t.snapshot_label,
+               a.approval_reference, a.approved_at
+        FROM mvp.approved_alias a
+        JOIN mvp.approved_entity e ON e.approved_entity_id = a.approved_entity_id
+        LEFT JOIN mvp.message_occurrence m ON m.message_occurrence_id = e.message_occurrence_id
+        LEFT JOIN mvp.signal_occurrence g ON g.signal_occurrence_id = e.signal_occurrence_id
+        LEFT JOIN mvp.message_occurrence pm ON pm.message_occurrence_id = g.message_occurrence_id
+        JOIN mvp.source_snapshot s ON s.snapshot_id = COALESCE(m.snapshot_id, pm.snapshot_id)
+        JOIN mvp.source_snapshot t ON t.snapshot_id = a.asserting_snapshot_id
+        ORDER BY 1, 2, 3, 4, 5, 6, 7
+    """,
+    "entity_match_term": """
+        SELECT s.project_code, s.revision_label, s.network_name, s.snapshot_label,
+               COALESCE(m.message_key, pm.message_key), g.signal_key,
+               x.match_kind, x.match_text, x.match_tokens, a.alias_text
+        FROM mvp.entity_match_term x
+        JOIN mvp.approved_entity e ON e.approved_entity_id = x.approved_entity_id
+        LEFT JOIN mvp.approved_alias a ON a.approved_alias_id = x.approved_alias_id
+        LEFT JOIN mvp.message_occurrence m ON m.message_occurrence_id = e.message_occurrence_id
+        LEFT JOIN mvp.signal_occurrence g ON g.signal_occurrence_id = e.signal_occurrence_id
+        LEFT JOIN mvp.message_occurrence pm ON pm.message_occurrence_id = g.message_occurrence_id
+        JOIN mvp.source_snapshot s ON s.snapshot_id = COALESCE(m.snapshot_id, pm.snapshot_id)
+        ORDER BY 1, 2, 3, 4, 5, 6, 7, 8
+    """,
+    # `built_at` is provisioning provenance and differs between two runs, as
+    # Section 6 says it may; only the digest is contract-visible.
+    "entity_registry_state": "SELECT registry_digest FROM mvp.entity_registry_state",
 }
 
 
