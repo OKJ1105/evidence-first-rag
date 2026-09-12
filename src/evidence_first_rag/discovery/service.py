@@ -292,10 +292,10 @@ def refused(
     statuses, with every execution field the explicit empty value.
 
     `citation` is what a refused `entity_selection` records over and above
-    that (Section 7): the values the caller cited and the reason they were
-    refused. Neither is something the runtime bound or executed, so recording
-    them does not weaken the empty-value rule above. `entity_discovery` has
-    nothing to cite and passes none.
+    that (Section 7): the values the caller cited. None of them is something
+    the runtime bound or executed, so recording them does not weaken the
+    empty-value rule above. `entity_discovery` has nothing to cite and passes
+    none.
     """
     return DiscoveryResult(
         status=refusal.status,

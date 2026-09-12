@@ -125,7 +125,7 @@ class TheBundle(unittest.TestCase):
         bundle = DiscoveryEvidence(
             route="entity_selection", read_only_safeguards=CLOSED,
             cited_candidate_set_id="c" * 64, selected_rank="1",
-            target_route="signal_facts", refusal_detail="SAMPLE reason",
+            target_route="signal_facts",
         )
         self.assertEqual(bundle.selected_rank, "1")
         self.assertEqual(bundle.cited_candidate_set_id, "c" * 64)
@@ -235,7 +235,7 @@ class AResult(unittest.TestCase):
     def test_the_cited_selection_belongs_to_a_refused_selection(self):
         # Section 7 puts the citation on a refused `entity_selection`. A
         # discovery result carrying one would name a selection nobody made.
-        for field in ("cited_candidate_set_id", "selected_rank", "target_route", "refusal_detail"):
+        for field in ("cited_candidate_set_id", "selected_rank", "target_route"):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 DiscoveryResult(
                     status=DiscoveryStatus.NOT_FOUND,

@@ -99,10 +99,9 @@ class StepOneOpensNoConnection(unittest.TestCase):
         self.assertFalse(bundle.read_only_safeguards.connection_opened)
         # Section 7: a refusal that opened nothing still names the selection
         # it refused -- the caller's citation is not something the runtime
-        # bound, so the no-connection empty-value rule does not reach it --
-        # and states why. A result that named neither could not be traced
-        # back to the request that produced it.
-        self.assertIn(fragment, bundle.refusal_detail)
+        # bound, so the no-connection empty-value rule does not reach it. A
+        # result that named none of the three could not be traced back to the
+        # request that produced it.
         for name, field in (("candidate_set_id", "cited_candidate_set_id"),
                             ("selected_rank", "selected_rank"),
                             ("target_route", "target_route")):
@@ -151,7 +150,7 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
     def setUp(self):
         self.cid = digest_for(DISCOVERY, exact=TWO_SIGNALS)
 
-    def assert_refused_reporting_the_rerun(self, db, result, arguments, fragment):
+    def assert_refused_reporting_the_rerun(self, db, result, arguments):
         bundle = result.evidence_bundle
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
         self.assertEqual(bundle.route, "entity_selection")
@@ -160,28 +159,28 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
         self.assertEqual(bundle.template_name, "TPL_DISCOVERY_EXACT_V1")
         self.assertEqual(bundle.registry_digest, "a" * 64)
         self.assertEqual(bundle.row_count, 2)
-        self.assert_names_the_selection(result, arguments, fragment)
+        self.assert_names_the_selection(result, arguments)
         # And no fact template executed.
         self.assertEqual(fact_templates_ran(db), [])
 
-    def assert_names_the_selection(self, result, arguments, fragment):
-        """Section 7: the citation a refusal has to carry, and its reason.
+    def assert_names_the_selection(self, result, arguments):
+        """Section 7: the citation a refusal has to carry.
 
-        The re-run's own `limitations` describe the re-run -- its
-        `no_reference_resolved` entry tells the caller a selection is
-        required, which is what this caller just attempted -- so the reason
-        the selection was refused has to be stated by the refusal itself.
+        The three values the caller cited, so the refusal can be traced back
+        to the request that produced it. Which of steps 4, 5 and 6 refused is
+        not among them: Section 7's key list for a refused selection does not
+        contain a reason field, and each step's own fixture asserts that no
+        fact template ran, which is what a skipped check would break.
         """
         bundle = result.evidence_bundle
         self.assertEqual(bundle.cited_candidate_set_id, arguments["candidate_set_id"])
         self.assertEqual(bundle.selected_rank, arguments["selected_rank"])
         self.assertEqual(bundle.target_route, arguments["target_route"])
-        self.assertIn(fragment, bundle.refusal_detail)
 
     def test_dx_018_a_digest_that_does_not_re_derive(self):
         arguments = DISCOVERY | {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"}
         db, result = select(arguments)
-        self.assert_refused_reporting_the_rerun(db, result, arguments, "does not re-derive")
+        self.assert_refused_reporting_the_rerun(db, result, arguments)
         self.assertNotIn(DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST, [l.kind for l in result.limitations])
         # Both digests are on the bundle, and they are what did not match.
         self.assertEqual(result.evidence_bundle.candidate_set_id, self.cid)
@@ -190,12 +189,12 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
     def test_dx_019_a_rank_naming_no_candidate(self):
         arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "3", "target_route": "signal_facts"}
         db, result = select(arguments)
-        self.assert_refused_reporting_the_rerun(db, result, arguments, "names no candidate")
+        self.assert_refused_reporting_the_rerun(db, result, arguments)
 
     def test_dx_021_a_signal_candidate_with_message_facts(self):
         arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "message_facts"}
         db, result = select(arguments)
-        self.assert_refused_reporting_the_rerun(db, result, arguments, "does not permit target_route")
+        self.assert_refused_reporting_the_rerun(db, result, arguments)
 
     def test_dx_021_a_message_candidate_with_signal_facts(self):
         rows = (discovery_row(match_tier=4), discovery_row(message_key="SAMPLE_MSG_X", match_tier=4))
@@ -203,7 +202,7 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
         arguments = MESSAGE | {"term": "sample", "candidate_set_id": cid, "selected_rank": "1", "target_route": "signal_facts"}
         db, result = select(arguments, exact=(), lexical=rows)
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
-        self.assert_names_the_selection(result, arguments, "does not permit target_route")
+        self.assert_names_the_selection(result, arguments)
         self.assertEqual(fact_templates_ran(db), [])
 
     def test_dx_023_a_rerun_that_produced_no_list_is_named(self):
@@ -211,7 +210,7 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
         arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "1", "target_route": "signal_facts"}
         db, result = select(arguments, exact=(TWO_SIGNALS[0],))
         self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
-        self.assert_names_the_selection(result, arguments, "not a candidate list")
+        self.assert_names_the_selection(result, arguments)
         entry = [l for l in result.limitations if l.kind is DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST]
         self.assertEqual(len(entry), 1)
         self.assertIn("'resolved'", entry[0].detail)

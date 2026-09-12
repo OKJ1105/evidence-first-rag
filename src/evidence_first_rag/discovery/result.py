@@ -70,7 +70,7 @@ class DiscoveryResult:
             # Section 7 records the cited selection on a refused selection.
             # A discovery result has no selection to cite, so carrying one
             # would be a claim about a request nobody made.
-            for field in ("cited_candidate_set_id", "selected_rank", "target_route", "refusal_detail"):
+            for field in ("cited_candidate_set_id", "selected_rank", "target_route"):
                 if getattr(bundle, field) != "":
                     raise ValueError(f"{field} belongs to a refused {SELECTION_ROUTE} (Section 7)")
 
