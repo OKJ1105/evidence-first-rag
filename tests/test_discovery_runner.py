@@ -151,6 +151,23 @@ class TaskCompletionDispatches(unittest.TestCase):
         # selection's re-derivation.
         self.assertEqual(sum(1 for name, _ in db.calls if name == "TPL_DISCOVERY_LEXICAL_V1"), 2)
 
+    def test_a_candidates_case_that_resolved_is_not_completed_by_that_resolution(self):
+        # Section 4.11: "A case whose registered outcome is `candidates`
+        # completes through the Section 4.8 selection path, selecting the
+        # registered target." A run that returns an unlicensed `resolved` --
+        # already a false_resolution, even on the registered target -- never
+        # produced the candidate list the class must complete through, so no
+        # end-to-end credit is available to it.
+        db, document = run(
+            [case("Q-1", "Q-MULTI", "SAMPLE_MSG_ENGINE_STATUS")],
+            exact=(discovery_row(),),
+            facts=(message_row(),),
+        )
+        self.assertEqual(document["metrics"]["overall"]["task_completion"], 0.0)
+        self.assertEqual(document["metrics"]["overall"]["false_resolution"], 1.0)
+        self.assertIn("resolved", document["cases"][0]["observed"]["completion"]["reason"])
+        self.assertFalse(db.ran("TPL_MESSAGE_FACTS_V1"))
+
     def test_a_target_absent_from_the_list_is_not_a_completion(self):
         registered = case("Q-1", "Q-MULTI", "sample msg", expected_references=(GEARBOX,), target_route=Route.MESSAGE_FACTS)
         db, document = run([registered], lexical=(discovery_row(match_tier=4), discovery_row(message_key="SAMPLE_MSG_X", match_tier=4)))

@@ -60,14 +60,28 @@ def observe(case: EvaluationCase, discovery, selection, clock=time.perf_counter)
         ranked = tuple((c.reference, c.rank) for c in result.candidates)
 
     # task_completion: the resolved reference, or the registered target
-    # selected through Section 4.8, passed to the registered route.
+    # selected through Section 4.8, passed to the registered route. Which of
+    # the two paths a case completes through is fixed by its *registered*
+    # outcome, not by what the run observed: Section 4.11 says "a case whose
+    # registered outcome is `candidates` completes through the Section 4.8
+    # selection path, selecting the registered target", so an unlicensed
+    # `resolved` on such a case -- already counted in false_resolution -- must
+    # not be dispatched directly and credited as an end-to-end completion.
     completed = None
     completion = None
     if case.target_route is not None and case.expected_references:
         target = case.expected_references[0]
-        if result.status is DiscoveryStatus.RESOLVED:
-            completed, completion = _dispatch_resolved(case, result, selection)
-        elif result.status is DiscoveryStatus.CANDIDATES:
+        if case.expected_outcome == "resolved":
+            if result.status is DiscoveryStatus.RESOLVED:
+                completed, completion = _dispatch_resolved(case, result, selection)
+            else:
+                completed, completion = False, {"reason": f"discovery returned {result.status.value}"}
+        elif result.status is not DiscoveryStatus.CANDIDATES:
+            completed, completion = False, {
+                "reason": f"discovery returned {result.status.value}, not the candidate list this case"
+                          " completes through (Section 4.11)"
+            }
+        else:
             rank = next((r for ref, r in ranked if ref == target), None)
             if rank is None:
                 completed, completion = False, {"reason": "the registered target is not in the candidate list"}
@@ -80,8 +94,6 @@ def observe(case: EvaluationCase, discovery, selection, clock=time.perf_counter)
                 }))
                 completed = _carries(dispatched, target)
                 completion = {"selected_rank": rank, "status": dispatched.status.value}
-        else:
-            completed, completion = False, {"reason": f"discovery returned {result.status.value}"}
 
     outcome = CaseOutcome(
         case=case,
@@ -120,7 +132,8 @@ def _dispatch_resolved(case, result, selection):
     """A resolved reference is used directly as a fully-scoped mvp-v0.1
     request (Section 4.8: "its one reference is used directly ... no
     `candidate_set_id` and needs no selection"), so the runtime is driven
-    with the reference itself rather than through the selection path.
+    with the reference itself rather than through the selection path. Only a
+    case whose *registered* outcome is `resolved` reaches here.
 
     It is driven over the same database the selection object holds, because
     Section 4.11's `task_completion` is "the resolved or selected reference,
