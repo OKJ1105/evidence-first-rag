@@ -28,6 +28,12 @@ from ..evidence import ProducingLayer, ReadOnlySafeguards
 from ..references import MessageReference, SnapshotScope
 from .candidate import AliasProvenance
 
+# Section 4.3 and Section 4.8: the two route names this contract registers.
+# Defined here rather than in `result.py` because the bundle's own rules
+# below depend on which of the two it belongs to.
+DISCOVERY_ROUTE = "entity_discovery"
+SELECTION_ROUTE = "entity_selection"
+
 # entity-discovery-v0.1 Section 1.
 CONTRACT_IDENTIFIER = "entity-discovery-v0.1"
 CONTRACT_VERSION = "0.2.0"
@@ -97,12 +103,12 @@ class DiscoveryEvidence:
     # Section 7, for a refused `entity_selection` (Section 4.8): "the
     # `candidate_set_id` cited, the `selected_rank`, and the `target_route`
     # named", so the refusal can be traced back to the request that produced
-    # it. These are the caller's own values -- nothing the runtime bound or
-    # executed -- so a step-1 refusal that opened no connection still records
-    # them. `cited_candidate_set_id` is separate from `candidate_set_id`
-    # because a step-4 refusal carries both: the digest the caller cited and
-    # the one the re-run derived, which are precisely what did not match.
-    cited_candidate_set_id: str = ""
+    # it. The cited digest goes in `candidate_set_id` itself, which is the
+    # key Section 7 assigns it; a second key for it would be an evidence
+    # field no contract text names, and Section 10 makes adding one a minor
+    # version of this contract. These are the caller's own values -- nothing
+    # the runtime bound or executed -- so a step-1 refusal that opened no
+    # connection still records them.
     selected_rank: str = ""
     target_route: str = ""
     contract_identifier: str = CONTRACT_IDENTIFIER
@@ -119,7 +125,7 @@ class DiscoveryEvidence:
         _count("candidate_count", self.candidate_count)
         for field in ("template_name", "template_version", "registry_digest", "registry_built_at",
                       "method_identifier", "method_version", "matched_text", "candidate_set_id",
-                      "cited_candidate_set_id", "selected_rank", "target_route"):
+                      "selected_rank", "target_route"):
             optional_text(field, getattr(self, field))
         if self.resolved_scope is not None and not isinstance(self.resolved_scope, SnapshotScope):
             raise ValueError("resolved_scope must be a SnapshotScope or None")
@@ -133,9 +139,18 @@ class DiscoveryEvidence:
                       "runtime_contract_version", "collation"):
             required_text(field, getattr(self, field))
 
+        # On `entity_selection`, `candidate_set_id` is the digest the caller
+        # cited, not one this runtime derived, so it survives both rules
+        # below: a step-1 refusal opens no connection and still records it
+        # (Section 7), and it is paired with no candidate_count because the
+        # list it names was not returned by this result.
+        cites_rather_than_derives = self.route == SELECTION_ROUTE
+        empty_when_closed = ["template_name", "template_version", "registry_digest",
+                             "registry_built_at", "matched_text"]
+        if not cites_rather_than_derives:
+            empty_when_closed.append("candidate_set_id")
         if not self.read_only_safeguards.connection_opened:
-            for field in ("template_name", "template_version", "registry_digest",
-                          "registry_built_at", "matched_text", "candidate_set_id"):
+            for field in empty_when_closed:
                 if getattr(self, field) != "":
                     raise ValueError(f"{field} must be empty when no database was opened")
             if self.resolved_scope is not None or self.bound_parameters or self.row_count:
@@ -147,7 +162,7 @@ class DiscoveryEvidence:
             raise ValueError("registry_digest and method_identifier are recorded together")
         if (self.method_identifier == "") != (self.method_version == ""):
             raise ValueError("method_identifier and method_version are recorded together")
-        if (self.candidate_set_id == "") != (self.candidate_count == 0):
+        if not cites_rather_than_derives and (self.candidate_set_id == "") != (self.candidate_count == 0):
             raise ValueError("candidate_set_id and candidate_count are recorded together")
         if (self.match_tier is None) != (self.matched_text == ""):
             raise ValueError("match_tier and matched_text are recorded together")

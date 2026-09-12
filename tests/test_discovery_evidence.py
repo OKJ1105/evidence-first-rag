@@ -124,11 +124,14 @@ class TheBundle(unittest.TestCase):
         # bound, so the no-connection empty-value rule does not reach them.
         bundle = DiscoveryEvidence(
             route="entity_selection", read_only_safeguards=CLOSED,
-            cited_candidate_set_id="c" * 64, selected_rank="1",
+            candidate_set_id="c" * 64, selected_rank="1",
             target_route="signal_facts",
         )
         self.assertEqual(bundle.selected_rank, "1")
-        self.assertEqual(bundle.cited_candidate_set_id, "c" * 64)
+        self.assertEqual(bundle.candidate_set_id, "c" * 64)
+        # And it is paired with no candidate_count: the list it names was
+        # not returned by this result.
+        self.assertEqual(bundle.candidate_count, 0)
 
     def test_both_contracts_are_named(self):
         bundle = executed()
@@ -232,10 +235,56 @@ class AResult(unittest.TestCase):
                     limitations=(limitation(DiscoveryLimitationKind.COVERAGE_NOT_ESTABLISHED),),
                 )
 
+    def test_every_route_but_the_selection_route_keeps_the_section_5_rules(self):
+        # The rules are construction errors precisely so that no path can
+        # forget them, so the carve-out is stated as "the selection route",
+        # not as "the discovery route": a rule naming only `entity_discovery`
+        # would let any other route string skip all three checks, including a
+        # step-1 refusal that opened a connection before validating.
+        # Each bundle below satisfies the selection route's own rules -- a
+        # connection opened together with the re-run it reports -- so only
+        # the Section 5 rules this branch carries can refuse them.
+        for route in ("entity_discovery", "message_facts", "SAMPLE_UNREGISTERED"):
+            with self.subTest(route=route, rule="opens no connection"), self.assertRaises(ValueError):
+                DiscoveryResult(
+                    status=DiscoveryStatus.INVALID_REQUEST,
+                    evidence_bundle=executed(route=route),
+                    source_trace=DiscoveryTrace(producing_layer=ProducingLayer.RUNTIME),
+                )
+            with self.subTest(route=route, rule="cites no selection"), self.assertRaises(ValueError):
+                DiscoveryResult(
+                    status=DiscoveryStatus.NOT_FOUND,
+                    evidence_bundle=executed(route=route, row_count=0, selected_rank="1"),
+                    source_trace=DiscoveryTrace(resolved_scope=SCOPE),
+                    limitations=(limitation(DiscoveryLimitationKind.NOT_IN_REGISTRY),),
+                )
+
+    def test_a_refused_selection_that_opened_a_connection_reports_the_rerun(self):
+        # Section 7, as #88 amended it: a selection refused at step 4, 5 or 6
+        # reports the re-run it made. A bundle claiming an open connection
+        # and naming no template or registry state describes no execution
+        # that could have happened.
+        with self.assertRaises(ValueError):
+            DiscoveryResult(
+                status=DiscoveryStatus.INVALID_REQUEST,
+                evidence_bundle=DiscoveryEvidence(route="entity_selection", read_only_safeguards=OPENED),
+                source_trace=DiscoveryTrace(),
+            )
+
+    def test_an_unsupported_selection_opens_no_connection(self):
+        # Section 4.8 step 1 runs before any session, and `unsupported` can
+        # come only from there.
+        with self.assertRaises(ValueError):
+            DiscoveryResult(
+                status=DiscoveryStatus.UNSUPPORTED,
+                evidence_bundle=executed(route="entity_selection"),
+                source_trace=DiscoveryTrace(producing_layer=ProducingLayer.RUNTIME),
+            )
+
     def test_the_cited_selection_belongs_to_a_refused_selection(self):
         # Section 7 puts the citation on a refused `entity_selection`. A
         # discovery result carrying one would name a selection nobody made.
-        for field in ("cited_candidate_set_id", "selected_rank", "target_route"):
+        for field in ("selected_rank", "target_route"):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 DiscoveryResult(
                     status=DiscoveryStatus.NOT_FOUND,

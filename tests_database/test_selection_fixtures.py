@@ -115,7 +115,7 @@ class SelectionCases(unittest.TestCase):
         one of Section 7's keys; each fixture below asserts instead that no
         fact template executed."""
         bundle = result.evidence_bundle
-        self.assertEqual(bundle.cited_candidate_set_id, arguments["candidate_set_id"])
+        self.assertEqual(bundle.candidate_set_id, arguments["candidate_set_id"])
         self.assertEqual(bundle.selected_rank, arguments["selected_rank"])
         self.assertEqual(bundle.target_route, arguments["target_route"])
 
@@ -126,8 +126,10 @@ class SelectionCases(unittest.TestCase):
         self.assertEqual(result.evidence_bundle.route, "entity_selection")
         self.assertEqual(result.evidence_bundle.template_name, "TPL_DISCOVERY_EXACT_V1")
         self.assert_names_the_selection(result, arguments)
-        # The digest the re-run derived is beside the one cited.
-        self.assertEqual(result.evidence_bundle.candidate_set_id, self.cid)
+        # Section 7 gives `candidate_set_id` to the digest the caller cited,
+        # which here is precisely the one that did not re-derive.
+        self.assertEqual(result.evidence_bundle.candidate_set_id, "0" * 64)
+        self.assertNotEqual(result.evidence_bundle.candidate_set_id, self.cid)
 
     def test_dx_019_a_rank_naming_no_candidate(self):
         arguments = self.selection(selected_rank="3")
@@ -228,7 +230,7 @@ class DX023AgainstAReprovisionedRegistry(unittest.TestCase):
         # Section 7: the selection cited, and the entry that names what the
         # re-run produced instead of a list.
         bundle = result.evidence_bundle
-        self.assertEqual(bundle.cited_candidate_set_id, self.cid)
+        self.assertEqual(bundle.candidate_set_id, self.cid)
         self.assertEqual(bundle.selected_rank, "1")
         self.assertEqual(bundle.target_route, "signal_facts")
         entries = [l for l in result.limitations if l.kind is DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST]

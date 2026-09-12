@@ -159,7 +159,9 @@ def _cited(request: SelectionRequest) -> dict[str, str]:
     """What the caller cited, read off a request that never passed step 1.
 
     Section 7 requires a refused selection to name the `candidate_set_id`
-    cited, the `selected_rank`, and the `target_route`. A step-1 refusal has
+    cited -- in that key, which is why the bundle's `candidate_set_id` is
+    the caller's value on this route and not one the runtime derived -- the
+    `selected_rank`, and the `target_route`. A step-1 refusal has
     only the untrusted request to read them from, so this reads exactly those
     three, only when each is non-empty text, and asserts nothing about them:
     a rank of "one" is recorded as "one", because that is what was cited.
@@ -169,7 +171,7 @@ def _cited(request: SelectionRequest) -> dict[str, str]:
         return {}
     cited = {}
     for name, field in (
-        ("candidate_set_id", "cited_candidate_set_id"),
+        ("candidate_set_id", "candidate_set_id"),
         ("selected_rank", "selected_rank"),
         ("target_route", "target_route"),
     ):
@@ -260,7 +262,10 @@ class Selection:
         Section 7 (as #88 amended it): a selection refused at step 4, 5 or 6
         still reports the re-run's template and bound parameters, so the
         bundle is the re-run's with the route renamed -- and carries, over
-        that, the selection Section 7 requires a refusal to name. The re-run's
+        that, the selection Section 7 requires a refusal to name. Its
+        `candidate_set_id` becomes the digest the caller cited, which is what
+        Section 7 assigns that key on a refusal; the digest the re-run derived
+        is not a Section 7 key and is not recorded under another name. The re-run's
         own `limitations` travel with it, and they describe the re-run rather
         than this outcome. Which step refused is not itself an evidence field:
         Section 7's key list for a refused selection does not contain one, and
@@ -275,7 +280,7 @@ class Selection:
             evidence_bundle=dataclasses.replace(
                 bundle,
                 route=SELECTION_ROUTE,
-                cited_candidate_set_id=validated.candidate_set_id,
+                candidate_set_id=validated.candidate_set_id,
                 selected_rank=str(validated.selected_rank),
                 target_route=validated.target_route.value,
             ),

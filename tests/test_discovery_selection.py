@@ -102,10 +102,8 @@ class StepOneOpensNoConnection(unittest.TestCase):
         # bound, so the no-connection empty-value rule does not reach it. A
         # result that named none of the three could not be traced back to the
         # request that produced it.
-        for name, field in (("candidate_set_id", "cited_candidate_set_id"),
-                            ("selected_rank", "selected_rank"),
-                            ("target_route", "target_route")):
-            self.assertEqual(getattr(bundle, field), arguments.get(name, ""))
+        for name in ("candidate_set_id", "selected_rank", "target_route"):
+            self.assertEqual(getattr(bundle, name), arguments.get(name, ""))
         with self.assertRaises(Exception) as raised:
             validate(SelectionRequest(arguments=arguments))
         self.assertIn(fragment, str(raised.exception))
@@ -173,7 +171,8 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
         fact template ran, which is what a skipped check would break.
         """
         bundle = result.evidence_bundle
-        self.assertEqual(bundle.cited_candidate_set_id, arguments["candidate_set_id"])
+        # Section 7 assigns the cited digest to `candidate_set_id` itself.
+        self.assertEqual(bundle.candidate_set_id, arguments["candidate_set_id"])
         self.assertEqual(bundle.selected_rank, arguments["selected_rank"])
         self.assertEqual(bundle.target_route, arguments["target_route"])
 
@@ -182,9 +181,10 @@ class StepsFourToSixRefuseAfterTheRerun(unittest.TestCase):
         db, result = select(arguments)
         self.assert_refused_reporting_the_rerun(db, result, arguments)
         self.assertNotIn(DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST, [l.kind for l in result.limitations])
-        # Both digests are on the bundle, and they are what did not match.
-        self.assertEqual(result.evidence_bundle.candidate_set_id, self.cid)
-        self.assertNotEqual(result.evidence_bundle.candidate_set_id, result.evidence_bundle.cited_candidate_set_id)
+        # The key Section 7 names carries the caller's value, which is the
+        # one that differs from what the re-run derived.
+        self.assertEqual(result.evidence_bundle.candidate_set_id, "0" * 64)
+        self.assertNotEqual(result.evidence_bundle.candidate_set_id, self.cid)
 
     def test_dx_019_a_rank_naming_no_candidate(self):
         arguments = DISCOVERY | {"candidate_set_id": self.cid, "selected_rank": "3", "target_route": "signal_facts"}
