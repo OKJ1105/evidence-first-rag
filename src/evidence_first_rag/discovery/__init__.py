@@ -23,6 +23,7 @@ it implements.
 
 from .candidate import AliasProvenance, Candidate
 from .canonical import CanonicalError, canonical_json, sha256_hex
+from .evaluation import CLASSES, REGISTERED_SET, EvaluationCase, authoring_failures
 from .evidence import (
     CONTRACT_IDENTIFIER,
     CONTRACT_VERSION,
@@ -33,6 +34,7 @@ from .evidence import (
     DiscoveryLimitationKind,
     DiscoveryTrace,
 )
+from .metrics import CaseOutcome, Metrics, compute, per_class
 from .normalize import normalize
 from .request import DiscoveryRefusal, DiscoveryRequest, ValidatedDiscovery, validate
 from .result import DISCOVERY_ROUTE, K, SELECTION_ROUTE, DiscoveryResult
@@ -42,10 +44,12 @@ from .status import DiscoveryStatus
 
 __all__ = [
     "AliasProvenance",
+    "CLASSES",
     "CONTRACT_IDENTIFIER",
     "CONTRACT_VERSION",
     "Candidate",
     "CanonicalError",
+    "CaseOutcome",
     "DISCOVERY_ROUTE",
     "Discovery",
     "DiscoveryEvidence",
@@ -56,17 +60,23 @@ __all__ = [
     "DiscoveryResult",
     "DiscoveryStatus",
     "DiscoveryTrace",
+    "EvaluationCase",
     "K",
     "METHOD_IDENTIFIER",
     "METHOD_VERSION",
+    "Metrics",
+    "REGISTERED_SET",
     "SELECTION_ROUTE",
     "Selection",
     "SelectionRequest",
     "ValidatedDiscovery",
     "ValidatedSelection",
+    "authoring_failures",
     "candidate_set_id",
     "canonical_json",
+    "compute",
     "normalize",
+    "per_class",
     "sha256_hex",
     "validate",
 ]
