@@ -74,7 +74,27 @@ REQUIRED_CHECKS = {
         "entity_match_term_alias_when_not_key",
         "entity_match_term_has_a_token",
     ),
-    "entity_registry_state": ("entity_registry_state_only_row_is_true",),
+}
+
+# Section 4.1: "Column order is normative for the schema definition." The
+# exact column list of each registry table, in the contract's order, with the
+# surrogate the contract names first where it has one. Asserted so that a
+# column the contract does not declare -- review N6 on #142 found one -- fails
+# here rather than surfacing as a result column no template registers.
+REQUIRED_COLUMNS = {
+    "approved_entity": (
+        "approved_entity_id", "entity_kind", "message_occurrence_id", "signal_occurrence_id",
+        "approval_reference", "approved_at",
+    ),
+    "approved_alias": (
+        "approved_alias_id", "approved_entity_id", "alias_text", "alias_kind",
+        "asserting_snapshot_id", "approval_reference", "approved_at",
+    ),
+    "entity_match_term": (
+        "entity_match_term_id", "approved_entity_id", "match_kind", "match_text",
+        "match_tokens", "approved_alias_id",
+    ),
+    "entity_registry_state": ("registry_digest", "built_at"),
 }
 
 
@@ -87,6 +107,8 @@ def check(cursor, failures: list[str]) -> None:
     _check_foreign_keys(cursor, failures)
     _check_not_null(cursor, failures)
     _check_check_constraints(cursor, failures)
+    _check_columns(cursor, failures)
+    _check_state_at_most_one_row(cursor, failures)
     _check_identity_columns(cursor, failures)
     _check_runtime_grants(cursor, failures)
     _check_derived_surface(cursor, failures)
@@ -199,6 +221,43 @@ def _check_check_constraints(cursor, failures) -> None:
         for name in names:
             if (table, name) not in found:
                 failures.append(f"Section 4.1: {table} has no check constraint {name}")
+
+
+def _check_columns(cursor, failures) -> None:
+    """Section 4.1's column lists, in the contract's order and nothing else."""
+    cursor.execute(
+        "SELECT table_name, column_name FROM information_schema.columns"
+        " WHERE table_schema = %s ORDER BY table_name, ordinal_position",
+        (SCHEMA,),
+    )
+    found: dict[str, list[str]] = {}
+    for table, column in cursor.fetchall():
+        found.setdefault(table, []).append(column)
+    for table, columns in REQUIRED_COLUMNS.items():
+        if tuple(found.get(table, ())) != columns:
+            failures.append(
+                f"Section 4.1: {table} has columns {found.get(table, [])};"
+                f" the contract declares exactly {list(columns)}, in that order"
+            )
+
+
+def _check_state_at_most_one_row(cursor, failures) -> None:
+    """Section 4.1: at most one `entity_registry_state` row.
+
+    Enforced as a unique index over a constant expression (see
+    020_registry.sql for why not a CHECK). An expression index has no column
+    for `_unique_column_sets` to name, so it is looked for by definition.
+    """
+    cursor.execute(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND tablename = %s",
+        (SCHEMA, "entity_registry_state"),
+    )
+    definitions = [row[0] for row in cursor.fetchall()]
+    if not any("UNIQUE" in d and "(true)" in d.replace(" ", "") for d in definitions):
+        failures.append(
+            "Section 4.1: entity_registry_state has no unique index over a constant"
+            " expression, so nothing permits at most one row"
+        )
 
 
 def _check_identity_columns(cursor, failures) -> None:

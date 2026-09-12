@@ -143,6 +143,27 @@ class AFileThatIsNotWellFormed(unittest.TestCase):
         self.write("approved_alias", rows)
         self.assert_refused("approval_reference")
 
+    def test_a_timestamp_with_an_offset_is_refused(self):
+        # Section 4.2's form is UTC with a trailing Z. An offset would be
+        # discarded by the timestamp cast and re-emitted as Z in the digest,
+        # nine hours from the instant the file stated (review N7 on #142).
+        rows = _rows("approved_entity")
+        rows[0]["approved_at"] = "2026-03-05T09:00:00+09:00"
+        self.write("approved_entity", rows)
+        self.assert_refused("RFC 3339")
+
+    def test_a_timestamp_that_is_not_a_date_is_refused_before_any_transaction(self):
+        rows = _rows("approved_alias")
+        rows[0]["approved_at"] = "not-a-date"
+        self.write("approved_alias", rows)
+        self.assert_refused("RFC 3339")
+
+    def test_a_timestamp_with_an_impossible_date_is_refused(self):
+        rows = _rows("approved_alias")
+        rows[0]["approved_at"] = "2026-02-30T00:00:00Z"
+        self.write("approved_alias", rows)
+        self.assert_refused("approved_at")
+
     def test_an_unexpected_column(self):
         rows = _rows("approved_entity")
         rows[0]["transmit_period_ms"] = 10

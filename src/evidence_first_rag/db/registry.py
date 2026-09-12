@@ -275,9 +275,13 @@ _TERM_LINES = f"""
 def timestamp(value: datetime.datetime) -> str:
     """Section 4.2: RFC 3339, UTC, second precision, trailing `Z`.
 
-    The columns are `timestamp` without time zone, loaded from fixture text
-    that ends in `Z`, so the stored value is already UTC; a value that carried
-    a zone would be converted first rather than have its zone dropped.
+    The columns are `timestamp` without time zone. The parser admits only
+    fixture text in exactly this form (`registry_fixtures.TIMESTAMP`), so a
+    value read back is the UTC instant the file stated and the `Z` is
+    earned. That guarantee lives in the parser, not here: the database cast
+    would silently discard an offset, so a datetime this function receives
+    from the load path is always naive and already UTC. The aware branch
+    below serves only a caller that hands in a datetime directly.
     """
     if value.tzinfo is not None:
         value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)

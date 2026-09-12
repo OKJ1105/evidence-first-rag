@@ -104,13 +104,22 @@ CREATE TABLE mvp.entity_match_term (
 );
 
 -- Exactly one row, written by the provisioning identity after the three
--- tables above are loaded. Section 4.1: "a check constraint permits at most
--- one row" -- a constant column with a unique constraint is that check.
+-- tables above are loaded. Exactly the two columns Section 4.1 declares, in
+-- its order: "column order is normative for the schema definition", and the
+-- data-level check asserts every registry table's column list against the
+-- contract's.
 CREATE TABLE mvp.entity_registry_state (
     registry_digest  text      NOT NULL,
-    built_at         timestamp NOT NULL,
-    only_row         boolean   NOT NULL DEFAULT true,
-
-    CONSTRAINT entity_registry_state_only_row_is_true CHECK (only_row),
-    CONSTRAINT entity_registry_state_at_most_one_row UNIQUE (only_row)
+    built_at         timestamp NOT NULL
 );
+
+-- Section 4.1: "A check constraint permits at most one row." Recorded as a
+-- deviation in mechanism, not in effect: a PostgreSQL CHECK constraint sees
+-- one row and cannot count them, so the rule is a unique index over a
+-- constant expression -- every row has the same key, so a second row is a
+-- UniqueViolation. Chosen over a constant column carrying a unique
+-- constraint (review N6/O2 on #142) because that column would be one the
+-- contract's column table does not declare, and TPL_REGISTRY_STATE_V1 later
+-- registers a result column list that must match Section 4.1's.
+CREATE UNIQUE INDEX entity_registry_state_at_most_one_row
+    ON mvp.entity_registry_state ((true));

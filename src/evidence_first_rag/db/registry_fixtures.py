@@ -27,8 +27,10 @@ surface exist; the parser only carries what the loader needs to check them.
 """
 
 import dataclasses
+import datetime
 import json
 import pathlib
+import re
 
 from ..references import MessageReference, SignalReference, SnapshotScope
 from .fixtures import FixtureError
@@ -41,6 +43,14 @@ SUBDIRECTORY = "registry"
 
 # Section 4.1 / Section 4.2 rule 3.
 ENTITY_KINDS = ("message", "signal")
+
+# Section 4.2's timestamp form: RFC 3339, UTC, second precision, trailing Z.
+# Required of the fixture text itself rather than normalized from it (review
+# N7 on #142): the columns are `timestamp` without time zone, so a value
+# carrying an offset would have that offset silently discarded by the cast
+# and then re-emitted into the digest as `Z` -- an instant the file never
+# stated, and one a second conforming implementation would not compute.
+TIMESTAMP = re.compile(r"\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 ALIAS_KINDS = ("approved_alias", "spelling_variant")
 
 
@@ -119,6 +129,20 @@ def _text(where: str, row: dict, field: str) -> str:
     return value
 
 
+def _timestamp(where: str, row: dict, field: str) -> str:
+    value = _text(where, row, field)
+    if not TIMESTAMP.match(value):
+        raise FixtureError(
+            f"{where}: {field} {value!r} is not an RFC 3339 UTC timestamp of the"
+            f" form YYYY-MM-DDThh:mm:ssZ (Section 4.2)"
+        )
+    try:
+        datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        raise FixtureError(f"{where}: {field} {value!r}: {error}") from error
+    return value
+
+
 def _enumerated(where: str, row: dict, field: str, allowed: tuple[str, ...]) -> str:
     value = _text(where, row, field)
     if value not in allowed:
@@ -168,7 +192,7 @@ def _entity(where: str, row: dict) -> ApprovedEntityRow:
         entity_kind=kind,
         reference=_reference(where, kind, row["reference"]),
         approval_reference=_text(where, row, "approval_reference"),
-        approved_at=_text(where, row, "approved_at"),
+        approved_at=_timestamp(where, row, "approved_at"),
     )
 
 
@@ -194,5 +218,5 @@ def _alias(where: str, row: dict) -> ApprovedAliasRow:
         alias_kind=_enumerated(where, row, "alias_kind", ALIAS_KINDS),
         asserting_scope=_scope(where, "asserting_snapshot", row["asserting_snapshot"]),
         approval_reference=_text(where, row, "approval_reference"),
-        approved_at=_text(where, row, "approved_at"),
+        approved_at=_timestamp(where, row, "approved_at"),
     )
