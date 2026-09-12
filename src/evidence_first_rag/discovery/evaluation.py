@@ -54,6 +54,16 @@ MINIMUM_PER_CLASS = 5
 
 SAMPLE = re.compile(r"\ASAMPLE_[A-Za-z0-9_.\-]+\Z")
 
+# The arguments rule 1 does not govern, because neither is a name a case
+# could invent: the term is free text, and `entity_kind` is one of the two
+# values Section 4.1 enumerates.
+NOT_AN_IDENTIFIER = frozenset({"term", "entity_kind"})
+
+# The classes whose registered request is refused before any term is
+# normalized -- an `entity_kind` outside the two, or a scope that never
+# resolves -- so a term with no token is not a defect in them.
+TERM_MAY_HAVE_NO_TOKEN = frozenset({"Q-OUT", "Q-SCOPE"})
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class EvaluationCase:
@@ -132,20 +142,25 @@ def authoring_failures(cases) -> list[str]:
         seen_identifiers[case.identifier] = case.query_class
         per_class[case.query_class] += 1
 
-        # Rule 1: every identifier is SAMPLE_*. The term is free text and is
-        # exempt; every other argument value is an identifier.
+        # Rule 1: "Every identifier is `SAMPLE_*` and is either loaded by
+        # the `mvp-v0.1` Section 4.11 fixture files or reserved there as
+        # absent. No case invents a name." Two arguments are not identifiers
+        # a case could invent and are exempt: `term`, which is the user's
+        # free text and for a Q-SEMANTIC case is a description rather than a
+        # name; and `entity_kind`, whose two values Section 4.1 enumerates.
+        # Everything else -- the four scope dimensions and
+        # `parent_message_key` -- names a row.
         for name, value in case.arguments.items():
-            if name == "term":
+            if name in NOT_AN_IDENTIFIER:
                 continue
             if not isinstance(value, str) or not SAMPLE.match(value):
                 failures.append(f"{case.identifier}: argument {name}={value!r} is not a SAMPLE_* identifier (rule 1)")
 
         # Rule 6: no two case texts equal after normalization.
         tokens = tuple(normalize(case.term))
-        if not tokens and case.query_class not in ("Q-OUT", "Q-SCOPE"):
+        if not tokens and case.query_class not in TERM_MAY_HAVE_NO_TOKEN:
             failures.append(f"{case.identifier}: the term normalizes to no token")
         if tokens:
-            key = (case.query_class == "Q-SCOPE",) + tokens
             if tokens in seen_texts:
                 failures.append(
                     f"{case.identifier}: term normalizes to the same tokens as {seen_texts[tokens]} (rule 6)"

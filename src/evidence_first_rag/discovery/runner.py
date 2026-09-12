@@ -66,8 +66,7 @@ def observe(case: EvaluationCase, discovery, selection, clock=time.perf_counter)
     if case.target_route is not None and case.expected_references:
         target = case.expected_references[0]
         if result.status is DiscoveryStatus.RESOLVED:
-            dispatched = selection is not None and _dispatch_resolved(case, result, selection)
-            completed, completion = dispatched
+            completed, completion = _dispatch_resolved(case, result, selection)
         elif result.status is DiscoveryStatus.CANDIDATES:
             rank = next((r for ref, r in ranked if ref == target), None)
             if rank is None:
@@ -119,12 +118,20 @@ def observe(case: EvaluationCase, discovery, selection, clock=time.perf_counter)
 
 def _dispatch_resolved(case, result, selection):
     """A resolved reference is used directly as a fully-scoped mvp-v0.1
-    request (Section 4.8): no selection is needed, so the runtime the
-    selection object wraps is driven with the reference itself."""
+    request (Section 4.8: "its one reference is used directly ... no
+    `candidate_set_id` and needs no selection"), so the runtime is driven
+    with the reference itself rather than through the selection path.
+
+    It is driven over the same database the selection object holds, because
+    Section 4.11's `task_completion` is "the resolved or selected reference,
+    passed to that route" -- one database, one run.
+    """
     from ..runtime import Request, Runtime
 
     runtime = Runtime(database=selection.database, fixture_provenance=selection.fixture_provenance)
-    dispatched = runtime.execute(Request(route=case.target_route.value, arguments=dict(result.resolved.reference.as_parameters())))
+    dispatched = runtime.execute(
+        Request(route=case.target_route.value, arguments=dict(result.resolved.reference.as_parameters()))
+    )
     return _carries(dispatched, case.expected_references[0]), {"status": dispatched.status.value}
 
 

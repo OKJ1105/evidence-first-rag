@@ -7,7 +7,9 @@ model participates, and latency is recorded and never returned in a result.
 """
 
 import dataclasses
+import math
 import statistics
+import types
 
 from .evaluation import NAMES_A_TARGET, CLASSES, EvaluationCase
 
@@ -59,6 +61,9 @@ class Metrics:
     task_completion: float | None
     latency_median_seconds: float | None
     latency_p95_seconds: float | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "recall_at_k", types.MappingProxyType(dict(self.recall_at_k)))
 
     def as_json(self) -> dict:
         return {
@@ -122,12 +127,18 @@ def compute(outcomes) -> Metrics:
     routed = [o for o in targeted if o.case.target_route is not None]
     task_completion = _fraction(sum(1 for o in routed if o.completed is True), len(routed))
 
+    # Section 4.11: "reported as median and 95th percentile per method."
+    # Nearest-rank: the smallest value at or above 95% of the sorted sample,
+    # index ceil(0.95 * n) - 1. Chosen over an interpolating definition
+    # because it returns a measurement that was actually taken, and over
+    # round(): Python rounds a half to even, so 0.95 * 20 + 0.5 = 19.5 would
+    # round down while 0.95 * 30 + 0.5 = 29.0 would not, making the metric's
+    # definition depend on the sample size in a way nobody could read off it.
     latencies = sorted(o.latency_seconds for o in outcomes)
     median = statistics.median(latencies) if latencies else None
     p95 = None
     if latencies:
-        index = max(0, int(round(0.95 * len(latencies) + 0.5)) - 1)
-        p95 = latencies[min(index, len(latencies) - 1)]
+        p95 = latencies[max(0, math.ceil(0.95 * len(latencies)) - 1)]
 
     return Metrics(
         total=len(outcomes),
