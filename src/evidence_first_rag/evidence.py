@@ -215,12 +215,20 @@ def _frozen_parameters(value: object) -> Mapping[str, object]:
     bound. A bundle that shares a caller's dict can be edited after the fact,
     which would make the record of what was bound depend on who still holds a
     reference to it.
+
+    Recursive, because the `selection` record entity-discovery-v0.1 Section
+    4.8 puts on a dispatched bundle nests one mapping of its own -- the step-2
+    re-run's `discovery_bound_parameters`. Freezing only the top level would
+    leave the record of what the re-run bound editable, which is the one thing
+    this function exists to prevent.
     """
     if not isinstance(value, Mapping):
         raise ValueError("bound_parameters must be a mapping")
-    for name in value:
+    frozen = {}
+    for name, item in value.items():
         required_text("bound_parameters key", name)
-    return types.MappingProxyType(dict(value))
+        frozen[name] = _frozen_parameters(item) if isinstance(item, Mapping) else item
+    return types.MappingProxyType(frozen)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

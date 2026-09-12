@@ -137,7 +137,12 @@ def validate(request: SelectionRequest) -> ValidatedSelection:
             " (Section 4.8 step 1, fixture DX-022)",
         )
     rank_text = values["selected_rank"]
-    if not rank_text.isdigit() or int(rank_text) < 1:
+    # ASCII digits only. `str.isdigit` is true of superscripts and of every
+    # other decimal script, so it alone would let "²" through to an
+    # `int()` that raises, and would accept "٣" as a rank in a runtime
+    # whose comparisons are byte-defined throughout (Section 4.5's
+    # normalization, Section 7's `collation` = C).
+    if not (rank_text.isascii() and rank_text.isdigit()) or int(rank_text) < 1:
         raise DiscoveryRefusal(
             DiscoveryStatus.INVALID_REQUEST, f"selected_rank {rank_text!r} is not a 1-based rank (Section 4.8)"
         )
@@ -148,6 +153,32 @@ def validate(request: SelectionRequest) -> ValidatedSelection:
         target_route=target,
         mapping_key=values.get("mapping_key"),
     )
+
+
+def _cited(request: SelectionRequest) -> dict[str, str]:
+    """What the caller cited, read off a request that never passed step 1.
+
+    Section 7 requires a refused selection to name the `candidate_set_id`
+    cited -- in that key, which is why the bundle's `candidate_set_id` is
+    the caller's value on this route and not one the runtime derived -- the
+    `selected_rank`, and the `target_route`. A step-1 refusal has
+    only the untrusted request to read them from, so this reads exactly those
+    three, only when each is non-empty text, and asserts nothing about them:
+    a rank of "one" is recorded as "one", because that is what was cited.
+    """
+    arguments = request.arguments
+    if not isinstance(arguments, Mapping):
+        return {}
+    cited = {}
+    for name, field in (
+        ("candidate_set_id", "candidate_set_id"),
+        ("selected_rank", "selected_rank"),
+        ("target_route", "target_route"),
+    ):
+        value = arguments.get(name)
+        if isinstance(value, str) and value != "":
+            cited[field] = value
+    return cited
 
 
 def _text(name: str, value: object) -> str:
@@ -173,20 +204,21 @@ class Selection:
         try:
             validated = validate(request)
         except DiscoveryRefusal as refusal:
-            return refused(refusal, SELECTION_ROUTE, self.fixture_provenance)
+            # Step 1 opened no connection, but Section 7 still wants the
+            # selection named.
+            return refused(refusal, SELECTION_ROUTE, self.fixture_provenance, **_cited(request))
 
         # Step 2: the re-run, through the discovery route's own code.
         with self.database.session() as session:
             rerun = discover(session, validated.discovery, self.fixture_provenance)
 
         # Step 4, first half: a re-run that produced no list has nothing to
-        # match against. Refused, naming what it produced (Section 7).
+        # match against. Refused, naming what it produced (Section 7,
+        # fixture DX-023).
         if rerun.status is not DiscoveryStatus.CANDIDATES:
             return self._refuse(
+                validated,
                 rerun,
-                f"the re-run of the discovery request produced {rerun.status.value!r}, not a"
-                f" candidate list, so there is no list to select from; discover again"
-                f" (Section 4.8 step 4, fixture DX-023)",
                 extra=DiscoveryLimitation(
                     kind=DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST,
                     detail=f"The re-run produced {rerun.status.value!r}. A candidate set computed"
@@ -195,28 +227,20 @@ class Selection:
                 ),
             )
         # Step 3 is the digest the re-run's bundle already carries -- computed
-        # by the same function over the recomputed list. Step 4, second half.
+        # by the same function over the recomputed list. Step 4, second half:
+        # the registry state or the request differs from the one the list was
+        # computed against (fixture DX-018).
         if rerun.evidence_bundle.candidate_set_id != validated.candidate_set_id:
-            return self._refuse(
-                rerun,
-                "candidate_set_id does not re-derive: the registry state or the request differs"
-                " from the one the list was computed against (Section 4.8 step 4, fixture DX-018)",
-            )
-        # Step 5.
+            return self._refuse(validated, rerun)
+        # Step 5: the rank names no candidate in the re-derived list
+        # (fixture DX-019).
         if validated.selected_rank > len(rerun.candidates):
-            return self._refuse(
-                rerun,
-                f"selected_rank {validated.selected_rank} names no candidate in the re-derived list"
-                f" of {len(rerun.candidates)} (Section 4.8 step 5, fixture DX-019)",
-            )
+            return self._refuse(validated, rerun)
         chosen = rerun.candidates[validated.selected_rank - 1]
-        # Step 6: against the candidate, which is not known until step 5.
+        # Step 6: against the candidate, which is not known until step 5
+        # (fixture DX-021).
         if validated.target_route not in PERMITTED_TARGETS[chosen.entity_kind]:
-            return self._refuse(
-                rerun,
-                f"a {chosen.entity_kind} candidate does not permit target_route"
-                f" {validated.target_route.value!r} (Section 4.8 step 6, fixture DX-021)",
-            )
+            return self._refuse(validated, rerun)
 
         # Step 7: an ordinary fully-scoped mvp-v0.1 request.
         arguments = dict(chosen.reference.as_parameters())
@@ -227,12 +251,25 @@ class Selection:
         )
         return _dispatched(result, rerun, validated, chosen)
 
-    def _refuse(self, rerun: DiscoveryResult, detail: str, extra: DiscoveryLimitation | None = None) -> DiscoveryResult:
+    def _refuse(
+        self,
+        validated: ValidatedSelection,
+        rerun: DiscoveryResult,
+        extra: DiscoveryLimitation | None = None,
+    ) -> DiscoveryResult:
         """This contract's `invalid_request`, reporting the re-run it made.
 
         Section 7 (as #88 amended it): a selection refused at step 4, 5 or 6
         still reports the re-run's template and bound parameters, so the
-        bundle is the re-run's with the route renamed.
+        bundle is the re-run's with the route renamed -- and carries, over
+        that, the selection Section 7 requires a refusal to name. Its
+        `candidate_set_id` becomes the digest the caller cited, which is what
+        Section 7 assigns that key on a refusal; the digest the re-run derived
+        is not a Section 7 key and is not recorded under another name. The re-run's
+        own `limitations` travel with it, and they describe the re-run rather
+        than this outcome. Which step refused is not itself an evidence field:
+        Section 7's key list for a refused selection does not contain one, and
+        `mvp-v0.1` records no reason on its own `invalid_request` either.
         """
         bundle = rerun.evidence_bundle
         limitations = list(rerun.limitations)
@@ -240,7 +277,13 @@ class Selection:
             limitations.append(extra)
         return DiscoveryResult(
             status=DiscoveryStatus.INVALID_REQUEST,
-            evidence_bundle=dataclasses.replace(bundle, route=SELECTION_ROUTE),
+            evidence_bundle=dataclasses.replace(
+                bundle,
+                route=SELECTION_ROUTE,
+                candidate_set_id=validated.candidate_set_id,
+                selected_rank=str(validated.selected_rank),
+                target_route=validated.target_route.value,
+            ),
             source_trace=rerun.source_trace,
             limitations=tuple(limitations),
         )

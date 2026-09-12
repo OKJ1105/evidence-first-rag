@@ -249,3 +249,16 @@ class TheDispatchedSelectionAdditions(unittest.TestCase):
         trace = SourceTrace(alias_provenance=({"approval_reference": "SAMPLE_A"},), entity_approval_reference="SAMPLE_B")
         with self.assertRaises(TypeError):
             trace.alias_provenance[0]["approval_reference"] = "x"
+
+    def test_the_nested_re_run_parameters_are_frozen_too(self):
+        # entity-discovery-v0.1 Section 4.8 nests one mapping inside the
+        # record: what the step-2 re-run bound. A top-level freeze would
+        # leave that editable after construction, which is the defect this
+        # freeze exists to prevent.
+        bundle = EvidenceBundle(
+            route="message_facts", read_only_safeguards=closed_safeguards(),
+            selection={"candidate_count": 2, "discovery_bound_parameters": {"term": "SAMPLE_TERM"}},
+        )
+        with self.assertRaises(TypeError):
+            bundle.selection["discovery_bound_parameters"]["term"] = "SAMPLE_OTHER"
+        self.assertEqual(bundle.selection["discovery_bound_parameters"]["term"], "SAMPLE_TERM")

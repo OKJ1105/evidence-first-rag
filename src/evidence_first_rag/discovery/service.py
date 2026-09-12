@@ -285,9 +285,18 @@ def _scope_only(request, safeguards, found, template, status, fixture_provenance
     )
 
 
-def refused(refusal: DiscoveryRefusal, route: str, fixture_provenance: tuple[str, ...]) -> DiscoveryResult:
+def refused(
+    refusal: DiscoveryRefusal, route: str, fixture_provenance: tuple[str, ...], **citation: str
+) -> DiscoveryResult:
     """A request refused before any connection: Section 5's two no-connection
-    statuses, with every execution field the explicit empty value."""
+    statuses, with every execution field the explicit empty value.
+
+    `citation` is what a refused `entity_selection` records over and above
+    that (Section 7): the values the caller cited. None of them is something
+    the runtime bound or executed, so recording them does not weaken the
+    empty-value rule above. `entity_discovery` has nothing to cite and passes
+    none.
+    """
     return DiscoveryResult(
         status=refusal.status,
         evidence_bundle=DiscoveryEvidence(
@@ -295,6 +304,7 @@ def refused(refusal: DiscoveryRefusal, route: str, fixture_provenance: tuple[str
             read_only_safeguards=ReadOnlySafeguards(
                 role_name="", read_only_transaction=False, connection_opened=False
             ),
+            **citation,
         ),
         source_trace=DiscoveryTrace(
             producing_layer=refusal.producing_layer, fixture_provenance=fixture_provenance
