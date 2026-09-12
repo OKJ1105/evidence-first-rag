@@ -1,7 +1,9 @@
-"""The four registered templates of Section 4.4, and the only way to reach one.
+"""The registered templates, and the only way to reach one.
 
-Section 4.4 registers exactly four templates and says "Execution is refused
-for any template name not in the registry." `get()` is that refusal. There is
+mvp-v0.1 Section 4.4 registers four templates and entity-discovery-v0.1
+Section 4.4 registers three more under the same safeguards; both say
+"Execution is refused for any template name not in the registry." `get()` is
+that refusal. There is
 no function here that takes SQL text, a table name, or a column name from a
 caller: the SQL is written out below, committed, and inspectable, which is
 what Charter Section 3.1 requires of the query-template registry.
@@ -300,20 +302,184 @@ SELECT a.project_code    AS asserting_project_code,
 )
 
 
-# Section 4.4 registers exactly these four. The mapping is the registry, and
-# `get()` below is the only way to reach a template by name.
+# --- entity-discovery-v0.1 Section 4.4 -------------------------------------
+#
+# The three discovery templates, "registered under `mvp-v0.1` Section 4.4's
+# safeguards, which apply unchanged". They live in this file because the
+# `Template` constructor is sealed to this package and `PsycopgSession`
+# executes only an object the registry holds, so there is nowhere else a
+# discovery template can execute from. The four mvp-v0.1 templates above are
+# untouched.
+#
+# The projection the two discovery templates share. Every column is either a
+# canonical-reference column, match evidence, or provenance Section 7 carries
+# into the trace; no attribute of the entity appears, which is where Section
+# 4.12's "it returns no fact" is enforced (Section 4.4: "the registered result
+# column list is where that is enforced"). `message_key` is the entity's own
+# key for a message and the parent's for a signal, so every candidate carries
+# the complete reference of Section 4.6.
+#
+# One row per approved entity. Section 4.6 lists one entity once, carrying its
+# best match -- lowest tier, then lowest `match_text` in byte order -- and the
+# NOT EXISTS clause in each template keeps exactly that row, so the 11-row
+# limit is the truncation signal Section 4.4 describes ("an eleventh row means
+# the candidate list was truncated") rather than eleven rows that might
+# collapse to fewer entities.
+_DISCOVERY_COLUMNS = _SCOPE + (
+    "entity_kind",
+    "message_key",
+    "signal_key",
+    "match_tier",
+    "match_kind",
+    "match_text",
+    "entity_approval_reference",
+    "alias_approval_reference",
+    "alias_approved_at",
+) + tuple(f"alias_{d}" for d in _SCOPE) + _SUPERSEDED_BY
+
+_DISCOVERY_SELECT = f"""
+SELECT s.project_code,
+       s.revision_label,
+       s.network_name,
+       s.snapshot_label,
+       e.entity_kind,
+       COALESCE(m.message_key, pm.message_key) AS message_key,
+       g.signal_key,
+       {{tier}} AS match_tier,
+       x.match_kind,
+       x.match_text,
+       e.approval_reference AS entity_approval_reference,
+       a.approval_reference AS alias_approval_reference,
+       a.approved_at        AS alias_approved_at,
+       t.project_code       AS alias_project_code,
+       t.revision_label     AS alias_revision_label,
+       t.network_name       AS alias_network_name,
+       t.snapshot_label     AS alias_snapshot_label,
+       u.project_code       AS superseded_by_project_code,
+       u.revision_label     AS superseded_by_revision_label,
+       u.network_name       AS superseded_by_network_name,
+       u.snapshot_label     AS superseded_by_snapshot_label
+  FROM {SCHEMA}.entity_match_term AS x
+  JOIN {SCHEMA}.approved_entity AS e ON e.approved_entity_id = x.approved_entity_id
+  LEFT JOIN {SCHEMA}.message_occurrence AS m ON m.message_occurrence_id = e.message_occurrence_id
+  LEFT JOIN {SCHEMA}.signal_occurrence AS g ON g.signal_occurrence_id = e.signal_occurrence_id
+  LEFT JOIN {SCHEMA}.message_occurrence AS pm ON pm.message_occurrence_id = g.message_occurrence_id
+  JOIN {SCHEMA}.source_snapshot AS s ON s.snapshot_id = COALESCE(m.snapshot_id, pm.snapshot_id)
+  LEFT JOIN {SCHEMA}.source_snapshot AS u ON u.snapshot_id = s.superseded_by
+  LEFT JOIN {SCHEMA}.approved_alias AS a ON a.approved_alias_id = x.approved_alias_id
+  LEFT JOIN {SCHEMA}.source_snapshot AS t ON t.snapshot_id = a.asserting_snapshot_id
+ WHERE s.project_code   = %(project_code)s
+   AND s.revision_label = %(revision_label)s
+   AND s.network_name   = %(network_name)s
+   AND s.snapshot_label = %(snapshot_label)s
+   AND e.entity_kind    = %(entity_kind)s
+   AND (%(parent_message_key)s::text IS NULL OR pm.message_key = %(parent_message_key)s)
+   AND {{match}}
+   AND NOT EXISTS (
+         SELECT 1
+           FROM {SCHEMA}.entity_match_term AS y
+          WHERE y.approved_entity_id = x.approved_entity_id
+            AND {{match_y}}
+            AND ({{tier_y}}, y.match_text) < ({{tier}}, x.match_text))
+ ORDER BY match_tier NULLS LAST,
+          message_key NULLS LAST,
+          signal_key NULLS LAST,
+          match_text NULLS LAST
+ LIMIT 11
+""".strip()
+
+# Section 4.5: tier 1 is a lookup key equal byte for byte, tier 2 an alias
+# or spelling variant equal byte for byte.
+_EXACT_TIER = "CASE WHEN {alias}.match_kind = 'lookup_key' THEN 1 ELSE 2 END"
+# Tier 3: the normalized token lists are equal as ordered lists. Tier 4: every
+# token of the normalized term occurs in the match tokens. Both over one
+# bound array, so "a variable number of tokens is one bound parameter and not
+# an assembled query" (Section 4.4).
+_LEXICAL_TIER = "CASE WHEN {alias}.match_tokens = %(normalized_term)s::text[] THEN 3 ELSE 4 END"
+
+TPL_REGISTRY_STATE_V1 = Template(
+    seal=_SEAL,
+    name="TPL_REGISTRY_STATE_V1",
+    version="1",
+    # entity-discovery-v0.1 Section 4.4: no parameters, at most one row. The
+    # ORDER BY is required of every registered template (Section 6) and is
+    # over a one-row table; the LIMIT is the contract's 1. `registry_digest`
+    # and `built_at` are exactly Section 4.1's two columns, enumerated rather
+    # than `*` so that the registered result column list is the schema's.
+    sql=f"""
+SELECT r.registry_digest,
+       r.built_at
+  FROM {SCHEMA}.entity_registry_state AS r
+ ORDER BY r.registry_digest NULLS LAST
+ LIMIT 1
+""".strip(),
+    result_columns=("registry_digest", "built_at"),
+    ordering=("registry_digest",),
+    row_limit=1,
+    limit_meaning=LimitMeaning.DETECTS_OVERFLOW,
+)
+
+TPL_DISCOVERY_EXACT_V1 = Template(
+    seal=_SEAL,
+    name="TPL_DISCOVERY_EXACT_V1",
+    version="1",
+    sql=_DISCOVERY_SELECT.format(
+        tier=_EXACT_TIER.format(alias="x"),
+        tier_y=_EXACT_TIER.format(alias="y"),
+        match="x.match_text = %(term)s",
+        match_y="y.match_text = %(term)s",
+    ),
+    required_parameters=_SCOPE + ("entity_kind", "term"),
+    optional_parameters=("parent_message_key",),
+    result_columns=_DISCOVERY_COLUMNS,
+    # entity-discovery-v0.1 Section 4.4's ordering. Total without a
+    # surrogate: within one snapshot no two approved entities of one kind
+    # share (message_key, signal_key), and one row per entity is kept.
+    ordering=("match_tier", "message_key", "signal_key", "match_text"),
+    row_limit=11,
+    limit_meaning=LimitMeaning.TRUNCATES,
+    declared_limitations=(LimitationKind.TRUNCATED_BY_LIMIT,),
+)
+
+TPL_DISCOVERY_LEXICAL_V1 = Template(
+    seal=_SEAL,
+    name="TPL_DISCOVERY_LEXICAL_V1",
+    version="1",
+    sql=_DISCOVERY_SELECT.format(
+        tier=_LEXICAL_TIER.format(alias="x"),
+        tier_y=_LEXICAL_TIER.format(alias="y"),
+        match="x.match_tokens @> %(normalized_term)s::text[]",
+        match_y="y.match_tokens @> %(normalized_term)s::text[]",
+    ),
+    required_parameters=_SCOPE + ("entity_kind", "normalized_term"),
+    optional_parameters=("parent_message_key",),
+    result_columns=_DISCOVERY_COLUMNS,
+    ordering=("match_tier", "message_key", "signal_key", "match_text"),
+    row_limit=11,
+    limit_meaning=LimitMeaning.TRUNCATES,
+    declared_limitations=(LimitationKind.TRUNCATED_BY_LIMIT,),
+)
+
+
+# mvp-v0.1 Section 4.4 registers the first four; entity-discovery-v0.1
+# Section 4.4 the next three. The mapping is the registry, and `get()` below
+# is the only way to reach a template by name.
 REGISTERED = (
     TPL_SNAPSHOT_CANDIDATES_V1,
     TPL_MESSAGE_FACTS_V1,
     TPL_SIGNAL_FACTS_V1,
     TPL_SIGNAL_MAPPING_V1,
+    TPL_REGISTRY_STATE_V1,
+    TPL_DISCOVERY_EXACT_V1,
+    TPL_DISCOVERY_LEXICAL_V1,
 )
 
 _BY_NAME = {template.name: template for template in REGISTERED}
 
 
 def names() -> tuple[str, ...]:
-    """The registered template names, in the order Section 4.4 lists them."""
+    """The registered template names: mvp-v0.1 Section 4.4's four, then
+    entity-discovery-v0.1 Section 4.4's three, each in its contract's order."""
     return tuple(template.name for template in REGISTERED)
 
 
@@ -323,7 +489,7 @@ def get(name: object) -> Template:
     Section 4.4: "Execution is refused for any template name not in the
     registry." This is the refusal, and it is the only lookup: nothing here
     accepts SQL text, a table name, or a column name from a caller, so a name
-    that is not one of the four has nothing to fall back to.
+    that is not one of the seven has nothing to fall back to.
     """
     template = _BY_NAME.get(name) if isinstance(name, str) else None
     if template is None:

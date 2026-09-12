@@ -138,7 +138,10 @@ class TheRunPassesAgainstTheRegisteredFixtures(unittest.TestCase):
 
     def test_it_records_the_committed_template_digests(self):
         registered = self.document["environment"]["registered_templates"]
-        self.assertEqual(len(registered), 4)
+        # mvp-v0.1 Section 4.4's four, and entity-discovery-v0.1 Section 4.4's
+        # three registered beside them (#143). The artifact records every
+        # committed text B1 compared against, so the count is the registry's.
+        self.assertEqual(len(registered), 7)
         for entry in registered:
             with self.subTest(template=entry["name"]):
                 self.assertEqual(len(entry["sha256"]), 64)
