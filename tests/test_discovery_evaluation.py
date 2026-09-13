@@ -1,12 +1,13 @@
-"""entity-discovery-v0.1 Section 4.10: the registered case's shape, and the
-authoring rules a program can check.
+"""entity-discovery-v0.1 Sections 4.10 and 8.3: the registered case's shape,
+the authoring rules a program can check, and the registration they govern.
 
-No case is registered -- Section 8.3 is reserved, and the registration is a
-recorded human decision Charter Section 9 requires before the run it judges.
-What these tests hold is the type a registration will be written in and the
-assertions Section 4.10 says "each becomes an assertion in the slice that
-registers the set", so the registration slice inherits them rather than
-writing them beside the numbers they govern.
+Section 4.10's half asserts the type and the rules against sets built here
+to break one rule each. Section 8.3's half asserts the registration: that
+the constants equal the contract text, and that the bars the section calls
+derived are recomputed from the registered cases rather than copied from
+the document -- `mvp-v0.1` Section 8.3 is pinned to `adapter/evaluation.py`
+the same way, because a number nobody compares against the document is a
+number nobody checks.
 """
 
 import pathlib

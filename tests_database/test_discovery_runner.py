@@ -4,10 +4,10 @@ fixtures.
 `tests/test_discovery_runner.py` proves what the runner records given rows;
 this proves the numbers over the real registry, through the real templates
 and the real selection path. The cases here are **authored by this test**,
-not registered: Section 8.3 is reserved, and a registered set is a recorded
-human decision Charter Section 9 requires before the run it judges. One case
-per class, which is deliberately below rule 4's five -- and the artifact
-says so, which is the assertion at the end.
+and are not the Section 8.3 set: they exercise the runner against a real
+database, which the registered set is not yet wired to. One case per class,
+deliberately below rule 4's five -- and the artifact says so, which is the
+assertion at the end.
 
 **One authoring constraint this set ran into, recorded for the registration
 slice.** Rule 6 is "No two case texts are equal after the Section 4.5

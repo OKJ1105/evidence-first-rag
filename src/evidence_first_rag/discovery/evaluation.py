@@ -1,13 +1,18 @@
-"""entity-discovery-v0.1 Section 4.10: the shape of a labeled discovery
-evaluation case, and the authoring rules a program can check.
+"""entity-discovery-v0.1 Sections 4.10 and 8.3: the shape of a labeled
+discovery evaluation case, the authoring rules a program can check, and the
+registration itself.
 
-This module authors no case and registers no number. Section 8.3 is reserved
-for the registration, which is a minor version of the contract taken as a
-recorded human decision, and Charter Section 9 requires it before the run it
-judges. What lives here is the type a registration will be written in and
-the assertions Section 4.10 says "each becomes ... in the slice that
-registers the set" -- shipped now so that the registration slice inherits
-them rather than writing them beside the numbers they govern.
+Two halves, in that order. The first is Section 4.10's: the `EvaluationCase`
+type, the eight classes, and `authoring_failures`, which is the assertion
+Section 4.10 says "each becomes ... in the slice that registers the set".
+The second is Section 8.3's registration -- `REGISTERED_AT`, the
+`registry_digest` the set was authored against, the per-class `THRESHOLDS`,
+and `REGISTERED_SET`, the forty cases. It landed at `0.3.0` as a minor
+version of the contract taken as a recorded human decision, which Charter
+Section 9 requires before the run it judges.
+
+The rules come first on purpose: they are what the cases below are checked
+against, and `authoring_failures(REGISTERED_SET)` is empty.
 
 Rules 5 (authored without running a method) and 7 (English) are properties
 of the authoring session, not of the data; `authoring_failures` does not

@@ -372,8 +372,8 @@ class TheRowsCanCarryASection410EvaluationSet(unittest.TestCase):
     after the Section 4.5 normalization. Four classes draw their term from a
     name the registry holds, or from one reserved as absent, so those four
     are the ones the fixture tree can make unsatisfiable. Nothing here
-    registers a case -- Section 8.3 is reserved and these are pools, not
-    sets -- but a row removed from `fixtures/` silently shrinks a pool, and a
+    registers a case -- Section 8.3 does that, and these are pools rather
+    than sets -- but a row removed from `fixtures/` silently shrinks a pool, and a
     class that can no longer reach five is a registration that cannot be
     authored. These four assertions are where that is noticed.
 
