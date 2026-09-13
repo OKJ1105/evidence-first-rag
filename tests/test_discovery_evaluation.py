@@ -32,6 +32,7 @@ from evidence_first_rag.discovery.evaluation import (
     TERM_IS_AN_IDENTIFIER,
     THRESHOLDS,
     multi_recall_ceilings,
+    rank_bound_violations,
     semantic_recall_bars,
 )
 from evidence_first_rag.discovery.evidence import CONTRACT_VERSION
@@ -366,6 +367,56 @@ class TheRegisteredSet(unittest.TestCase):
             key = getattr(target, "signal_key", None) or target.message_key
             with self.subTest(case=case.identifier):
                 self.assertTrue(set(normalize(case.term)) & set(normalize(key)))
+
+    def test_a_rank_bound_is_a_pass_condition_the_class_bar_cannot_express(self):
+        # Section 8.3's ninth condition, registered at 0.3.1 on the owner's
+        # reading. The scenario is the section's own: one target below its
+        # bound, one above a bar it was never set, and the two cancelling in
+        # the aggregate. The class bar is met; the registration is not.
+        cancelling = {"EV-SEMANTIC-1": 2, "EV-SEMANTIC-2": 1,
+                      "EV-SEMANTIC-3": 1, "EV-SEMANTIC-4": 1, "EV-SEMANTIC-5": 1}
+        at_one = sum(
+            1 for case in REGISTERED_SET
+            if case.query_class == "Q-SEMANTIC" and cancelling[case.identifier] <= 1
+        ) / 5
+        self.assertEqual(at_one, THRESHOLDS["Q-SEMANTIC"].recall_at_1)
+        violations = rank_bound_violations(REGISTERED_SET, cancelling)
+        self.assertEqual(len(violations), 1)
+        self.assertIn("EV-SEMANTIC-1", violations[0])
+
+    def test_every_bound_met_is_no_violation_and_an_absent_target_is_one(self):
+        met = {"EV-SEMANTIC-1": 1, "EV-SEMANTIC-2": 1,
+               "EV-SEMANTIC-3": 1, "EV-SEMANTIC-4": 2, "EV-SEMANTIC-5": 1}
+        self.assertEqual(rank_bound_violations(REGISTERED_SET, met), [])
+        # A target that never came back fails its bound rather than passing
+        # it vacuously.
+        absent = met | {"EV-SEMANTIC-4": None}
+        self.assertEqual(len(rank_bound_violations(REGISTERED_SET, absent)), 1)
+
+    def test_section_8_3_registers_the_per_case_condition(self):
+        section = section_8_3()
+        self.assertIn("at or above that case's own registered `rank_bound`", section)
+        self.assertIn("A judge that checks only the fraction has not judged", section)
+
+    def test_only_the_three_entity_kind_refusals_open_no_connection(self):
+        # Section 8.3's corrected sentence. Every other case reaches the
+        # mvp-v0.1 candidate query, which Section 4.3 runs on every request;
+        # only a kind outside the two Section 4.1 enumerates is refused in
+        # validation, before any connection.
+        no_connection = [
+            case.identifier for case in REGISTERED_SET
+            if case.arguments["entity_kind"] not in ("message", "signal")
+        ]
+        self.assertEqual(no_connection, ["EV-OUT-1", "EV-OUT-2", "EV-OUT-3"])
+        self.assertIn("open no connection at all", section_8_3())
+        self.assertNotIn("refusals decided before any template runs", section_8_3())
+
+    def test_the_operative_record_is_the_pull_request_not_the_issue_body(self):
+        # Section 2: "an Issue body written by a writer session is not one."
+        section = section_8_3()
+        self.assertIn("the operative record is the repository owner's on", section)
+        self.assertIn("pull/153", section)
+        self.assertIn("is the task", section)
 
     def test_the_registration_precedes_any_run_it_could_judge(self):
         # Charter Section 9. The artifact a run writes is not committed, and

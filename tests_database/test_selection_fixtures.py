@@ -183,7 +183,7 @@ class SelectionCases(unittest.TestCase):
                 "match_tier": c.match_tier, "matched_text": c.matched_text, "match_kind": c.match_kind,
             })
         obj = {
-            "contract_identifier": "entity-discovery-v0.1", "contract_version": "0.3.0",
+            "contract_identifier": "entity-discovery-v0.1", "contract_version": "0.3.1",
             "registry_digest": self.discovered.evidence_bundle.registry_digest,
             **POWERTRAIN, "entity_kind": "signal", "parent_message_key": None,
             "term": "SAMPLE_SIG_GEAR_POSITION", "method_identifier": "M-LEX-1", "method_version": "1",

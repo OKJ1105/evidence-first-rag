@@ -81,7 +81,7 @@ class TheArtifact(unittest.TestCase):
         self.assertEqual(self.document["method_identifier"], "M-LEX-1")
         self.assertEqual(self.document["method_version"], "1")
         self.assertEqual(self.document["contract_identifier"], "entity-discovery-v0.1")
-        self.assertEqual(self.document["contract_version"], "0.3.0")
+        self.assertEqual(self.document["contract_version"], "0.3.1")
         self.assertEqual(self.document["registry_digest"], "a" * 64)
         self.assertEqual(self.document["registry_built_at"], "2026-09-12T00:00:00Z")
         self.assertEqual(self.document["started_at"], "2026-09-12T00:00:00Z")

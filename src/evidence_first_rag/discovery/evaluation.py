@@ -209,8 +209,8 @@ def authoring_failures(cases) -> list[str]:
 # threshold to be registered before the run it judges: `REGISTERED_AT` is that
 # instant, and no run over this set had happened when it was written.
 
-REGISTERED_AT = "2026-09-13T04:20:00Z"
-REGISTRATION_CONTRACT_VERSION = "0.3.0"
+REGISTERED_AT = "2026-09-13T15:55:00Z"
+REGISTRATION_CONTRACT_VERSION = "0.3.1"
 
 # Section 8.3 item 2: the registry state the set was authored against. Section
 # 4.10 rule 8 makes this how a registry change that alters a registered case's
@@ -358,6 +358,42 @@ def semantic_recall_bars(cases) -> dict[int, float]:
     """
     bounds = [case.rank_bound for case in cases if case.query_class == "Q-SEMANTIC"]
     return {k: sum(1 for bound in bounds if bound <= k) / len(bounds) for k in (1, 5, 10)}
+
+
+def rank_bound_violations(cases, observed_ranks) -> list[str]:
+    """Section 8.3's condition that is not a per-class fraction.
+
+    Every `Q-SEMANTIC` case's registered target must appear at a rank at or
+    above that case's own `rank_bound`. `observed_ranks` maps a case
+    identifier to the rank its registered target came back at, or None when
+    it did not come back at all.
+
+    This is a pass condition and not a Section 4.11 metric: it is registered
+    by Section 8.3, judged per case, and lives here rather than in
+    `metrics.py` for that reason. The class bar `semantic_recall_bars`
+    derives is the aggregate of these same bounds; both are conditions,
+    because the aggregate cannot distinguish a method that met every bound
+    from one that violated a bound and cleared a bar it was never set. Over
+    the registered bounds `1, 1, 1, 2, 1` those two errors cancel exactly.
+
+    Returns one line per violation, empty when every bound holds.
+    """
+    failures = []
+    for case in cases:
+        if case.query_class != "Q-SEMANTIC":
+            continue
+        rank = observed_ranks.get(case.identifier)
+        if rank is None:
+            failures.append(
+                f"{case.identifier}: the registered target did not appear;"
+                f" rule 3 registers rank {case.rank_bound}"
+            )
+        elif rank > case.rank_bound:
+            failures.append(
+                f"{case.identifier}: the registered target came back at rank {rank},"
+                f" below the registered bound of {case.rank_bound}"
+            )
+    return failures
 
 
 def multi_recall_ceilings(cases) -> dict[int, float]:

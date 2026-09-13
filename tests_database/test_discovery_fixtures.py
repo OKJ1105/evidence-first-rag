@@ -104,7 +104,7 @@ class FixtureCase(unittest.TestCase):
     def assert_evidence(self, result, database):
         bundle = result.evidence_bundle
         self.assertEqual(bundle.contract_identifier, "entity-discovery-v0.1")
-        self.assertEqual(bundle.contract_version, "0.3.0")
+        self.assertEqual(bundle.contract_version, "0.3.1")
         self.assertEqual(bundle.runtime_contract_identifier, "mvp-v0.1")
         self.assertEqual(bundle.route, "entity_discovery")
         self.assertEqual(bundle.collation, "C")
