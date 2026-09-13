@@ -1,25 +1,48 @@
-"""entity-discovery-v0.1 Section 4.10: the registered case's shape, and the
-authoring rules a program can check.
+"""entity-discovery-v0.1 Sections 4.10 and 8.3: the registered case's shape,
+the authoring rules a program can check, and the registration they govern.
 
-No case is registered -- Section 8.3 is reserved, and the registration is a
-recorded human decision Charter Section 9 requires before the run it judges.
-What these tests hold is the type a registration will be written in and the
-assertions Section 4.10 says "each becomes an assertion in the slice that
-registers the set", so the registration slice inherits them rather than
-writing them beside the numbers they govern.
+Section 4.10's half asserts the type and the rules against sets built here
+to break one rule each. Section 8.3's half asserts the registration: that
+the constants equal the contract text, and that the bars the section calls
+derived are recomputed from the registered cases rather than copied from
+the document -- `mvp-v0.1` Section 8.3 is pinned to `adapter/evaluation.py`
+the same way, because a number nobody compares against the document is a
+number nobody checks.
 """
 
+import pathlib
+import re
 import unittest
 
 from evidence_first_rag import MessageReference, Route, SignalReference, SnapshotScope
 from evidence_first_rag.discovery import REGISTERED_SET, EvaluationCase, authoring_failures
+from evidence_first_rag.discovery import K
+from evidence_first_rag.discovery.normalize import normalize
 from evidence_first_rag.discovery.evaluation import (
+    CEILINGS,
     CLASSES,
     EXPECTED_OUTCOME,
     MINIMUM_PER_CLASS,
     NAMES_A_TARGET,
+    NO_DENOMINATOR,
+    REGISTERED_AGAINST_DIGEST,
+    REGISTERED_AT,
+    REGISTRATION_CONTRACT_VERSION,
+    REPORTED,
     TERM_IS_AN_IDENTIFIER,
+    THRESHOLDS,
+    multi_recall_ceilings,
+    semantic_recall_bars,
 )
+from evidence_first_rag.discovery.evidence import CONTRACT_VERSION
+
+CONTRACT = pathlib.Path(__file__).resolve().parents[1] / "docs" / "contracts" / "entity-discovery-v0.1.md"
+
+
+def section_8_3() -> str:
+    text = CONTRACT.read_text()
+    start = text.index("### 8.3 ")
+    return text[start:text.index("## 9. Deferred decisions", start)]
 
 SCOPE = {
     "project_code": "SAMPLE_PROJECT_ALPHA",
@@ -229,11 +252,127 @@ class TheAuthoringRules(unittest.TestCase):
         self.assertEqual(authoring_failures(cases), [])
 
 
-class TheReservedRegistration(unittest.TestCase):
-    def test_no_set_is_registered(self):
-        # Section 8.3 is reserved. The registration slice replaces this, and
-        # the runner refuses to run over nothing until it does.
-        self.assertEqual(REGISTERED_SET, ())
+class TheRegisteredSet(unittest.TestCase):
+    """Section 8.3, registered. The constants and the section text are one
+    registration written twice, and these assertions are what keeps them one:
+    `mvp-v0.1` Section 8.3 is pinned to `adapter/evaluation.py` the same way,
+    for the same reason -- a number nobody compares against the document is a
+    number nobody checks."""
+
+    def test_forty_cases_are_registered_five_in_each_class(self):
+        self.assertEqual(len(REGISTERED_SET), 40)
+        for name in CLASSES:
+            with self.subTest(query_class=name):
+                members = [c for c in REGISTERED_SET if c.query_class == name]
+                self.assertEqual(len(members), 5)
+
+    def test_the_registered_set_breaks_no_authoring_rule(self):
+        self.assertEqual(authoring_failures(REGISTERED_SET), [])
+
+    def test_every_identifier_is_registered_once(self):
+        identifiers = [case.identifier for case in REGISTERED_SET]
+        self.assertEqual(len(set(identifiers)), len(identifiers))
+
+    def test_the_registration_record_equals_section_8_3(self):
+        section = section_8_3()
+        registered_at = re.search(r"`registered_at`: `([^`]+)`", section)
+        version = re.search(r"`contract_version`: `([^`]+)`", section)
+        digest = re.search(r"`registry_digest`: `([0-9a-f]{64})`", section)
+        for match in (registered_at, version, digest):
+            self.assertIsNotNone(match, "Section 8.3 has changed shape")
+        self.assertEqual(REGISTERED_AT, registered_at.group(1))
+        self.assertEqual(REGISTRATION_CONTRACT_VERSION, version.group(1))
+        self.assertEqual(REGISTERED_AGAINST_DIGEST, digest.group(1))
+        # The registration landed at this version and the document is still
+        # there: unlike mvp-v0.1's thresholds, which record a past version,
+        # nothing has moved past this one yet.
+        self.assertEqual(REGISTRATION_CONTRACT_VERSION, CONTRACT_VERSION)
+
+    def test_the_section_8_3_heading_carries_the_registered_instant(self):
+        self.assertIn(f"registered {REGISTERED_AT}", section_8_3().splitlines()[0])
+
+    def test_every_threshold_equals_the_section_8_3_table(self):
+        # One row of the table per quantity, one column per class, read back
+        # out of the document and compared with the constant.
+        rows = {}
+        columns = None
+        for line in section_8_3().splitlines():
+            cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
+            if len(cells) != 9:
+                continue
+            if cells[0] == "Quantity":
+                # The column order is the document's, not CLASSES's. Reading
+                # it rather than assuming it is the difference between this
+                # test checking the table and checking a coincidence.
+                columns = cells[1:]
+            elif cells[0] in (
+                "false_resolution", "correct_abstention", "over_abstention",
+                "recall_at_1", "recall_at_5", "recall_at_10", "task_completion", "mrr",
+            ):
+                rows[cells[0]] = cells[1:]
+        self.assertEqual(len(rows), 8, "Section 8.3's threshold table has changed shape")
+        self.assertEqual(sorted(columns or []), sorted(CLASSES), "the table names other classes")
+        for quantity, cells in rows.items():
+            for name, cell in zip(columns, cells):
+                with self.subTest(quantity=quantity, query_class=name):
+                    registered = getattr(THRESHOLDS[name], quantity)
+                    if cell == "—":
+                        self.assertIs(registered, NO_DENOMINATOR)
+                    elif cell == "reported":
+                        self.assertIs(registered, REPORTED)
+                    else:
+                        number = float(re.sub(r"[^0-9.]", "", cell))
+                        self.assertEqual(registered, number)
+                        self.assertEqual(cell.startswith("≤"), quantity in CEILINGS)
+
+    def test_the_semantic_recall_bars_are_derived_from_the_registered_bounds(self):
+        # Not copied. Section 8.3 derives the class bar from the rank bounds
+        # rule 3 makes each case register, so editing a bound without editing
+        # the bar -- or the reverse -- fails here.
+        bars = semantic_recall_bars(REGISTERED_SET)
+        for k, expected in bars.items():
+            with self.subTest(k=k):
+                self.assertEqual(getattr(THRESHOLDS["Q-SEMANTIC"], f"recall_at_{k}"), expected)
+
+    def test_the_multi_recall_bars_are_the_ceilings_the_registered_lists_entail(self):
+        # Section 4.11 counts a Q-MULTI case only when every registered
+        # reference appears, so a case registering n references cannot count
+        # for k < n. The bars are those ceilings; recall_at_1's ceiling is
+        # zero, which is why it is `reported` rather than a bar.
+        ceilings = multi_recall_ceilings(REGISTERED_SET)
+        self.assertEqual(ceilings[1], 0.0)
+        self.assertIs(THRESHOLDS["Q-MULTI"].recall_at_1, REPORTED)
+        for k in (5, 10):
+            with self.subTest(k=k):
+                self.assertEqual(getattr(THRESHOLDS["Q-MULTI"], f"recall_at_{k}"), ceilings[k])
+
+    def test_no_registered_candidate_list_exceeds_k(self):
+        # Section 8.3 states it, and a list beyond k would make a recall bar
+        # unreachable for a reason the section does not record.
+        for case in REGISTERED_SET:
+            with self.subTest(case=case.identifier):
+                self.assertLessEqual(len(case.expected_references), K)
+
+    def test_the_set_holds_no_difficult_semantic_case(self):
+        # Section 8.3 registers the definition and records that the count is
+        # zero, so that a vector registration cannot choose it afterwards.
+        # A term sharing no token with any match text of its target cannot be
+        # reached at tier 4, which is the whole of what the baseline does.
+        self.assertIn("holds zero of them", section_8_3())
+        for case in REGISTERED_SET:
+            if case.query_class != "Q-SEMANTIC":
+                continue
+            target = case.expected_references[0]
+            key = getattr(target, "signal_key", None) or target.message_key
+            with self.subTest(case=case.identifier):
+                self.assertTrue(set(normalize(case.term)) & set(normalize(key)))
+
+    def test_the_registration_precedes_any_run_it_could_judge(self):
+        # Charter Section 9. The artifact a run writes is not committed, and
+        # the runner still refuses to open a database, so there is nothing to
+        # compare against yet; what is asserted here is that the recorded
+        # instant is a well-formed UTC instant the runner can compare with.
+        self.assertRegex(REGISTERED_AT, r"\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 
 
 if __name__ == "__main__":

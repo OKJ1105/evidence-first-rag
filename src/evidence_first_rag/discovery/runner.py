@@ -8,11 +8,15 @@ case with its request, its registered expectation and its observed result,
 computes the Section 4.11 metrics per class and over the set, and writes one
 JSON document. It never prints "adopt".
 
-**While Section 8.3 is reserved the command exits 2.** There is no
-registered set to run, and Charter Section 9 says a metric without a
-pre-registered pass condition satisfies no gate; a run over an unregistered
-set must not be cited, so the runner declines to produce one. `perform` is
-what a registration slice, and the tests, drive with cases in hand.
+**The command exits 2 and writes nothing.** Two guards stand in front of
+it. The first refuses when no set is registered: Charter Section 9 says a
+metric without a pre-registered pass condition satisfies no gate, so a run
+over an unregistered set must not be cited. Section 8.3 registered the set
+at `0.3.0`, so that guard no longer fires, and the second one does -- the
+registered set is not wired to a database. Opening that connection, driving
+`perform` over `REGISTERED_SET` and judging the result against the Section
+8.3 thresholds is the wiring slice, which is not this file yet. `perform`
+is what that slice, and the tests, drive with cases in hand.
 
 Section 4.9's exception -- a method under comparison re-runs under itself --
 is honoured by construction: one `Discovery` and one `Selection` serve a
@@ -198,12 +202,14 @@ def main(argv=None) -> int:
     parser.parse_args(argv)
     if not REGISTERED_SET:
         sys.stderr.write(
-            "no evaluation set is registered: entity-discovery-v0.1 Section 8.3 is reserved,"
-            " and a run over an unregistered set must not be cited (Charter Section 9)\n"
+            "no evaluation set is registered: entity-discovery-v0.1 Section 8.3 registers"
+            " none at this version, and a run over an unregistered set must not be cited"
+            " (Charter Section 9)\n"
         )
         return 2
-    # The registration slice completes this: open the database, read the
-    # registry state, drive perform(), write the artifact.
+    # The wiring slice completes this: open the database, read the registry
+    # state, drive perform() over REGISTERED_SET, judge the metrics against
+    # the Section 8.3 thresholds, and write the artifact.
     sys.stderr.write("the registration slice has not wired the registered set to a database\n")
     return 2
 

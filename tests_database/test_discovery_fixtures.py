@@ -11,6 +11,10 @@ test builds, because the registered occurrences cannot reach eleven (#143).
 Every case asserts the three Section 7 structures with their required keys,
 `registry_digest` included (Section 8, row "Sections 5 and 7").
 
+Section 8.3 item 2's `registry_digest` is checked here too, because only a
+provisioned registry can say whether the registered value is the digest of the
+fixture files the cases were authored against.
+
 Section 8's "Section 6 determinism" row is discharged here too, because its
 three clauses need a real database: two runs byte-identical with
 `registry_built_at` removed, the same `registry_digest` and
@@ -28,6 +32,7 @@ import unittest
 
 from evidence_first_rag import ProducingLayer, SnapshotScope
 from evidence_first_rag.conformance import probes
+from evidence_first_rag.db import registry
 from evidence_first_rag.discovery import (
     Discovery,
     DiscoveryLimitationKind,
@@ -37,6 +42,7 @@ from evidence_first_rag.discovery import (
     candidate_set_id,
     validate,
 )
+from evidence_first_rag.discovery.evaluation import REGISTERED_AGAINST_DIGEST
 from evidence_first_rag.runtime.connection import PsycopgDatabase
 
 from . import support
@@ -98,7 +104,7 @@ class FixtureCase(unittest.TestCase):
     def assert_evidence(self, result, database):
         bundle = result.evidence_bundle
         self.assertEqual(bundle.contract_identifier, "entity-discovery-v0.1")
-        self.assertEqual(bundle.contract_version, "0.2.1")
+        self.assertEqual(bundle.contract_version, "0.3.0")
         self.assertEqual(bundle.runtime_contract_identifier, "mvp-v0.1")
         self.assertEqual(bundle.route, "entity_discovery")
         self.assertEqual(bundle.collation, "C")
@@ -299,6 +305,31 @@ class TheCandidateSetAndProvenance(FixtureCase):
             fields = candidate.digest_fields()
             self.assertFalse(any(k.endswith("_id") for k in fields))
             self.assertNotIn("scale_factor", fields)
+
+
+class TheRegistryStateSection83RegistersAgainst(unittest.TestCase):
+    """Section 8.3 item 2, compared with a registry rather than with prose.
+
+    `REGISTERED_AGAINST_DIGEST` is the registry state every registered case's
+    outcome was derived from, and Section 4.10 rule 8 makes it how a later
+    registry change that alters one of those outcomes is detected rather than
+    remembered. `tests/` can only compare it with the section text that
+    repeats it -- two copies of one constant, both wrong together if the value
+    was ever transcribed wrong or taken against another fixture state -- so
+    the comparison the contract describes is made here, in the one suite that
+    has a database (review B2 on #152).
+    """
+
+    def test_it_is_the_digest_stored_by_a_provisioning_of_the_fixture_files(self):
+        self.assertEqual(stored_digest(), REGISTERED_AGAINST_DIGEST)
+
+    def test_it_is_the_recomputation_from_the_loaded_rows(self):
+        # Not the stored value read back a second time: the digest recomputed
+        # from the rows, which is what `entity_registry_state` is checked
+        # against. A registration pinned to a stored digest alone would agree
+        # with a state whose rows no longer produce it.
+        with support.connect(DATABASE, "runtime") as connection, connection.cursor() as cursor:
+            self.assertEqual(registry.compute_digest(cursor), REGISTERED_AGAINST_DIGEST)
 
 
 class ASecondProvisioningFromTheSameFixtureFiles(unittest.TestCase):

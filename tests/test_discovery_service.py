@@ -227,7 +227,7 @@ class TheCandidateSetDigest(unittest.TestCase):
         db, result = run(MESSAGE | {"term": "sample msg"}, lexical=(discovery_row(match_tier=4), discovery_row(message_key="SAMPLE_MSG_X", match_tier=4)))
         expected = sha256_hex(canonical_json({
             "contract_identifier": "entity-discovery-v0.1",
-            "contract_version": "0.2.1",
+            "contract_version": "0.3.0",
             "registry_digest": "a" * 64,
             **BASE,
             "entity_kind": "message",
@@ -270,7 +270,7 @@ class TheEvidence(unittest.TestCase):
             _, result = run(arguments, **rows)
             bundle = result.evidence_bundle
             self.assertEqual(bundle.contract_identifier, "entity-discovery-v0.1")
-            self.assertEqual(bundle.contract_version, "0.2.1")
+            self.assertEqual(bundle.contract_version, "0.3.0")
             self.assertEqual(bundle.runtime_contract_identifier, "mvp-v0.1")
             self.assertEqual(bundle.collation, "C")
             self.assertEqual(result.source_trace.fixture_provenance, PROVENANCE)

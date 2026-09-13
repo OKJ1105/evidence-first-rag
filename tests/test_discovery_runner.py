@@ -10,9 +10,11 @@ import contextlib
 import io
 import json
 import unittest
+import unittest.mock
 
 from evidence_first_rag import MessageReference, Route, SignalReference, SnapshotScope
 from evidence_first_rag.discovery import Discovery, EvaluationCase, Selection
+from evidence_first_rag.discovery import runner
 from evidence_first_rag.discovery.runner import DEFAULT_ARTIFACT, main, observe, perform
 
 from .discovery_support import BASE, STATE_ROW, candidate_row, database, discovery_row
@@ -79,7 +81,7 @@ class TheArtifact(unittest.TestCase):
         self.assertEqual(self.document["method_identifier"], "M-LEX-1")
         self.assertEqual(self.document["method_version"], "1")
         self.assertEqual(self.document["contract_identifier"], "entity-discovery-v0.1")
-        self.assertEqual(self.document["contract_version"], "0.2.1")
+        self.assertEqual(self.document["contract_version"], "0.3.0")
         self.assertEqual(self.document["registry_digest"], "a" * 64)
         self.assertEqual(self.document["registry_built_at"], "2026-09-12T00:00:00Z")
         self.assertEqual(self.document["started_at"], "2026-09-12T00:00:00Z")
@@ -238,15 +240,28 @@ class OneCase(unittest.TestCase):
 
 
 class TheCommandLine(unittest.TestCase):
-    def test_it_refuses_to_run_while_section_8_3_is_reserved(self):
-        # Charter Section 9: a run over an unregistered set must not be
-        # cited, so the runner declines to produce one. Exit 2, as the
-        # Milestone 2 runner exits 2 for the same ordering rule.
+    def test_it_still_produces_no_run_now_that_a_set_is_registered(self):
+        # Section 8.3 is registered, so the reserved-set guard no longer
+        # fires and this is what the command line does next: it declines,
+        # because the registered set is not wired to a database. The
+        # registration slice registers numbers and produces none, which is
+        # the order Charter Section 9 fixes -- thresholds first, run after.
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
             self.assertEqual(main(["--artifact", "/dev/null"]), 2)
-        # Exit 2 alone does not distinguish the reserved-set refusal from the
-        # unwired-database refusal that follows it, so the reason is asserted.
+        message = stderr.getvalue()
+        self.assertIn("has not wired the registered set to a database", message)
+        self.assertNotIn("no evaluation set is registered", message)
+
+    def test_the_reserved_set_refusal_still_names_section_8_3(self):
+        # Reachable again if a later version empties the set -- Section 4.10
+        # rule 8 makes re-registration a real path -- so the refusal that
+        # guards it keeps its own assertion rather than relying on the set
+        # that currently makes it unreachable.
+        stderr = io.StringIO()
+        with unittest.mock.patch.object(runner, "REGISTERED_SET", ()):
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(main(["--artifact", "/dev/null"]), 2)
         self.assertIn("Section 8.3", stderr.getvalue())
         self.assertIn("no evaluation set is registered", stderr.getvalue())
 
