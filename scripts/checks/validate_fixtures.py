@@ -89,8 +89,15 @@ TABLES = {
 # absence is asserted rather than assumed.
 RESERVED_ABSENT = {
     "network_name": ["SAMPLE_NET_BODY"],  # FX-106 coverage_gap
-    "message_key": ["SAMPLE_MSG_ABSENT"],  # FX-107 not_found
-    "signal_key": ["SAMPLE_SIG_ABSENT"],  # FX-107 not_found
+    "message_key": [
+        "SAMPLE_MSG_ABSENT",  # FX-107 not_found
+        "SAMPLE_MSG_UNREGISTERED",  # entity-discovery-v0.1 Section 4.10 Q-NOMATCH
+    ],
+    "signal_key": [
+        "SAMPLE_SIG_ABSENT",  # FX-107 not_found
+        "SAMPLE_SIG_UNREGISTERED",  # entity-discovery-v0.1 Section 4.10 Q-NOMATCH
+        "SAMPLE_SIG_MISSING",  # entity-discovery-v0.1 Section 4.10 Q-NOMATCH
+    ],
 }
 
 

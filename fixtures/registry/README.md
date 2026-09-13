@@ -35,7 +35,19 @@ Section 8.1 registers twenty-three cases. These rows carry the ones that depend 
 | `DX-015` | `SAMPLE_MSG_DIAGNOSTIC_EVENT` and both `SAMPLE_SIG_WHEEL_SPEED_FR` occurrences are loaded and **not** approved, in snapshots that do hold approved entities — so the case is "absent from the registry", not "absent from the data". |
 | `DX-020` | `SAMPLE_ALIAS_WHEEL_SPEEDS` is asserted by `CHASSIS / REV_A / SNAP_BASE`, which is superseded. |
 
-**`DX-016` is not reachable from these rows**, and `tests/test_db_registry_fixtures.py` pins that fact rather than hiding it. Section 4.6 counts entities, not aliases, and the largest kind-in-snapshot group among the `mvp-v0.1` occurrences is five signals; eleven are needed. Reaching it takes either more `signal_occurrence` rows (a patch version of `mvp-v0.1` under its Section 10) or a fixture tree built by the test that needs it. See #141.
+## The rows the Milestone 3 evaluation set needs
+
+Six rows carry no `DX-*` case. They exist so that a set satisfying Section 4.10's authoring rules can be drawn from these files: rule 4 asks for five cases per class and rule 6 makes every case term distinct after normalization, and `Q-EXACT`, `Q-ALIAS` and `Q-COLLIDE` must each draw five terms that this registry holds. The pools were four, four and three.
+
+| Row | Pool it completes |
+| --- | --- |
+| `SAMPLE_MSG_BRAKE_STATUS`, `SAMPLE_SIG_BRAKE_PRESSURE`, `SAMPLE_SIG_CLUTCH_STATE` (the occurrences `mvp-v0.1` `0.6.1` adds) | `Q-EXACT`: a key approved in one snapshot that reaches exactly one entity at tiers 1–2 |
+| `SAMPLE_SIG_ENGINE_SPEED` and `SAMPLE_SIG_TEMPERATURE` in `POWERTRAIN / SNAP_REVISED` (occurrences already loaded) | `Q-COLLIDE`: approving them makes each key present in two snapshots |
+| `SAMPLE_ALIAS_COOLANT_TEMPERATURE` on `SAMPLE_SIG_TEMPERATURE` under `SAMPLE_MSG_ENGINE_STATUS` | `Q-ALIAS`: an alias that resolves at tier 2 an entity its own key cannot resolve, since `SAMPLE_SIG_TEMPERATURE` is `DX-005`'s two-parent collision |
+
+`Q-NOMATCH`'s five terms are names reserved as absent in [`fixtures/README.md`](../README.md), not rows here. **Nothing above registers a case or a number**: Section 8.3 stays reserved, and `tests/test_db_registry_fixtures.py` asserts pools rather than a set.
+
+**`DX-016` is not reachable from these rows**, and `tests/test_db_registry_fixtures.py` pins that fact rather than hiding it. Section 4.6 counts entities, not aliases, and the largest kind-in-snapshot group among the `mvp-v0.1` occurrences is seven signals; eleven are needed. Reaching it takes either more `signal_occurrence` rows (a patch version of `mvp-v0.1` under its Section 10) or a fixture tree built by the test that needs it. See #141.
 
 ## Checking
 

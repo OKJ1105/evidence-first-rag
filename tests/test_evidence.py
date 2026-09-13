@@ -30,7 +30,7 @@ class TheBundleCitesThisContract(unittest.TestCase):
 
     def test_the_constants_match_section_1(self):
         self.assertEqual(CONTRACT_IDENTIFIER, "mvp-v0.1")
-        self.assertEqual(CONTRACT_VERSION, "0.6.0")
+        self.assertEqual(CONTRACT_VERSION, "0.6.1")
 
     def test_the_version_constant_is_the_one_the_contract_document_declares(self):
         # The contract and the code have drifted before: 0.6.0 merged while

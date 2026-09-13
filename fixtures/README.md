@@ -46,11 +46,23 @@ Section 8.1 names sixteen cases. These files carry the eleven that depend on dat
 | `FX-107` | `SAMPLE_MSG_ABSENT` and `SAMPLE_SIG_ABSENT` appear nowhere, and snapshots exist that carry rows for them to be absent from. Both halves matter: against an empty snapshot the case cannot show that the key is what is missing rather than the data, which is the `not_found` and `coverage_gap` line Section 5 draws. Sibling snapshots are irrelevant here — a Section 4.2 canonical reference names all four scope dimensions, so a fully scoped request resolves regardless. |
 | `FX-113` | `ALPHA / REV_B / CHASSIS` holds exactly one snapshot and that snapshot is not superseded, so a request omitting `snapshot_label` has one candidate and must still return `ambiguous`. Un-superseded matters: a superseded snapshot also owes a Section 7 `limitations` entry, and a case that could fail for either reason would not say which rule was broken. `FX-105` is the two-candidate half of the same Section 4.2 rule; an implementation that passes one and fails the other has made the candidate count its threshold, which is the reading Section 4.2 rejects. |
 
-The three names above are reserved as absent. `validate_fixtures.py` fails if a later change adds one, because adding it would silently turn a negative case positive.
+The three names above are reserved as absent, and so are `SAMPLE_MSG_UNREGISTERED`, `SAMPLE_SIG_UNREGISTERED` and `SAMPLE_SIG_MISSING`, which [entity-discovery-v0.1](../docs/contracts/entity-discovery-v0.1.md) Section 4.10 needs: a `Q-NOMATCH` case registers a term that is an identifier and matches nothing at any tier, and rule 6 makes every case term distinct, so one reserved name per case. `validate_fixtures.py` holds all six and fails if a later change adds one, because adding it would silently turn a negative case positive.
+
+## The rows the Milestone 3 evaluation set needs
+
+Three occurrences carry no `FX-*` case and exist so that a set satisfying [entity-discovery-v0.1](../docs/contracts/entity-discovery-v0.1.md) Section 4.10's authoring rules can be drawn from these files. That contract's Section 4.10 rule 4 asks for five cases in each of eight classes, and rule 6 makes every case term distinct after normalization; three of the classes must draw their term from a name the approved entity registry holds, and the registered occurrences could not supply five apiece. Approving what was already loaded does not help: `SAMPLE_SIG_GEAR_POSITION` is the `DX-004` collision, and `SAMPLE_MSG_DIAGNOSTIC_EVENT` and both `SAMPLE_SIG_WHEEL_SPEED_FR` occurrences **are** `DX-015` and must stay unapproved.
+
+| Row | Why it is here |
+| --- | --- |
+| `SAMPLE_MSG_BRAKE_STATUS` in `POWERTRAIN / SNAP_BASE` | a message key that resolves uniquely in one snapshot |
+| `SAMPLE_SIG_BRAKE_PRESSURE` under it | the same for a signal, under a parent of its own |
+| `SAMPLE_SIG_CLUTCH_STATE` under `SAMPLE_MSG_TRANSMISSION_STATE` | the same for a signal sharing a parent with others, and the third null `unit_label` |
+
+`tests/test_db_registry_fixtures.py` asserts the pools these rows complete, so a later edit that shrinks one fails there rather than in the registration slice.
 
 ## Nulls
 
-`transmit_period_ms` is null on the event-mode message, and `unit_label` is null on two signals. Section 6 requires every registered template to write `NULLS LAST` explicitly rather than rely on a database default, so the fixtures have to contain nulls in orderable columns for that clause to mean anything.
+`transmit_period_ms` is null on the event-mode message, and `unit_label` is null on three signals. Section 6 requires every registered template to write `NULLS LAST` explicitly rather than rely on a database default, so the fixtures have to contain nulls in orderable columns for that clause to mean anything.
 
 ## The registry
 

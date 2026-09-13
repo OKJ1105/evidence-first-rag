@@ -65,7 +65,7 @@ def thresholds(*, run=None, **overrides):
         "registered_at": shifted(
             run.started_at if run is not None else _now(), -1
         ),
-        "contract_version": "0.6.0",
+        "contract_version": "0.6.1",
     }
     values.update(overrides)
     return Thresholds(**values)

@@ -35,6 +35,24 @@ SURROGATE_KEYS = {
 }
 
 
+def _reserved_absent():
+    """`RESERVED_ABSENT` from `scripts/checks/validate_fixtures.py`.
+
+    Loaded by path rather than imported, because `scripts/` is not a package
+    on the path. Reading it there rather than restating it here keeps one
+    list: `fixtures/README.md` says the reservation lives in the validator,
+    and a Section 4.10 `Q-NOMATCH` pool that copied the names could pass
+    while the validator no longer enforced their absence.
+    """
+    import importlib.util
+
+    path = REPOSITORY / "scripts" / "checks" / "validate_fixtures.py"
+    specification = importlib.util.spec_from_file_location("_validate_fixtures", path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module.RESERVED_ABSENT
+
+
 def _rows(table):
     path = REGISTERED / registry_fixtures.SUBDIRECTORY / f"{table}.jsonl"
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
@@ -50,8 +68,8 @@ def _walk(value):
 class TheRegisteredFilesParse(unittest.TestCase):
     def test_both_files_have_rows(self):
         parsed = registry_fixtures.read(REGISTERED)
-        self.assertEqual(len(parsed.entities), 12)
-        self.assertEqual(len(parsed.aliases), 5)
+        self.assertEqual(len(parsed.entities), 17)
+        self.assertEqual(len(parsed.aliases), 6)
 
     def test_the_two_table_names_are_section_4_2s(self):
         self.assertEqual(registry_fixtures.TABLES, ("approved_entity", "approved_alias"))
@@ -344,6 +362,130 @@ class TheRegisteredRowsKeepTheStructuralCasesReachable(unittest.TestCase):
             groups.setdefault((row.entity_kind, row.reference.scope), 0)
             groups[(row.entity_kind, row.reference.scope)] += 1
         self.assertLess(max(groups.values()), 11)
+
+
+class TheRowsCanCarryASection410EvaluationSet(unittest.TestCase):
+    """Section 4.10's authoring rules are satisfiable from these files.
+
+    Rule 4 asks for five cases in each of eight classes and rule 6, as
+    `discovery/evaluation.py` implements it, makes every case term distinct
+    after the Section 4.5 normalization. Four classes draw their term from a
+    name the registry holds, or from one reserved as absent, so those four
+    are the ones the fixture tree can make unsatisfiable. Nothing here
+    registers a case -- Section 8.3 is reserved and these are pools, not
+    sets -- but a row removed from `fixtures/` silently shrinks a pool, and a
+    class that can no longer reach five is a registration that cannot be
+    authored. These four assertions are where that is noticed.
+
+    The pools are disjoint by construction: a key approved in two snapshots
+    is `Q-COLLIDE`'s and is excluded from `Q-EXACT`'s, because one term can
+    serve only one case.
+    """
+
+    MINIMUM = 5  # discovery.evaluation.MINIMUM_PER_CLASS, Section 4.10 rule 4.
+
+    @classmethod
+    def setUpClass(cls):
+        cls.parsed = registry_fixtures.read(REGISTERED)
+        cls.mvp = fixtures.read(REGISTERED)
+
+    def key_of(self, row):
+        reference = row.reference
+        return reference.message_key if row.entity_kind == "message" else reference.signal_key
+
+    def resolving(self, text, kind, scope):
+        """The approved entities a term equal to `text` reaches at tier 1 or 2.
+
+        Section 4.5's table: tier 1 is a `lookup_key` equal byte for byte,
+        tier 2 an alias equal byte for byte. Section 4.7 resolves only when
+        the two together name exactly one entity.
+        """
+        reached = set()
+        for row in self.parsed.entities:
+            if row.entity_kind == kind and row.reference.scope == scope and self.key_of(row) == text:
+                reached.add(row.reference)
+        for alias in self.parsed.aliases:
+            if alias.entity_kind == kind and alias.reference.scope == scope and alias.alias_text == text:
+                reached.add(alias.reference)
+        return reached
+
+    def snapshots_of_each_key(self):
+        scopes = {}
+        for row in self.parsed.entities:
+            scopes.setdefault((row.entity_kind, self.key_of(row)), set()).add(row.reference.scope)
+        return scopes
+
+    def test_five_lookup_keys_can_carry_a_q_exact_case(self):
+        # A Q-EXACT case registers `resolved`, so its key must reach exactly
+        # one entity in its scope and kind. A key approved in more than one
+        # snapshot is reserved for Q-COLLIDE.
+        scopes = self.snapshots_of_each_key()
+        pool = {
+            self.key_of(row)
+            for row in self.parsed.entities
+            if len(scopes[(row.entity_kind, self.key_of(row))]) == 1
+            and len(self.resolving(self.key_of(row), row.entity_kind, row.reference.scope)) == 1
+        }
+        self.assertGreaterEqual(
+            len(pool), self.MINIMUM,
+            f"Q-EXACT can draw {sorted(pool)}; Section 4.10 rule 4 needs {self.MINIMUM}",
+        )
+
+    def test_five_lookup_keys_can_carry_a_q_collide_case(self):
+        # "A fully scoped request for a key that exists in two snapshots",
+        # registering `resolved` in the named one -- so the key must be
+        # approved in two snapshots and resolve in at least one of them.
+        pool = set()
+        for (kind, key), scopes in self.snapshots_of_each_key().items():
+            if len(scopes) < 2:
+                continue
+            if any(len(self.resolving(key, kind, scope)) == 1 for scope in scopes):
+                pool.add(key)
+        self.assertGreaterEqual(
+            len(pool), self.MINIMUM,
+            f"Q-COLLIDE can draw {sorted(pool)}; Section 4.10 rule 4 needs {self.MINIMUM}",
+        )
+
+    def test_five_alias_texts_can_carry_a_q_alias_case(self):
+        # A Q-ALIAS case registers `resolved` too, so an alias that is also
+        # another entity's lookup key -- DX-004 -- is not one of these.
+        pool = {
+            alias.alias_text
+            for alias in self.parsed.aliases
+            if len(self.resolving(alias.alias_text, alias.entity_kind, alias.reference.scope)) == 1
+        }
+        self.assertGreaterEqual(
+            len(pool), self.MINIMUM,
+            f"Q-ALIAS can draw {sorted(pool)}; Section 4.10 rule 4 needs {self.MINIMUM}",
+        )
+
+    def test_five_reserved_names_can_carry_a_q_nomatch_case(self):
+        # Rule 1 makes a Q-NOMATCH term an identifier that is "reserved
+        # [in the fixtures] as absent", and the class registers `not_found`,
+        # which needs the term to match at no tier -- including tier 4, where
+        # every token of the term must occur in some entity's match tokens.
+        # The names are read from the one place `fixtures/README.md` says
+        # reservation lives, so this test and the validator cannot disagree.
+        reserved = _reserved_absent()
+        pool = reserved.get("message_key", []) + reserved.get("signal_key", [])
+        self.assertGreaterEqual(
+            len(pool), self.MINIMUM,
+            f"Q-NOMATCH can draw {sorted(pool)}; Section 4.10 rule 4 needs {self.MINIMUM}",
+        )
+        loaded = {r.reference.message_key for r in self.mvp.messages} | {
+            r.reference.signal_key for r in self.mvp.signals
+        }
+        tokens = set()
+        for row in self.parsed.entities:
+            tokens.update(normalize(self.key_of(row)))
+        for alias in self.parsed.aliases:
+            tokens.update(normalize(alias.alias_text))
+        for name in pool:
+            self.assertNotIn(name, loaded, f"{name} is reserved as absent")
+            self.assertFalse(
+                set(normalize(name)) <= tokens,
+                f"{name} would match at tier 4; every one of its tokens is a match token",
+            )
 
 
 if __name__ == "__main__":

@@ -41,11 +41,23 @@ from .comparison import EvaluationCase, Thresholds
 
 # Section 8.3, "Thresholds". `registered_at` is the instant the owner recorded
 # the decision on #52; a run that started before it is not judged.
+#
+# `contract_version` is `0.6.0` as a literal and not `CONTRACT_VERSION`,
+# because it "names the version that registered these thresholds"
+# (`comparison.Thresholds`) -- a fact about the past, which Section 8.3 writes
+# down as `contract_version`: `0.6.0` beside `registered_at`. Wiring it to the
+# current constant made a later version silently restate the registration as
+# its own: `0.6.1` added fixture rows under Section 10 and re-dated a decision
+# it did not touch, while the committed artifact under
+# `docs/acceptance/milestone-2/` still cited `0.6.0`. Charter Section 9 makes a
+# threshold a pre-registration; a value that follows the document forward is
+# not one. The two are equal again only when a version does change these
+# numbers, and Section 8.3 says such a change takes a version of its own.
 THRESHOLDS = Thresholds(
     task_coverage=0.90,
     false_resolution=0.00,
     registered_at="2026-09-07T09:32:37Z",
-    contract_version=CONTRACT_VERSION,
+    contract_version="0.6.0",
 )
 
 # The four loaded scopes, from fixtures/source_snapshot.jsonl.

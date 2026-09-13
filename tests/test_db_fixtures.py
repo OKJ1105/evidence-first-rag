@@ -24,8 +24,8 @@ class TheRegisteredFixturesParse(unittest.TestCase):
     def test_every_table_has_rows(self):
         parsed = fixtures.read(REGISTERED)
         self.assertEqual(len(parsed.snapshots), 4)
-        self.assertEqual(len(parsed.messages), 6)
-        self.assertEqual(len(parsed.signals), 11)
+        self.assertEqual(len(parsed.messages), 7)
+        self.assertEqual(len(parsed.signals), 13)
         self.assertEqual(len(parsed.mappings), 3)
 
     def test_the_four_table_names_are_section_4_11s(self):
