@@ -7,6 +7,8 @@ at most k with its digest, no status may claim what it did not do -- so that
 the route cannot produce a result the contract forbids by any path.
 """
 
+import pathlib
+import re
 import unittest
 
 from evidence_first_rag import MessageReference, ProducingLayer, ReadOnlySafeguards, SignalReference, SnapshotScope
@@ -21,6 +23,7 @@ from evidence_first_rag.discovery import (
     DiscoveryTrace,
     K,
 )
+from evidence_first_rag.discovery.evidence import CONTRACT_IDENTIFIER, CONTRACT_VERSION
 
 SCOPE = SnapshotScope(project_code="SAMPLE_PROJECT_ALPHA", revision_label="SAMPLE_REV_A", network_name="SAMPLE_NET_POWERTRAIN", snapshot_label="SAMPLE_SNAP_BASE")
 MESSAGE = MessageReference(scope=SCOPE, message_key="SAMPLE_MSG_ENGINE_STATUS")
@@ -53,6 +56,30 @@ def executed(**overrides):
 
 def limitation(kind):
     return DiscoveryLimitation(kind=kind, detail="SAMPLE detail")
+
+
+class TheBundleCitesThisContract(unittest.TestCase):
+    """The version every discovery bundle carries is the document's.
+
+    `mvp-v0.1`'s half of this pin exists because the two drifted once --
+    `0.6.0` merged while the constant still said `0.5.0`, so every bundle
+    cited a version the document no longer carried (tests/test_evidence.py).
+    This contract's registry fixtures move under its own Section 10 as patch
+    versions, which is exactly the change that is easy to make in the files
+    and forget in the constant, so the same pin is held here.
+    """
+
+    def test_the_version_constant_is_the_one_the_contract_document_declares(self):
+        contract = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "docs" / "contracts" / "entity-discovery-v0.1.md"
+        )
+        match = re.search(r"^\*\*Version:\*\* `(\d+\.\d+\.\d+)`", contract.read_text(), re.M)
+        self.assertIsNotNone(match, "Section 1 of the contract has no **Version:** line")
+        self.assertEqual(CONTRACT_VERSION, match.group(1))
+
+    def test_the_identifier_is_section_1s(self):
+        self.assertEqual(CONTRACT_IDENTIFIER, "entity-discovery-v0.1")
 
 
 class ACandidate(unittest.TestCase):

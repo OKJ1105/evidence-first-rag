@@ -3,7 +3,7 @@
   "rows": [],
   "evidence_bundle": {
     "contract_identifier": "mvp-v0.1",
-    "contract_version": "0.6.0",
+    "contract_version": "0.6.1",
     "route": "rebuild_the_index",
     "template_name": "",
     "template_version": "",

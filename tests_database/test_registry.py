@@ -517,7 +517,7 @@ class TheDigest(unittest.TestCase):
         # that names one.
         with support.connect(DATABASE, "runtime") as connection, connection.cursor() as cursor:
             lines = registry.digest_lines(cursor)
-        self.assertEqual(len(lines), 12 + 5 + 17)
+        self.assertEqual(len(lines), 17 + 6 + 23)  # entities, aliases, match terms
         for raw in lines:
             obj = json.loads(raw)
             for key in obj:

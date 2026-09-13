@@ -36,7 +36,7 @@ SELECTION_ROUTE = "entity_selection"
 
 # entity-discovery-v0.1 Section 1.
 CONTRACT_IDENTIFIER = "entity-discovery-v0.1"
-CONTRACT_VERSION = "0.2.0"
+CONTRACT_VERSION = "0.2.1"
 
 # Section 4.9: the one registered method, and the version every result and
 # every candidate-set digest carries.

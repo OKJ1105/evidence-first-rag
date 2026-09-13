@@ -39,7 +39,7 @@ def artifact(**overrides):
         "run_identifier": "00000000-0000-0000-0000-000000000000",
         "started_at": "2026-09-04T00:00:00+00:00",
         "contract_identifier": "mvp-v0.1",
-        "contract_version": "0.6.0",
+        "contract_version": "0.6.1",
         "environment": {},
         "state_digest": {},
         "refusals": {},

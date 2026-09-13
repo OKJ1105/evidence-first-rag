@@ -21,7 +21,7 @@
   ],
   "evidence_bundle": {
     "contract_identifier": "mvp-v0.1",
-    "contract_version": "0.6.0",
+    "contract_version": "0.6.1",
     "route": "signal_facts",
     "template_name": "TPL_SIGNAL_FACTS_V1",
     "template_version": "2",

@@ -213,7 +213,15 @@ class TheThresholdsMirrorTheDocument(unittest.TestCase):
         self.assertEqual(THRESHOLDS.false_resolution, float(false_resolution.group(1)))
         self.assertEqual(THRESHOLDS.registered_at, registered_at.group(1))
         self.assertEqual(THRESHOLDS.contract_version, version.group(1))
-        self.assertEqual(THRESHOLDS.contract_version, CONTRACT_VERSION)
+        # And not the document's current version: Section 8.3's
+        # `contract_version` records which version registered these numbers,
+        # so it stays put while a later version that does not change them
+        # moves past it. The line above is the whole claim.
+        self.assertLessEqual(
+            tuple(int(p) for p in THRESHOLDS.contract_version.split(".")),
+            tuple(int(p) for p in CONTRACT_VERSION.split(".")),
+            "the thresholds cannot be registered by a version later than the document's",
+        )
 
     def test_the_composition_counts_equal_section_8_3s(self):
         section = self.section_8_3()

@@ -93,7 +93,7 @@ class FixtureCase(unittest.TestCase):
         """
         bundle = result.evidence_bundle
         self.assertEqual(bundle.contract_identifier, "mvp-v0.1")
-        self.assertEqual(bundle.contract_version, "0.6.0")
+        self.assertEqual(bundle.contract_version, "0.6.1")
         self.assertEqual(bundle.collation, "C")
         self.assertNotEqual(bundle.route, "")
         self.assertIsNotNone(result.source_trace)
