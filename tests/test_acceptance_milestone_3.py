@@ -24,6 +24,7 @@ one edited on a routed case is not.
 """
 
 import json
+import math
 import pathlib
 import unittest
 
@@ -40,6 +41,23 @@ ARTIFACT = (
     pathlib.Path(__file__).resolve().parent.parent
     / "docs" / "acceptance" / "milestone-3" / "discovery-run.json"
 )
+
+#: How far a recomputed mean may sit from the reported one, in units in the
+#: last place. `mrr` is the one reported quantity that is a mean of floats,
+#: and Python changed how `sum()` adds floats at 3.12: 3.11 and earlier fold
+#: left, 3.12 and later use Neumaier compensated summation (gh-100425). Over
+#: `Q-MULTI`'s reciprocal worst ranks -- 1/2, 1/2, 1/2, 1/3, 1/7 -- the left
+#: fold discards half a unit in the last place that the compensated sum keeps,
+#: which lands the compensated total exactly on a tie and rounds it to even:
+#: one unit above. So the committed run, produced on the pinned 3.11, and a
+#: recomputation on a later interpreter cannot be compared for bit equality,
+#: and a test that demanded it would be asserting the interpreter rather than
+#: the run. Four units covers that difference with margin and is still some
+#: fourteen orders of magnitude below the smallest edit to a reported figure
+#: that would change what a reader concludes. Every other quantity the
+#: artifact reports is a single division of counts or a measurement that was
+#: taken, so those are compared exactly.
+MEAN_TOLERANCE_ULPS = 4
 
 
 def _document() -> dict:
@@ -156,7 +174,9 @@ class TheCommittedRunIsTheRegisteredSet(unittest.TestCase):
 class TheCommittedMetricsRecomputeFromItsOwnCases(unittest.TestCase):
     """The numbers the acceptance record quotes are the artifact's own case
     records, run back through Section 4.11. An edited `metrics` block fails
-    here."""
+    here -- exactly, except for the two reported means, which are held to
+    `MEAN_TOLERANCE_ULPS` because the interpreter and not the run decides
+    their last bit."""
 
     def setUp(self):
         self.document = _document()
@@ -165,8 +185,31 @@ class TheCommittedMetricsRecomputeFromItsOwnCases(unittest.TestCase):
     def _compare(self, recomputed, reported, where):
         # Latency included. It is derived -- median and nearest-rank p95 over
         # the per-case measurements -- so recomputing it catches an edited
-        # `latency_seconds`, which excluding it would not.
-        self.assertEqual(recomputed.as_json(), reported, where)
+        # `latency_seconds`, which excluding it would not. `mrr` is compared
+        # separately and not for bit equality, for the reason
+        # `MEAN_TOLERANCE_ULPS` states; every other field here is exact.
+        computed = recomputed.as_json()
+        self.assertIn("mrr", reported, where)
+        self.assertEqual(
+            {name: value for name, value in computed.items() if name != "mrr"},
+            {name: value for name, value in reported.items() if name != "mrr"},
+            where,
+        )
+        self._compare_mean(computed["mrr"], reported["mrr"], f"{where} mrr")
+
+    def _compare_mean(self, recomputed, reported, where):
+        """A reported mean, to within `MEAN_TOLERANCE_ULPS`.
+
+        A `None` is not a number and is compared as itself: a class with no
+        denominator reports `null`, and a float standing where that `null`
+        belongs is an edit, not a rounding difference.
+        """
+        if recomputed is None or reported is None:
+            self.assertEqual(recomputed, reported, where)
+            return
+        self.assertLessEqual(
+            abs(recomputed - reported), MEAN_TOLERANCE_ULPS * math.ulp(reported), where
+        )
 
     def test_the_overall_numbers_recompute(self):
         self._compare(compute(self.outcomes), self.document["metrics"]["overall"], "overall")
