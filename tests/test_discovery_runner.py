@@ -362,6 +362,39 @@ class TheFixtureProvenanceTheRunRecords(unittest.TestCase):
         )
 
 
+class TheOneSerialisation(unittest.TestCase):
+    """`artifact_text` is what `main` writes and what it prints.
+
+    One function rather than two call sites, because an acceptance record
+    taken from the job log has to be the file. The byte-for-byte comparison
+    over a real run lives in `tests_database/test_discovery_runner.py`, where
+    a run can happen; these assert the properties that comparison relies on.
+    """
+
+    DOCUMENT = {"run_id": "a", "judgement": {"judged": True}, "cases": [{"identifier": "EV-EXACT-1"}]}
+
+    def test_it_ends_with_exactly_one_newline(self):
+        # `main` prints it with `end=""`, so the trailing newline in the file
+        # is the one that separates the document from whatever the log writes
+        # next. Two would put a blank line in the committed record.
+        text = runner.artifact_text(self.DOCUMENT)
+        self.assertTrue(text.endswith("}\n"))
+        self.assertFalse(text.endswith("\n\n"))
+
+    def test_it_round_trips(self):
+        self.assertEqual(json.loads(runner.artifact_text(self.DOCUMENT)), self.DOCUMENT)
+
+    def test_it_keeps_the_document_s_own_key_order(self):
+        # Not sorted: the artifact leads with run_id, started_at and the
+        # contract identifiers, which is the order a reader of the committed
+        # record meets them in.
+        text = runner.artifact_text(self.DOCUMENT)
+        self.assertLess(text.index('"run_id"'), text.index('"judgement"'))
+
+    def test_it_is_indented_so_a_committed_record_is_readable_in_a_diff(self):
+        self.assertIn('\n  "run_id": "a"', runner.artifact_text(self.DOCUMENT))
+
+
 class TheCommandLine(unittest.TestCase):
     # The wired path needs a database and is asserted in
     # tests_database/test_discovery_runner.py, against the registry the set

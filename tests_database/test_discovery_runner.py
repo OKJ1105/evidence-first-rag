@@ -21,6 +21,8 @@ Q-OUT name different entities again. That is the rule working, not a defect
 in it: two cases with one text measure the same retrieval twice.
 """
 
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -335,10 +337,30 @@ class TheCommandLineAgainstARealDatabase(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as directory:
             artifact = pathlib.Path(directory) / "run.json"
+            printed = io.StringIO()
             with unittest.mock.patch.dict(os.environ, {"MVP_RUNTIME_USER": "mvp_runtime"}):
-                code = main(["--database", DATABASE, "--artifact", str(artifact)])
-            document = json.loads(artifact.read_text()) if artifact.exists() else None
+                with contextlib.redirect_stdout(printed):
+                    code = main(["--database", DATABASE, "--artifact", str(artifact)])
+            # Read as text, not parsed: the acceptance record is committed as
+            # bytes taken from the log, so the comparison below has to be one.
+            self.written = artifact.read_text() if artifact.exists() else None
+            self.printed = printed.getvalue()
+            document = json.loads(self.written) if self.written is not None else None
         return code, document
+
+    def assert_the_log_carries_the_artifact(self):
+        """#117: the document follows the summary on stdout, byte for byte.
+
+        Compared as text rather than as parsed JSON. Two documents that parse
+        equal can differ in key order, indentation and trailing newline, and
+        the acceptance record commits the bytes -- a reader checking the
+        committed file against the job log compares characters.
+        """
+        self.assertIsNotNone(self.written)
+        summary, _, rest = self.printed.partition("\n")
+        self.assertIn("Discovery run: judged=", summary)
+        self.assertEqual(rest[-len(self.written):], self.written)
+        self.assertTrue(rest.endswith(self.written))
 
     def test_the_run_names_the_fixtures_it_executed_against(self):
         """Section 7: "the fixture provenance that actually exists".
@@ -388,6 +410,14 @@ class TheCommandLineAgainstARealDatabase(unittest.TestCase):
             result.source_trace.fixture_provenance, FIXTURE_PROVENANCE
         )
 
+    def test_a_judged_run_prints_the_document_it_wrote(self):
+        # The Milestone 3 artifact expires with the Actions run that produced
+        # it, and the writer environment is refused the blob host it is
+        # served from, so the job log is where the acceptance record comes
+        # from. Milestone 2's record says exactly that of its own.
+        self.run_main()
+        self.assert_the_log_carries_the_artifact()
+
     def test_a_judged_run_exits_zero_and_writes_the_artifact(self):
         code, document = self.run_main()
         self.assertEqual(code, 0)
@@ -407,6 +437,10 @@ class TheCommandLineAgainstARealDatabase(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertFalse(document["judgement"]["judged"])
         self.assertFalse(document["judgement"]["adoptable"])
+        # An unjudged run is still one a reader may inspect: the exit code
+        # says it must not be cited, not that it must not be read. Same
+        # reason `milestone-3-run.yml` uploads with `if: always()`.
+        self.assert_the_log_carries_the_artifact()
 
 
 if __name__ == "__main__":

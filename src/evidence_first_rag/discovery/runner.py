@@ -240,6 +240,17 @@ def perform(cases, *, discovery, selection, registry_state, started_at=None, run
     }
 
 
+def artifact_text(document: dict) -> str:
+    """The one serialisation of a document: what `main` writes and prints.
+
+    One function rather than two call sites, so the bytes in the artifact and
+    the bytes in the job log cannot drift apart -- an acceptance record taken
+    from the log has to be the file. `adapter/run.py` carries the same helper
+    for the same reason.
+    """
+    return json.dumps(document, indent=2) + "\n"
+
+
 def main(argv=None) -> int:
     """Open a database, run the registered set, judge it, write the artifact.
 
@@ -304,7 +315,7 @@ def main(argv=None) -> int:
         selection=Selection(database=database, fixture_provenance=FIXTURE_PROVENANCE),
         registry_state=registry_state,
     )
-    arguments.artifact.write_text(json.dumps(document, indent=2) + "\n")
+    arguments.artifact.write_text(artifact_text(document))
 
     judgement = document["judgement"]
     print(
@@ -313,6 +324,21 @@ def main(argv=None) -> int:
     )
     for reason in judgement["reasons"]:
         print(f"  {reason}")
+    # #117, for the same reason `adapter/run.py` does it: the document
+    # follows the summary on stdout, so a run can be read from its job log by
+    # a reader who cannot download the artifact. The Milestone 3 artifact
+    # expires with the Actions run that produced it, and the acceptance
+    # record is drafted from these bytes.
+    #
+    # Printed on the unjudged path too. The exit code says a run must not be
+    # cited; it does not say nobody may read it, which is why
+    # `milestone-3-run.yml` uploads with `if: always()`.
+    #
+    # There is nothing to hold back. `adapter/run.py` prints the main
+    # document only, because its raw record carries model text the SAMPLE_*
+    # convention cannot vouch for; this run invokes no model and writes no
+    # second document.
+    print(artifact_text(document), end="")
     # 0 when the run was judged, adoptable or not; 2 when it was not, because
     # an unjudged run must not be cited and a red job is how that is said.
     return 0 if judgement["judged"] else 2
