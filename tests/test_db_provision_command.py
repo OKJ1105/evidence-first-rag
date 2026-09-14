@@ -80,10 +80,6 @@ class TheRolesScriptReadsItsPasswordsFromTheEnvironment(unittest.TestCase):
                 self.assertNotIn('PASSWORD "', text)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class ThisSuiteRunsWithoutTheDriver(unittest.TestCase):
     """The repository-checks job installs neither the package nor psycopg.
 
@@ -124,3 +120,7 @@ class ThisSuiteRunsWithoutTheDriver(unittest.TestCase):
             sys.modules["psycopg"] = None
             with self.assertRaises(ImportError):
                 importlib.import_module("evidence_first_rag.db.provision")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
