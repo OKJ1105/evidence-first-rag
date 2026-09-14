@@ -102,53 +102,52 @@ def discover(session, request: ValidatedDiscovery, fixture_provenance: tuple[str
     same code the `entity_discovery` route runs, not a second implementation
     that could drift from it.
     """
-    if True:
-        safeguards = ReadOnlySafeguards(
-            role_name=session.role_name,
-            read_only_transaction=session.read_only_transaction,
-            connection_opened=True,
+    safeguards = ReadOnlySafeguards(
+        role_name=session.role_name,
+        read_only_transaction=session.read_only_transaction,
+        connection_opened=True,
+    )
+    # Section 4.3: the mvp-v0.1 candidate query, "exactly as it
+    # stands", on every request, complete scope included -- it is
+    # what tells coverage_gap from not_found.
+    candidates_template = get(CANDIDATES_TEMPLATE)
+    found = session.execute(candidates_template, request.scope_arguments)
+    scopes = tuple(
+        SnapshotScope(**{name: row[name] for name in SCOPE_DIMENSIONS}) for row in found.rows
+    )
+    if not scopes:
+        return _coverage_gap(request, safeguards, found, candidates_template, fixture_provenance)
+    if not request.scope_is_complete:
+        return _ambiguous(request, safeguards, found, scopes, candidates_template, fixture_provenance)
+    if len(scopes) != 1:
+        raise DataFault(
+            f"a complete scope matched {len(scopes)} snapshots; mvp-v0.1 Section 4.1"
+            f" makes the four dimensions unique"
         )
-        # Section 4.3: the mvp-v0.1 candidate query, "exactly as it
-        # stands", on every request, complete scope included -- it is
-        # what tells coverage_gap from not_found.
-        candidates_template = get(CANDIDATES_TEMPLATE)
-        found = session.execute(candidates_template, request.scope_arguments)
-        scopes = tuple(
-            SnapshotScope(**{name: row[name] for name in SCOPE_DIMENSIONS}) for row in found.rows
+    scope = scopes[0]
+
+    state = session.execute(get(STATE_TEMPLATE), {})
+    if len(state.rows) != 1:
+        raise DataFault(
+            f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
+            f" exactly one after provisioning"
         )
-        if not scopes:
-            return _coverage_gap(request, safeguards, found, candidates_template, fixture_provenance)
-        if not request.scope_is_complete:
-            return _ambiguous(request, safeguards, found, scopes, candidates_template, fixture_provenance)
-        if len(scopes) != 1:
-            raise DataFault(
-                f"a complete scope matched {len(scopes)} snapshots; mvp-v0.1 Section 4.1"
-                f" makes the four dimensions unique"
-            )
-        scope = scopes[0]
+    registry_digest = state.rows[0]["registry_digest"]
+    registry_built_at = _timestamp(state.rows[0]["built_at"])
 
-        state = session.execute(get(STATE_TEMPLATE), {})
-        if len(state.rows) != 1:
-            raise DataFault(
-                f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
-                f" exactly one after provisioning"
-            )
-        registry_digest = state.rows[0]["registry_digest"]
-        registry_built_at = _timestamp(state.rows[0]["built_at"])
-
-        # Section 4.9 M-LEX-1: exact for tiers 1 and 2, then lexical for
-        # tiers 3 and 4 when E(T) is empty.
-        template = get(EXACT_TEMPLATE)
-        run = session.execute(template, dict(request.arguments))
-        if not run.rows:
-            template = get(LEXICAL_TEMPLATE)
-            run = session.execute(
-                template,
-                {
-                    **{k: v for k, v in request.arguments.items() if k != "term"},
-                    "normalized_term": list(request.normalized_term),
-                },
-            )
+    # Section 4.9 M-LEX-1: exact for tiers 1 and 2, then lexical for
+    # tiers 3 and 4 when E(T) is empty.
+    template = get(EXACT_TEMPLATE)
+    run = session.execute(template, dict(request.arguments))
+    if not run.rows:
+        template = get(LEXICAL_TEMPLATE)
+        run = session.execute(
+            template,
+            {
+                **{k: v for k, v in request.arguments.items() if k != "term"},
+                "normalized_term": list(request.normalized_term),
+            },
+        )
 
     return _decide(request, safeguards, scope, registry_digest, registry_built_at, template, run, fixture_provenance)
 

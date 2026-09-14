@@ -4,8 +4,6 @@ import pathlib
 import re
 import unittest
 
-from .support import closed_safeguards
-
 from evidence_first_rag import (
     COLLATION,
     CONTRACT_IDENTIFIER,
@@ -19,7 +17,7 @@ from evidence_first_rag import (
     SourceTrace,
 )
 
-from .support import executed_bundle, scope, unexecuted_bundle
+from .support import closed_safeguards, executed_bundle, scope, unexecuted_bundle
 
 
 class TheBundleCitesThisContract(unittest.TestCase):
@@ -226,10 +224,6 @@ class TheLimitationEntries(unittest.TestCase):
             LimitationKind("probably_fine")
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class TheDispatchedSelectionAdditions(unittest.TestCase):
     """entity-discovery-v0.1 Section 3.3 extension 3 and Section 4.8: three
     optional fields this contract's own routes never set. Default-empty, so
@@ -262,3 +256,7 @@ class TheDispatchedSelectionAdditions(unittest.TestCase):
         with self.assertRaises(TypeError):
             bundle.selection["discovery_bound_parameters"]["term"] = "SAMPLE_OTHER"
         self.assertEqual(bundle.selection["discovery_bound_parameters"]["term"], "SAMPLE_TERM")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
