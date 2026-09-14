@@ -111,12 +111,22 @@ class TheArtifact(unittest.TestCase):
         self.assertIsInstance(self.document["operational_complexity"], str)
         self.assertIn("no dependency", self.document["operational_complexity"])
 
-    def test_no_verdict_appears_anywhere(self):
-        # The runner never adopts: Section 8.3 registers no thresholds yet,
-        # and adoption is a recorded human decision in any case.
+    def test_it_judges_and_still_adopts_nothing(self):
+        # The premise of this test's earlier form -- "Section 8.3 registers
+        # no thresholds yet" -- stopped holding at 0.3.0, so the claim is
+        # sharpened rather than dropped. The artifact now says whether the
+        # numbers cleared bars set in advance, which is what `adoptable`
+        # means in `adapter/run.py`'s Milestone 2 artifact too; what it must
+        # never say is that anything was adopted, because Section 8's row
+        # keeps that a recorded human decision taken after the run.
+        judgement = self.document["judgement"]
+        self.assertIsInstance(judgement["adoptable"], bool)
+        self.assertIsInstance(judgement["judged"], bool)
         text = json.dumps(self.document).lower()
-        for word in ("adopt", "threshold", "pass", "verdict"):
+        for word in ("adopted", "adoption", "verdict"):
             self.assertNotIn(word, text)
+        # And the only "adopt" in the document is the judgement's own key.
+        self.assertEqual(text.count("adopt"), 1)
 
     def test_the_authoring_failures_of_the_set_are_recorded(self):
         # A run over a set that breaks an authoring rule says so in its own
@@ -240,18 +250,27 @@ class OneCase(unittest.TestCase):
 
 
 class TheCommandLine(unittest.TestCase):
-    def test_it_still_produces_no_run_now_that_a_set_is_registered(self):
-        # Section 8.3 is registered, so the reserved-set guard no longer
-        # fires and this is what the command line does next: it declines,
-        # because the registered set is not wired to a database. The
-        # registration slice registers numbers and produces none, which is
-        # the order Charter Section 9 fixes -- thresholds first, run after.
+    # The wired path needs a database and is asserted in
+    # tests_database/test_discovery_runner.py, against the registry the set
+    # was authored against. What belongs here is the refusal that must work
+    # without one.
+
+    def test_the_reserved_set_refusal_opens_no_database(self):
+        # A refusal that needed a connection would turn "no set is
+        # registered" into "no database is reachable" wherever one is
+        # missing, and Charter Section 9's rule would be reported as an
+        # environment problem. The guard therefore comes before the
+        # connection, and this asserts the order by making a connection
+        # fatal.
+        def refuse(*arguments, **keywords):
+            raise AssertionError("the reserved-set refusal opened a database")
+
         stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr):
-            self.assertEqual(main(["--artifact", "/dev/null"]), 2)
-        message = stderr.getvalue()
-        self.assertIn("has not wired the registered set to a database", message)
-        self.assertNotIn("no evaluation set is registered", message)
+        with unittest.mock.patch.object(runner, "REGISTERED_SET", ()), \
+                unittest.mock.patch("evidence_first_rag.runtime.connection.PsycopgDatabase", refuse):
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(main(["--artifact", "/dev/null"]), 2)
+        self.assertIn("no evaluation set is registered", stderr.getvalue())
 
     def test_the_reserved_set_refusal_still_names_section_8_3(self):
         # Reachable again if a later version empties the set -- Section 4.10

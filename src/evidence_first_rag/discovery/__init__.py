@@ -34,6 +34,7 @@ from .evidence import (
     DiscoveryLimitationKind,
     DiscoveryTrace,
 )
+from .judgement import Judgement, judge
 from .metrics import CaseOutcome, Metrics, compute, per_class
 from .normalize import normalize
 from .request import DiscoveryRefusal, DiscoveryRequest, ValidatedDiscovery, validate
@@ -61,6 +62,7 @@ __all__ = [
     "DiscoveryStatus",
     "DiscoveryTrace",
     "EvaluationCase",
+    "Judgement",
     "K",
     "METHOD_IDENTIFIER",
     "METHOD_VERSION",
@@ -75,6 +77,7 @@ __all__ = [
     "candidate_set_id",
     "canonical_json",
     "compute",
+    "judge",
     "normalize",
     "per_class",
     "sha256_hex",

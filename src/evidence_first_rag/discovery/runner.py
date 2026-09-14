@@ -8,15 +8,22 @@ case with its request, its registered expectation and its observed result,
 computes the Section 4.11 metrics per class and over the set, and writes one
 JSON document. It never prints "adopt".
 
-**The command exits 2 and writes nothing.** Two guards stand in front of
-it. The first refuses when no set is registered: Charter Section 9 says a
-metric without a pre-registered pass condition satisfies no gate, so a run
-over an unregistered set must not be cited. Section 8.3 registered the set
-at `0.3.0`, so that guard no longer fires, and the second one does -- the
-registered set is not wired to a database. Opening that connection, driving
-`perform` over `REGISTERED_SET` and judging the result against the Section
-8.3 thresholds is the wiring slice, which is not this file yet. `perform`
-is what that slice, and the tests, drive with cases in hand.
+The artifact carries a **judgement** (`judgement.py`) and no verdict: whether
+the run cleared the conditions Section 8.3 registered, and the reasons it did
+not. `adoptable` there does not adopt -- Section 8's row keeps adoption a
+recorded human decision taken after the run.
+
+**The command still refuses when no set is registered**, which Section 4.10
+rule 8 keeps reachable: Charter Section 9 says a metric without a
+pre-registered pass condition satisfies no gate, so a run over an
+unregistered set must not be cited. **Exit 0 when the run was judged**,
+adoptable or not, **and 2 when it was not** -- an unjudged run must not be
+cited, and a red job is how that is said. `adapter/run.py` uses the same two
+codes for the same rule.
+
+`perform` is pure with respect to the database: `discovery` and `selection`
+arrive as arguments, so the tests drive it with cases in hand and `main`
+drives it with a connection.
 
 Section 4.9's exception -- a method under comparison re-runs under itself --
 is honoured by construction: one `Discovery` and one `Selection` serve a
@@ -34,6 +41,7 @@ import uuid
 from ..status import Status
 from .evaluation import REGISTERED_SET, EvaluationCase, authoring_failures
 from .evidence import CONTRACT_IDENTIFIER, CONTRACT_VERSION, METHOD_IDENTIFIER, METHOD_VERSION
+from .judgement import judge
 from .metrics import CaseOutcome, compute, per_class
 from .request import DiscoveryRequest
 from .selection import SelectionRequest
@@ -172,9 +180,16 @@ def perform(cases, *, discovery, selection, registry_state, started_at=None, run
         outcome, record = observe(case, discovery, selection, clock)
         outcomes.append(outcome)
         records.append(record)
+    started = started_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    classes = per_class(outcomes)
+    judgement = judge(
+        outcomes, classes,
+        started_at=started,
+        observed_digest=registry_state["registry_digest"],
+    )
     return {
         "run_id": run_id or str(uuid.uuid4()),
-        "started_at": started_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "started_at": started,
         "contract_identifier": CONTRACT_IDENTIFIER,
         "contract_version": CONTRACT_VERSION,
         "method_identifier": METHOD_IDENTIFIER,
@@ -185,8 +200,12 @@ def perform(cases, *, discovery, selection, registry_state, started_at=None, run
         "cases": records,
         "metrics": {
             "overall": compute(outcomes).as_json(),
-            "per_class": {name: metrics.as_json() for name, metrics in per_class(outcomes).items()},
+            "per_class": {name: metrics.as_json() for name, metrics in classes.items()},
         },
+        # Section 8.3: whether the run cleared the registered conditions, and
+        # why not. Never a verdict -- `adoptable` is a statement about
+        # numbers, and Section 8 keeps adoption a person's.
+        "judgement": judgement.as_json(),
         # Section 4.11: not a number. Recorded for the owner to weigh.
         "operational_complexity": (
             "M-LEX-1 adds no dependency, service, provisioning step, index, or"
@@ -197,9 +216,29 @@ def perform(cases, *, discovery, selection, registry_state, started_at=None, run
 
 
 def main(argv=None) -> int:
+    """Open a database, run the registered set, judge it, write the artifact.
+
+    The connection is opened as `conformance/runner.py` opens one: the
+    runtime identity from the environment, so the run is performed by the
+    read-only role the contract fixes and not by whoever invoked it. The
+    registry state comes from `TPL_REGISTRY_STATE_V1` through the same
+    session -- a registered template, per Section 4.4, rather than ad-hoc
+    SQL -- so the digest the artifact records is one a registered template
+    returned.
+    """
+    import os
+
+    from ..runtime.connection import PsycopgDatabase
+    from ..registry import get
+    from .request import STATE_TEMPLATE
+    from .service import Discovery, _timestamp
+    from .selection import Selection
+
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--artifact", type=pathlib.Path, default=DEFAULT_ARTIFACT)
-    parser.parse_args(argv)
+    parser.add_argument("--database", default=os.environ.get("MVP_DATABASE", "mvp"))
+    arguments = parser.parse_args(argv)
+
     if not REGISTERED_SET:
         sys.stderr.write(
             "no evaluation set is registered: entity-discovery-v0.1 Section 8.3 registers"
@@ -207,11 +246,46 @@ def main(argv=None) -> int:
             " (Charter Section 9)\n"
         )
         return 2
-    # The wiring slice completes this: open the database, read the registry
-    # state, drive perform() over REGISTERED_SET, judge the metrics against
-    # the Section 8.3 thresholds, and write the artifact.
-    sys.stderr.write("the registration slice has not wired the registered set to a database\n")
-    return 2
+
+    database = PsycopgDatabase(connection_parameters={
+        "dbname": arguments.database,
+        "user": os.environ.get("MVP_RUNTIME_USER", "mvp_runtime"),
+        "password": os.environ.get("MVP_RUNTIME_PASSWORD"),
+        "host": os.environ.get("PGHOST"),
+        "port": os.environ.get("PGPORT"),
+    })
+
+    with database.session() as session:
+        state = session.execute(get(STATE_TEMPLATE), {})
+    if len(state.rows) != 1:
+        sys.stderr.write(
+            f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
+            f" exactly one after provisioning\n"
+        )
+        return 2
+    registry_state = {
+        "registry_digest": state.rows[0]["registry_digest"],
+        "registry_built_at": _timestamp(state.rows[0]["built_at"]),
+    }
+
+    document = perform(
+        REGISTERED_SET,
+        discovery=Discovery(database=database),
+        selection=Selection(database=database),
+        registry_state=registry_state,
+    )
+    arguments.artifact.write_text(json.dumps(document, indent=2) + "\n")
+
+    judgement = document["judgement"]
+    print(
+        f"Discovery run: judged={judgement['judged']}"
+        f" adoptable={judgement['adoptable']}  ->  {arguments.artifact}"
+    )
+    for reason in judgement["reasons"]:
+        print(f"  {reason}")
+    # 0 when the run was judged, adoptable or not; 2 when it was not, because
+    # an unjudged run must not be cited and a red job is how that is said.
+    return 0 if judgement["judged"] else 2
 
 
 if __name__ == "__main__":
