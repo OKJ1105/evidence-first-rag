@@ -165,54 +165,68 @@ def judge(
         registered_set = REGISTERED_SET
 
     outcomes = tuple(outcomes)
-    if not thresholds:
+    registered_bars = (
+        {name: bars.as_json() for name, bars in thresholds.items()} if thresholds else None
+    )
+
+    def refuse(reason: str) -> Judgement:
+        """A refusal that records what it did observe.
+
+        Every refusal below goes through this rather than calling
+        `_unjudged` with its own subset, because two of them used to record
+        neither the registry they ran against nor the registration they were
+        measured by, although both were in hand -- so a reader of a failed
+        run learned nothing about either, and the artifact answered the same
+        question differently depending on which refusal fired. Passing the
+        three here rather than at each site means a refusal added later
+        cannot forget them.
+        """
         return _unjudged(
+            reason,
+            registered_at=registered_at,
+            registry_digest=observed_digest,
+            thresholds=registered_bars,
+        )
+
+    if not thresholds:
+        return refuse(
             "no registered thresholds; Charter Section 9 does not let a metric"
             " without a pass condition satisfy a gate"
         )
-    registered_bars = {name: bars.as_json() for name, bars in thresholds.items()}
     if not outcomes:
-        return _unjudged(
+        return refuse(
             "the run observed no case; there is nothing for the Section 8.3"
-            " thresholds to judge",
-            registered_at=registered_at, thresholds=registered_bars,
+            " thresholds to judge"
         )
     if registered_at is None:
-        return _unjudged("the registration records no `registered_at`")
+        return refuse("the registration records no `registered_at`")
     if _instant(registered_at, "registered_at") >= _instant(started_at, "started_at"):
-        return _unjudged(
+        return refuse(
             f"the registration is recorded at {registered_at}, which is not before"
             f" this run at {started_at}; Charter Section 9 requires a threshold to"
-            f" be registered before the run it judges",
-            registered_at=registered_at, thresholds=registered_bars,
+            f" be registered before the run it judges"
         )
     if registered_digest and observed_digest != registered_digest:
-        return _unjudged(
+        return refuse(
             f"the run executed against registry {observed_digest}, and the set was"
             f" authored against {registered_digest}; Section 4.10 rule 8 makes a"
-            f" registry change a re-registration, not a run over this set",
-            registered_at=registered_at, registry_digest=observed_digest,
-            thresholds=registered_bars,
+            f" registry change a re-registration, not a run over this set"
         )
     judged_cases = tuple(outcome.case for outcome in outcomes)
     difference = _set_difference(judged_cases, registered_set)
     if difference:
-        return _unjudged(
+        return refuse(
             f"the run judged a set that is not the one Section 8.3 registers"
             f" ({difference}); Charter Section 9 registers the task definitions"
             f" before the run, so numbers over another set are measured by"
-            f" nothing",
-            registered_at=registered_at, registry_digest=observed_digest,
-            thresholds=registered_bars,
+            f" nothing"
         )
     if authoring_failures is _REGISTERED:
         authoring_failures = _failures_of(judged_cases)
     if authoring_failures:
-        return _unjudged(
+        return refuse(
             f"the set the run ran breaks Section 4.10's authoring rules, so it is"
-            f" not a registrable set: {'; '.join(authoring_failures)}",
-            registered_at=registered_at, registry_digest=observed_digest,
-            thresholds=registered_bars,
+            f" not a registrable set: {'; '.join(authoring_failures)}"
         )
 
     reasons = []

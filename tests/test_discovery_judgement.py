@@ -189,6 +189,72 @@ class TheRefusalsThatComeBeforeAnyNumber(unittest.TestCase):
                 self.assertFalse(judgement.adoptable)
 
 
+class EveryRefusalRecordsWhatItObserved(unittest.TestCase):
+    """A refusal says which registry the run executed against, and which
+    registration it was measured by.
+
+    Two of them did not. With `thresholds={}` or a registration carrying no
+    `registered_at`, the artifact read
+    `{"judged": false, "registered_at": null, "registry_digest": null,
+    "thresholds": null}` while `observed_digest` had been in hand all along
+    -- so a reader of a failed run learned nothing about the registry it ran
+    against, and the artifact answered the same question differently
+    depending on which refusal fired. The assertions are written over *every*
+    refusal rather than the two that were wrong, because the defect was one
+    of construction: each site recorded its own subset, and nothing said they
+    had to agree.
+    """
+
+    #: One trigger per refusal `judge` can return, named by what it refuses.
+    REFUSALS = {
+        "no registered thresholds": {"thresholds": {}},
+        "no case observed": {"outcomes": ()},
+        "no registered_at": {"registered_at": None},
+        "not registered before the run": {"started_at": BEFORE},
+        "another registry": {"observed_digest": "0" * 64},
+        "another set": {"outcomes": "first-eight", "authoring_failures": []},
+        "an authoring rule broken": {"authoring_failures": ["EV-EXACT-1: identifier registered twice"]},
+    }
+
+    def refusals(self):
+        for name, overrides in self.REFUSALS.items():
+            overrides = dict(overrides)
+            outcomes = overrides.pop("outcomes", "registered")
+            if outcomes == "registered":
+                outcomes = perfect()
+            elif outcomes == "first-eight":
+                outcomes = perfect(REGISTERED_SET[:8])
+            yield name, overrides, judged(outcomes, **overrides)
+
+    def test_every_refusal_is_a_refusal(self):
+        # The triggers above have to actually refuse, or the assertions below
+        # would pass vacuously on a judgement that was never unjudged.
+        for name, _, judgement in self.refusals():
+            with self.subTest(refusal=name):
+                self.assertFalse(judgement.judged)
+                self.assertFalse(judgement.adoptable)
+                self.assertEqual(len(judgement.reasons), 1)
+
+    def test_every_refusal_records_the_registry_it_observed(self):
+        for name, overrides, judgement in self.refusals():
+            with self.subTest(refusal=name):
+                self.assertEqual(judgement.registry_digest, overrides.get("observed_digest", DIGEST))
+
+    def test_every_refusal_records_the_registration_it_was_measured_by(self):
+        for name, overrides, judgement in self.refusals():
+            with self.subTest(refusal=name):
+                # `registered_at` is None only where the registration
+                # genuinely carries none -- which is what that refusal says.
+                self.assertEqual(judgement.registered_at, overrides.get("registered_at", REGISTERED_AT))
+                if overrides.get("thresholds") == {}:
+                    # There are no bars to name, and `None` says so; the
+                    # reason line carries the rest.
+                    self.assertIsNone(judgement.thresholds)
+                else:
+                    self.assertIsNotNone(judgement.thresholds)
+                    self.assertEqual(sorted(judgement.thresholds), sorted(THRESHOLDS))
+
+
 class TheConditionsSection83Registers(unittest.TestCase):
     def test_a_floor_that_is_missed_is_named(self):
         # A Q-EXACT case that did not resolve: recall and task_completion

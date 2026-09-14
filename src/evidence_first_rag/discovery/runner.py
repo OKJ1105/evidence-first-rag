@@ -39,6 +39,7 @@ import sys
 import time
 import uuid
 
+from ..conformance.runner import FIXTURE_PROVENANCE as FACT_FIXTURE_PROVENANCE
 from ..status import Status
 from .evaluation import REGISTERED_SET, EvaluationCase, authoring_failures
 from .evidence import CONTRACT_IDENTIFIER, CONTRACT_VERSION, METHOD_IDENTIFIER, METHOD_VERSION
@@ -49,6 +50,18 @@ from .selection import SelectionRequest
 from .status import DiscoveryStatus
 
 DEFAULT_ARTIFACT = pathlib.Path("milestone-3-discovery-run.json")
+
+# Section 7 asks for "the fixture provenance that actually exists", and
+# `conformance/runner.py` states why the runner is the layer that can supply
+# it: only what provisioned the database knows what it was loaded from. A
+# discovery run reads both trees -- the registry the discovery templates
+# resolve against, and the fact fixtures the dispatched `mvp-v0.1` routes
+# read -- so it names both. The fact half is imported rather than retyped,
+# so a change there cannot leave this list describing a tree that has moved.
+FIXTURE_PROVENANCE = FACT_FIXTURE_PROVENANCE + (
+    "fixtures/registry/approved_entity.jsonl",
+    "fixtures/registry/approved_alias.jsonl",
+)
 
 
 def _reference_json(reference) -> dict | None:
@@ -287,8 +300,8 @@ def main(argv=None) -> int:
 
     document = perform(
         REGISTERED_SET,
-        discovery=Discovery(database=database),
-        selection=Selection(database=database),
+        discovery=Discovery(database=database, fixture_provenance=FIXTURE_PROVENANCE),
+        selection=Selection(database=database, fixture_provenance=FIXTURE_PROVENANCE),
         registry_state=registry_state,
     )
     arguments.artifact.write_text(json.dumps(document, indent=2) + "\n")
