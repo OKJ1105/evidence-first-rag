@@ -21,12 +21,18 @@ Q-OUT name different entities again. That is the rule working, not a defect
 in it: two cases with one text measure the same retrieval twice.
 """
 
+import json
 import os
+import pathlib
+import tempfile
 import unittest
+import unittest.mock
 
 from evidence_first_rag import MessageReference, Route, SignalReference, SnapshotScope
-from evidence_first_rag.discovery import Discovery, EvaluationCase, Selection
-from evidence_first_rag.discovery.runner import perform
+from evidence_first_rag.discovery import REGISTERED_SET, Discovery, EvaluationCase, Selection
+from evidence_first_rag.discovery.evaluation import REGISTERED_AGAINST_DIGEST, THRESHOLDS
+from evidence_first_rag.discovery import runner as runner_module
+from evidence_first_rag.discovery.runner import main, perform
 from evidence_first_rag.runtime.connection import PsycopgDatabase
 
 from . import support
@@ -145,7 +151,6 @@ class ARunOverTheRegisteredFixtures(unittest.TestCase):
             selection=Selection(database=db),
             registry_state=registry_state(),
             run_id="SAMPLE_RUN",
-            started_at="2026-09-12T00:00:00Z",
         )
         cls.by_identifier = {record["identifier"]: record for record in cls.document["cases"]}
 
@@ -234,6 +239,121 @@ class ARunOverTheRegisteredFixtures(unittest.TestCase):
         # And nothing else: every term is distinct after normalization
         # (rule 6) and every identifier is SAMPLE_* (rule 1).
         self.assertFalse([failure for failure in failures if "rule 4" not in failure])
+
+    def test_these_numbers_are_judged_by_nothing_because_nobody_registered_them(self):
+        # The run above is recent, executes against the registry the
+        # registration names, and clears every bar in Section 8.3 -- and is
+        # still not judged, because these eight cases are this file's and not
+        # the registered forty. Charter Section 9 registers the task
+        # definitions before the run, so a set a run chose for itself is
+        # measured by nothing however well it scores.
+        judgement = self.document["judgement"]
+        self.assertFalse(judgement["judged"])
+        self.assertFalse(judgement["adoptable"])
+        self.assertIn("not the one Section 8.3 registers", judgement["reasons"][0])
+
+
+class TheRegisteredSetAgainstTheRegisteredFixtures(unittest.TestCase):
+    """Section 8.3's forty cases, through the registered templates, judged.
+
+    The class above drives cases this file authors, to prove the runner
+    records what it observed. This one drives the **registered** set against
+    the registry it was authored against, which is the run the Milestone 3
+    gate is about. It asserts the shape and the judgement, not a
+    hand-written expected number per class: the numbers are what Section
+    4.11 computes, and re-stating them here would be a second copy to drift
+    rather than a check.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        db = database()
+        cls.state = registry_state()
+        cls.document = perform(
+            REGISTERED_SET,
+            discovery=Discovery(database=db),
+            selection=Selection(database=db),
+            registry_state=cls.state,
+        )
+        cls.judgement = cls.document["judgement"]
+
+    def test_the_registry_is_the_one_the_set_was_authored_against(self):
+        # Section 8.3 item 2, and Section 4.10 rule 8: if these ever differ,
+        # the judgement below is about a different registry and the run is
+        # not a run over this set.
+        self.assertEqual(self.state["registry_digest"], REGISTERED_AGAINST_DIGEST)
+
+    def test_every_case_ran_and_the_set_breaks_no_authoring_rule(self):
+        self.assertEqual(len(self.document["cases"]), len(REGISTERED_SET))
+        self.assertEqual(self.document["authoring_failures"], [])
+
+    def test_the_run_is_judged_because_the_registration_precedes_it(self):
+        self.assertTrue(self.judgement["judged"], self.judgement["reasons"])
+        self.assertLess(self.judgement["registered_at"], self.document["started_at"])
+
+    def test_every_registered_class_is_measured(self):
+        self.assertEqual(sorted(self.document["metrics"]["per_class"]), sorted(THRESHOLDS))
+
+    def test_a_cell_the_registration_gives_no_denominator_is_null(self):
+        # Section 8.3: a number there is a defect. Asserted over the real
+        # run rather than only in the judge, so the metrics and the
+        # registration cannot disagree unnoticed.
+        for name, registered in THRESHOLDS.items():
+            measured = self.document["metrics"]["per_class"][name]
+            flat = {k: v for k, v in measured.items() if k != "recall_at_k"} | measured["recall_at_k"]
+            for field, bar in registered.as_json().items():
+                if bar == "no denominator":
+                    with self.subTest(query_class=name, quantity=field):
+                        self.assertIsNone(flat[field])
+
+    def test_m_lex_1_clears_the_registered_conditions(self):
+        # Not a foregone conclusion, and not the point of the test: what is
+        # asserted is that the judge reached a verdict on real numbers and
+        # said why if it refused. Section 8 keeps adoption a person's, so a
+        # true here adopts nothing.
+        self.assertEqual(self.judgement["reasons"], [])
+        self.assertTrue(self.judgement["adoptable"])
+
+
+class TheCommandLineAgainstARealDatabase(unittest.TestCase):
+    """The two exit codes, which no test without a database can reach.
+
+    `adapter/run.py` uses the same pair for the same rule: 0 when the run was
+    judged, adoptable or not, and 2 when it was not. An unjudged run must not
+    be cited, and a red job is how that is said -- so the code has to be
+    wrong in the safe direction, and that is only checkable where a run can
+    actually happen.
+    """
+
+    def run_main(self, **patches):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = pathlib.Path(directory) / "run.json"
+            with unittest.mock.patch.dict(os.environ, {"MVP_RUNTIME_USER": "mvp_runtime"}):
+                with unittest.mock.patch.multiple(runner_module, **patches) if patches \
+                        else unittest.mock.patch.object(runner_module, "REGISTERED_SET", REGISTERED_SET):
+                    code = main(["--database", DATABASE, "--artifact", str(artifact)])
+            document = json.loads(artifact.read_text()) if artifact.exists() else None
+        return code, document
+
+    def test_a_judged_run_exits_zero_and_writes_the_artifact(self):
+        code, document = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertTrue(document["judgement"]["judged"])
+        self.assertEqual(len(document["cases"]), len(REGISTERED_SET))
+
+    def test_an_unjudged_run_exits_two(self):
+        # A registration recorded after the run is not a pre-registration,
+        # whatever the document says (Charter Section 9). The run still
+        # happens and the artifact is still written -- it is inspectable --
+        # but the command says, in its exit code, that nothing here may be
+        # cited.
+        from evidence_first_rag.discovery import judgement as judgement_module
+
+        with unittest.mock.patch.object(judgement_module, "REGISTERED_AT", "2099-01-01T00:00:00Z"):
+            code, document = self.run_main()
+        self.assertEqual(code, 2)
+        self.assertFalse(document["judgement"]["judged"])
+        self.assertFalse(document["judgement"]["adoptable"])
 
 
 if __name__ == "__main__":

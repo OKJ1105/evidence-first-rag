@@ -65,9 +65,9 @@ The table below says how much of the contract executes today, section by section
 | 5, 7 Outcomes and evidence (discovery) | Seven statuses, never `success`; both contracts' identities, alias provenance, the required limitations | Implemented |
 | 4.9 Retrieval methods | `M-LEX-1`, exact then lexical, recorded on every result | Implemented |
 | 4.10 The evaluation set | The case type, the eight classes, the authoring rules a program can check, and the run artifact | Implemented |
-| 4.10 The registered cases | The set itself, and `N` | Registered — forty cases, five per class, Section 8.3 at `0.3.0` |
+| 4.10 The registered cases | The set itself, and `N` | Registered — forty cases, five per class, Section 8.3 at `0.3.1` |
 | 4.11 Metric definitions | `recall_at_k`, `mrr`, `false_resolution`, `correct_abstention`, `over_abstention`, `task_completion`, `latency`, per class and over the set | Implemented |
-| 8.3 Adoption thresholds | The numbers each adopted method must meet | Registered — per class, Section 8.3 at `0.3.0`; no run yet |
+| 8.3 Adoption thresholds | The numbers each adopted method must meet | Registered — per class, Section 8.3 at `0.3.1`; the runner judges against them |
 
 The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges all sixteen registered fixture cases against a committed expected result and writes one artifact carrying its verdict. Provisioning, the data-level invariant check and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
 
