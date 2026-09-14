@@ -9,6 +9,8 @@ registered fixtures is `tests_database/test_discovery_runner.py`.
 import contextlib
 import io
 import json
+import sys
+import types
 import unittest
 import unittest.mock
 
@@ -255,19 +257,33 @@ class TheCommandLine(unittest.TestCase):
     # was authored against. What belongs here is the refusal that must work
     # without one.
 
-    def test_the_reserved_set_refusal_opens_no_database(self):
-        # A refusal that needed a connection would turn "no set is
-        # registered" into "no database is reachable" wherever one is
-        # missing, and Charter Section 9's rule would be reported as an
-        # environment problem. The guard therefore comes before the
-        # connection, and this asserts the order by making a connection
-        # fatal.
-        def refuse(*arguments, **keywords):
-            raise AssertionError("the reserved-set refusal opened a database")
+    def test_the_reserved_set_refusal_reaches_no_driver(self):
+        # A refusal that needed a connection -- or only the module that
+        # imports the driver -- would turn "no set is registered" into "no
+        # database is reachable" wherever one is missing, and Charter Section
+        # 9's rule would be reported as an environment problem. The guard
+        # therefore comes before both, and this asserts the order by making
+        # reaching `runtime.connection` at all fatal.
+        #
+        # The stand-in goes into `sys.modules` rather than being patched by
+        # name: `runtime.connection` imports psycopg at module scope and is
+        # deliberately unreachable from `runtime/__init__.py`, so naming its
+        # attribute would import it, and a test that could only run with the
+        # driver installed could not assert the thing at issue.
+        def refuse(name):
+            if name.startswith("__"):
+                # The import machinery's own lookups, which are not the
+                # runner reaching for a connection.
+                raise AttributeError(name)
+            raise AssertionError(f"the reserved-set refusal reached the driver ({name})")
+
+        stand_in = types.ModuleType("evidence_first_rag.runtime.connection")
+        stand_in.__getattr__ = refuse
 
         stderr = io.StringIO()
         with unittest.mock.patch.object(runner, "REGISTERED_SET", ()), \
-                unittest.mock.patch("evidence_first_rag.runtime.connection.PsycopgDatabase", refuse):
+                unittest.mock.patch.dict(
+                    sys.modules, {"evidence_first_rag.runtime.connection": stand_in}):
             with contextlib.redirect_stderr(stderr):
                 self.assertEqual(main(["--artifact", "/dev/null"]), 2)
         self.assertIn("no evaluation set is registered", stderr.getvalue())

@@ -19,10 +19,12 @@ from .evaluation import (
     NotABar,
     REGISTERED_AGAINST_DIGEST,
     REGISTERED_AT,
+    REGISTERED_SET,
     THRESHOLDS,
     NO_DENOMINATOR,
     rank_bound_violations,
 )
+from .evaluation import authoring_failures as _failures_of
 
 
 #: "the caller said nothing", distinct from a caller who passed None or an
@@ -82,21 +84,52 @@ def _unjudged(reason: str, *, registered_at=None, registry_digest=None, threshol
     )
 
 
+def _set_difference(cases, registered) -> str:
+    """How the judged cases differ from the registered ones, or "" when they
+    do not. Named per case rather than counted, so a refusal says which case
+    is not the registered one."""
+    cases = tuple(cases)
+    registered_by_identifier = {case.identifier: case for case in registered}
+    judged_by_identifier = {case.identifier: case for case in cases}
+    differences = []
+    absent = sorted(set(registered_by_identifier) - set(judged_by_identifier))
+    unregistered = sorted(set(judged_by_identifier) - set(registered_by_identifier))
+    altered = sorted(
+        identifier for identifier, case in judged_by_identifier.items()
+        if identifier in registered_by_identifier and case != registered_by_identifier[identifier]
+    )
+    if len(judged_by_identifier) != len(cases):
+        differences.append("an identifier was judged twice")
+    if absent:
+        differences.append(f"registered but not judged: {', '.join(absent)}")
+    if unregistered:
+        differences.append(f"judged but not registered: {', '.join(unregistered)}")
+    if altered:
+        differences.append(f"judged with arguments or expectations the registration does not"
+                           f" carry: {', '.join(altered)}")
+    return "; ".join(differences)
+
+
 def judge(
     outcomes,
     per_class,
     *,
     started_at: str,
     observed_digest: str,
+    authoring_failures=_REGISTERED,
     thresholds=_REGISTERED,
     registered_at: str | None = _REGISTERED,
     registered_digest: str | None = _REGISTERED,
+    registered_set=_REGISTERED,
 ) -> Judgement:
     """Judge one run against the Section 8.3 registration.
 
-    `per_class` is what `metrics.per_class` returned for this run. Three
-    refusals come before any number is compared, and each is a rule rather
-    than a safety margin:
+    `per_class` is what `metrics.per_class` returned for this run, and
+    `authoring_failures` what `evaluation.authoring_failures` returned over
+    the cases it ran; the run computes both, and passing them in keeps the
+    judgement about the run that happened rather than about a recomputation
+    of it. Five refusals come before any number is compared, and each is a
+    rule rather than a safety margin:
 
     - **No registered thresholds.** Charter Section 9: reporting a metric
       without a pre-registered pass condition does not satisfy a gate.
@@ -107,6 +140,15 @@ def judge(
       makes the recorded digest how a registry change that alters a
       registered case's outcome is detected; a run against another registry
       is not a run over this set, and its numbers are about something else.
+    - **Cases that are not the registered ones.** Section 8.3 sets its
+      conditions "over the set above", and Charter Section 9 registers the
+      task definitions before the run and not only the numbers. A set the
+      registration does not carry can be built to clear any bar, so its
+      numbers are judged by nothing.
+    - **A set that breaks a Section 4.10 authoring rule.** The set the run
+      ran is then not a registrable one, and `perform` already records the
+      violations in the same artifact; a judgement that ignored them would
+      report numbers as if the set were sound.
 
     Then every condition Section 8.3 registers, per class: the numeric bars,
     with the `CEILINGS` compared as upper bounds and the rest as floors; and
@@ -119,6 +161,8 @@ def judge(
         registered_at = REGISTERED_AT
     if registered_digest is _REGISTERED:
         registered_digest = REGISTERED_AGAINST_DIGEST
+    if registered_set is _REGISTERED:
+        registered_set = REGISTERED_SET
 
     outcomes = tuple(outcomes)
     if not thresholds:
@@ -147,6 +191,26 @@ def judge(
             f"the run executed against registry {observed_digest}, and the set was"
             f" authored against {registered_digest}; Section 4.10 rule 8 makes a"
             f" registry change a re-registration, not a run over this set",
+            registered_at=registered_at, registry_digest=observed_digest,
+            thresholds=registered_bars,
+        )
+    judged_cases = tuple(outcome.case for outcome in outcomes)
+    difference = _set_difference(judged_cases, registered_set)
+    if difference:
+        return _unjudged(
+            f"the run judged a set that is not the one Section 8.3 registers"
+            f" ({difference}); Charter Section 9 registers the task definitions"
+            f" before the run, so numbers over another set are measured by"
+            f" nothing",
+            registered_at=registered_at, registry_digest=observed_digest,
+            thresholds=registered_bars,
+        )
+    if authoring_failures is _REGISTERED:
+        authoring_failures = _failures_of(judged_cases)
+    if authoring_failures:
+        return _unjudged(
+            f"the set the run ran breaks Section 4.10's authoring rules, so it is"
+            f" not a registrable set: {'; '.join(authoring_failures)}",
             registered_at=registered_at, registry_digest=observed_digest,
             thresholds=registered_bars,
         )

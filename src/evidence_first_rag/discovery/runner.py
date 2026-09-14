@@ -33,6 +33,7 @@ run, and both are built for one method. Only `M-LEX-1` exists to drive.
 import argparse
 import datetime
 import json
+import os
 import pathlib
 import sys
 import time
@@ -186,6 +187,10 @@ def perform(cases, *, discovery, selection, registry_state, started_at=None, run
         outcomes, classes,
         started_at=started,
         observed_digest=registry_state["registry_digest"],
+        # The violations this run recorded, not a second computation of
+        # them: the artifact's `authoring_failures` and its judgement are
+        # then the same statement about the same set.
+        authoring_failures=failures,
     )
     return {
         "run_id": run_id or str(uuid.uuid4()),
@@ -226,14 +231,6 @@ def main(argv=None) -> int:
     SQL -- so the digest the artifact records is one a registered template
     returned.
     """
-    import os
-
-    from ..runtime.connection import PsycopgDatabase
-    from ..registry import get
-    from .request import STATE_TEMPLATE
-    from .service import Discovery, _timestamp
-    from .selection import Selection
-
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--artifact", type=pathlib.Path, default=DEFAULT_ARTIFACT)
     parser.add_argument("--database", default=os.environ.get("MVP_DATABASE", "mvp"))
@@ -246,6 +243,19 @@ def main(argv=None) -> int:
             " (Charter Section 9)\n"
         )
         return 2
+
+    # Deferred until after the refusal above, and not merely for tidiness:
+    # `runtime/connection.py` imports the psycopg driver at module scope and
+    # is deliberately not reachable from `runtime/__init__.py`, so that
+    # `tests/` runs from a clean checkout with neither the driver nor a
+    # database. Importing it before the guard would report "no evaluation set
+    # is registered" as a missing driver wherever one is absent, turning a
+    # Charter Section 9 refusal into an environment problem.
+    from ..runtime.connection import PsycopgDatabase
+    from ..registry import get
+    from .request import STATE_TEMPLATE
+    from .service import Discovery, _timestamp
+    from .selection import Selection
 
     database = PsycopgDatabase(connection_parameters={
         "dbname": arguments.database,

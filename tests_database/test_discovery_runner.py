@@ -151,7 +151,6 @@ class ARunOverTheRegisteredFixtures(unittest.TestCase):
             selection=Selection(database=db),
             registry_state=registry_state(),
             run_id="SAMPLE_RUN",
-            started_at="2026-09-12T00:00:00Z",
         )
         cls.by_identifier = {record["identifier"]: record for record in cls.document["cases"]}
 
@@ -240,6 +239,18 @@ class ARunOverTheRegisteredFixtures(unittest.TestCase):
         # And nothing else: every term is distinct after normalization
         # (rule 6) and every identifier is SAMPLE_* (rule 1).
         self.assertFalse([failure for failure in failures if "rule 4" not in failure])
+
+    def test_these_numbers_are_judged_by_nothing_because_nobody_registered_them(self):
+        # The run above is recent, executes against the registry the
+        # registration names, and clears every bar in Section 8.3 -- and is
+        # still not judged, because these eight cases are this file's and not
+        # the registered forty. Charter Section 9 registers the task
+        # definitions before the run, so a set a run chose for itself is
+        # measured by nothing however well it scores.
+        judgement = self.document["judgement"]
+        self.assertFalse(judgement["judged"])
+        self.assertFalse(judgement["adoptable"])
+        self.assertIn("not the one Section 8.3 registers", judgement["reasons"][0])
 
 
 class TheRegisteredSetAgainstTheRegisteredFixtures(unittest.TestCase):

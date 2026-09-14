@@ -7,6 +7,7 @@ these assertions is that the registered conditions bite on the registered
 cases.
 """
 
+import dataclasses
 import unittest
 
 from evidence_first_rag import MessageReference, SnapshotScope
@@ -70,9 +71,9 @@ def perfect(cases=REGISTERED_SET, *, ranks=None):
     return tuple(outcomes)
 
 
-def judged(outcomes, **overrides):
+def judged(outcomes, classes=None, **overrides):
     return judge(
-        outcomes, per_class(outcomes),
+        outcomes, per_class(outcomes) if classes is None else classes,
         started_at=overrides.pop("started_at", AFTER),
         observed_digest=overrides.pop("observed_digest", DIGEST),
         **overrides,
@@ -107,7 +108,7 @@ class ARunThatDoesWhatTheRegistrationExpects(unittest.TestCase):
         self.assertIn("Q-SEMANTIC.recall_at_1", " ".join(below.reasons))
 
 
-class TheThreeRefusalsThatComeBeforeAnyNumber(unittest.TestCase):
+class TheRefusalsThatComeBeforeAnyNumber(unittest.TestCase):
     def test_no_registered_thresholds_is_not_a_pass(self):
         judgement = judged(perfect(), thresholds={})
         self.assertFalse(judgement.judged)
@@ -124,11 +125,64 @@ class TheThreeRefusalsThatComeBeforeAnyNumber(unittest.TestCase):
         self.assertFalse(judgement.judged)
         self.assertIn("Section 4.10 rule 8", judgement.reasons[0])
 
+    def test_a_run_over_another_set_is_not_judged_however_well_it_scores(self):
+        # Section 8.3 sets its conditions "over the set above", and Charter
+        # Section 9 registers the task definitions before the run, not only
+        # the numbers. This set clears every bar the registration carries --
+        # one case per class, each doing exactly what its class expects, no
+        # rank bound violated -- and is still measured by nothing, because
+        # nobody registered these cases. Without this refusal a run that
+        # chose its own questions could be cited as having cleared the
+        # Milestone 3 gate.
+        chosen = tuple(
+            next(case for case in REGISTERED_SET if case.query_class == name)
+            for name in sorted({case.query_class for case in REGISTERED_SET})
+        )
+        judgement = judged(perfect(chosen), registered_set=chosen, authoring_failures=[])
+        self.assertTrue(judgement.judged, judgement.reasons)
+        self.assertTrue(judgement.adoptable)
+
+        judgement = judged(perfect(chosen), authoring_failures=[])
+        self.assertFalse(judgement.judged)
+        self.assertFalse(judgement.adoptable)
+        self.assertIn("not the one Section 8.3 registers", judgement.reasons[0])
+        self.assertIn("registered but not judged: EV-ALIAS-2", judgement.reasons[0])
+
+    def test_a_case_the_registration_does_not_carry_is_not_the_registered_case(self):
+        # The identifiers can agree while the questions do not: a set that
+        # reuses a registered identifier for an easier request is not the
+        # registered set either, and comparing names alone would not see it.
+        cases = list(REGISTERED_SET)
+        index = next(i for i, case in enumerate(cases) if case.identifier == "EV-NOMATCH-1")
+        cases[index] = dataclasses.replace(
+            cases[index], arguments=dict(cases[index].arguments) | {"term": "SAMPLE_MSG_ABSENT_TOO"},
+        )
+        judgement = judged(perfect(tuple(cases)), authoring_failures=[])
+        self.assertFalse(judgement.judged)
+        self.assertIn("the registration does not carry: EV-NOMATCH-1", judgement.reasons[0])
+
+    def test_a_set_that_breaks_an_authoring_rule_is_not_a_registrable_set(self):
+        # `perform` records the Section 4.10 violations in the same artifact.
+        # A judgement that reported numbers beside them would be saying the
+        # set was sound and not sound in one document.
+        judgement = judged(perfect(), authoring_failures=["EV-EXACT-1: identifier registered twice"])
+        self.assertFalse(judgement.judged)
+        self.assertFalse(judgement.adoptable)
+        self.assertIn("Section 4.10's authoring rules", judgement.reasons[0])
+
+    def test_the_registered_set_breaks_no_authoring_rule_so_the_run_is_judged(self):
+        # The mirror of the test above, and the reason the refusal costs the
+        # registered run nothing: judged with the failures left to the judge
+        # to compute over the cases it was given.
+        self.assertTrue(judged(perfect()).judged)
+
     def test_an_unjudged_run_is_never_adoptable(self):
         for judgement in (
             judged(perfect(), thresholds={}),
             judged(perfect(), started_at=BEFORE),
             judged(perfect(), observed_digest="0" * 64),
+            judged(perfect(REGISTERED_SET[:8]), authoring_failures=[]),
+            judged(perfect(), authoring_failures=["EV-EXACT-1: identifier registered twice"]),
             judged(()),
         ):
             with self.subTest(reason=judgement.reasons[0][:40]):
@@ -207,8 +261,13 @@ class TheConditionsSection83Registers(unittest.TestCase):
         )
 
     def test_a_class_the_run_never_reported_is_not_silently_cleared(self):
-        outcomes = tuple(o for o in perfect() if o.case.query_class != "Q-NOMATCH")
-        judgement = judged(outcomes)
+        # The run observed every registered case and its metrics document is
+        # missing a class. A judge that walked the classes reported rather
+        # than the classes registered would clear Q-NOMATCH's bars without
+        # evaluating one of them.
+        outcomes = perfect()
+        measured = {name: m for name, m in per_class(outcomes).items() if name != "Q-NOMATCH"}
+        judgement = judged(outcomes, measured)
         self.assertIn("Q-NOMATCH: the run reports no metrics for a registered class", judgement.reasons)
         self.assertFalse(judgement.adoptable)
 
