@@ -10,13 +10,16 @@ import contextlib
 import datetime
 import io
 import json
+import pathlib
 import sys
 import types
 import unittest
 import unittest.mock
 
 from evidence_first_rag import MessageReference, Route, SignalReference, SnapshotScope
+from evidence_first_rag.conformance.runner import FIXTURE_PROVENANCE as FACT_FIXTURE_PROVENANCE
 from evidence_first_rag.discovery import Discovery, EvaluationCase, Selection
+from evidence_first_rag.discovery.request import DiscoveryRequest
 from evidence_first_rag.discovery import runner
 from evidence_first_rag.discovery.runner import DEFAULT_ARTIFACT, main, observe, perform
 
@@ -307,6 +310,56 @@ class OneCase(unittest.TestCase):
         )
         self.assertEqual(outcome.ranked, ((ENGINE, 1),))
         self.assertEqual(outcome.resolved_reference, ENGINE)
+
+
+class TheFixtureProvenanceTheRunRecords(unittest.TestCase):
+    """Section 7 asks for "the fixture provenance that actually exists".
+
+    The runner is the layer that can supply it -- only what provisioned the
+    database knows what it was loaded from -- and `conformance/runner.py`
+    says so in the comment above its own constant. This one names two trees
+    because a discovery run reads two: the registry the discovery templates
+    resolve against, and the fact fixtures the dispatched `mvp-v0.1` routes
+    read.
+    """
+
+    def test_every_named_file_exists(self):
+        # A provenance that names a file the tree no longer holds describes
+        # a database nobody provisioned. Checked against the working tree
+        # rather than against a second list, which would only restate it.
+        root = pathlib.Path(__file__).resolve().parent.parent
+        for name in runner.FIXTURE_PROVENANCE:
+            with self.subTest(name=name):
+                self.assertTrue((root / name).is_file(), name)
+
+    def test_it_names_both_trees(self):
+        self.assertEqual(
+            sorted(runner.FIXTURE_PROVENANCE),
+            sorted(FACT_FIXTURE_PROVENANCE + (
+                "fixtures/registry/approved_alias.jsonl",
+                "fixtures/registry/approved_entity.jsonl",
+            )),
+        )
+
+    def test_the_fact_half_is_the_conformance_runner_s_own_list(self):
+        # Imported, not retyped: a change to the fact fixtures cannot leave
+        # this list describing a tree that has moved.
+        for name in FACT_FIXTURE_PROVENANCE:
+            self.assertIn(name, runner.FIXTURE_PROVENANCE)
+
+    def test_a_result_carries_it_into_its_source_trace(self):
+        # The obligation is on the results, not on the constant. Driven
+        # through `Discovery` as `main` builds it.
+        service = Discovery(
+            database=database(exact=(discovery_row(),)),
+            fixture_provenance=runner.FIXTURE_PROVENANCE,
+        )
+        result = service.execute(DiscoveryRequest(
+            arguments=dict(case("Q-1", "Q-EXACT", "SAMPLE_MSG_ENGINE_STATUS").arguments)
+        ))
+        self.assertEqual(
+            result.source_trace.fixture_provenance, runner.FIXTURE_PROVENANCE
+        )
 
 
 class TheCommandLine(unittest.TestCase):

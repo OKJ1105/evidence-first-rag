@@ -31,8 +31,8 @@ import unittest.mock
 from evidence_first_rag import MessageReference, Route, SignalReference, SnapshotScope
 from evidence_first_rag.discovery import REGISTERED_SET, Discovery, EvaluationCase, Selection
 from evidence_first_rag.discovery.evaluation import REGISTERED_AGAINST_DIGEST, THRESHOLDS
-from evidence_first_rag.discovery import runner as runner_module
-from evidence_first_rag.discovery.runner import main, perform
+from evidence_first_rag.discovery.request import DiscoveryRequest
+from evidence_first_rag.discovery.runner import FIXTURE_PROVENANCE, main, perform
 from evidence_first_rag.runtime.connection import PsycopgDatabase
 
 from . import support
@@ -325,15 +325,68 @@ class TheCommandLineAgainstARealDatabase(unittest.TestCase):
     actually happen.
     """
 
-    def run_main(self, **patches):
+    def run_main(self):
+        """`main` over the registered set, with the artifact thrown away.
+
+        It patches nothing on `runner_module`: `main` reads `REGISTERED_SET`
+        itself, and a caller that needs a different registration patches the
+        constant that decides it at its own call site, as
+        `test_an_unjudged_run_exits_two` does.
+        """
         with tempfile.TemporaryDirectory() as directory:
             artifact = pathlib.Path(directory) / "run.json"
             with unittest.mock.patch.dict(os.environ, {"MVP_RUNTIME_USER": "mvp_runtime"}):
-                with unittest.mock.patch.multiple(runner_module, **patches) if patches \
-                        else unittest.mock.patch.object(runner_module, "REGISTERED_SET", REGISTERED_SET):
-                    code = main(["--database", DATABASE, "--artifact", str(artifact)])
+                code = main(["--database", DATABASE, "--artifact", str(artifact)])
             document = json.loads(artifact.read_text()) if artifact.exists() else None
         return code, document
+
+    def test_the_run_names_the_fixtures_it_executed_against(self):
+        """Section 7: "the fixture provenance that actually exists".
+
+        `main` built `Discovery` and `Selection` with no provenance, so
+        every result the recorded run produced -- and every `mvp-v0.1`
+        result `task_completion` dispatched through them -- described no
+        fixtures at all. Nothing false was published, because the Section
+        4.10 artifact serializes no `source_trace`; the obligation was unmet
+        on results that were then discarded. Asserted on what `main` hands
+        the two services, because that is what every result in the run
+        inherits.
+        """
+        from evidence_first_rag.discovery import selection as selection_module
+        from evidence_first_rag.discovery import service as service_module
+
+        seen = {}
+
+        def recorder(name, real):
+            def build(**arguments):
+                seen[name] = arguments.get("fixture_provenance", ())
+                return real(**arguments)
+            return build
+
+        with unittest.mock.patch.object(
+            service_module, "Discovery", recorder("discovery", Discovery)
+        ), unittest.mock.patch.object(
+            selection_module, "Selection", recorder("selection", Selection)
+        ):
+            code, _ = self.run_main()
+
+        self.assertEqual(code, 0)
+        self.assertEqual(seen["discovery"], FIXTURE_PROVENANCE)
+        self.assertEqual(seen["selection"], FIXTURE_PROVENANCE)
+
+    def test_a_result_from_that_run_carries_the_provenance(self):
+        # The constant reaching the constructor is not the obligation; a
+        # result describing the fixtures is. Driven over the real database
+        # as `main` drives it.
+        service = Discovery(
+            database=database(), fixture_provenance=FIXTURE_PROVENANCE
+        )
+        case = next(c for c in REGISTERED_SET if c.expected_outcome == "resolved")
+        result = service.execute(DiscoveryRequest(arguments=dict(case.arguments)))
+        self.assertEqual(result.status.value, "resolved")
+        self.assertEqual(
+            result.source_trace.fixture_provenance, FIXTURE_PROVENANCE
+        )
 
     def test_a_judged_run_exits_zero_and_writes_the_artifact(self):
         code, document = self.run_main()
