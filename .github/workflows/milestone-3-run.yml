@@ -1,0 +1,128 @@
+# The Section 4.10 run over the registered evaluation set, judged against
+# Section 8.3, run once, on purpose, by a person.
+#
+# Dispatch only. Never on push, pull_request, or a schedule: Charter Section
+# 9's ordering -- thresholds registered before the run they judge -- is a
+# deliberate act that should carry a person's name, not a side effect of a
+# push. Issue #162 records the owner's decision to add this workflow.
+#
+# The job mirrors `database-checks` in repository-checks.yml, which is
+# already the reference for "a determinism claim anyone can re-run": the same
+# postgres:17 service container, the same job-scoped non-secret passwords,
+# the same provisioning.
+#
+# **Three ways this differs from milestone-2-comparison.yml**, which is the
+# workflow it is modelled on. Each one is a simplification, and they are
+# named here so a reader arriving from that file does not look for what is
+# missing:
+#
+#   1. It holds no credential. No `secrets:`, no ANTHROPIC_API_KEY, no
+#      `[adapter]` extra. Milestone 3's method is M-LEX-1, which runs
+#      entirely in the database as the read-only runtime identity; Charter
+#      Section 3.1 keeps the model outside the path that produces facts, and
+#      here there is no model in the repository's path at all.
+#   2. It spends nothing. Milestone 2's "every run spends money" is not a
+#      reason that applies. Dispatch-only survives it on the Charter Section
+#      9 reason alone -- which is the reason that was doing the work.
+#   3. One artifact, not two. Milestone 2 uploads its `.raw.json` separately
+#      and never commits it, because raw model text is exactly what the
+#      SAMPLE_* convention cannot vouch for. This run emits no model text:
+#      the artifact holds registered requests, observed statuses, references,
+#      digests and the Section 4.11 metrics, all derived from SAMPLE_*
+#      fixtures.
+#
+# The artifact is uploaded so it gets off the runner; Actions artifacts
+# expire, so the acceptance record commits it. It adopts nothing: Section 8's
+# row keeps adoption a recorded human decision taken after the run.
+name: Milestone 3 run
+
+on:
+  workflow_dispatch:
+
+# Nothing by default, and the one job below takes only what `actions/checkout`
+# needs. Set this way round rather than as a single `contents: read` at the
+# top: the effective grant is identical while there is one job, but a second
+# job added later would inherit that grant instead of starting from zero.
+permissions: {}
+
+jobs:
+  run:
+    name: run
+    runs-on: ubuntu-latest
+
+    permissions:
+      # `actions/checkout` reads the repository. `actions/upload-artifact@v4`
+      # needs no scope beyond it, and the job writes nothing back.
+      contents: read
+
+    services:
+      postgres:
+        # Section 3.4 pins PostgreSQL at the major version; any patch release
+        # satisfies the contract.
+        image: postgres:17
+        env:
+          # Not a secret. This password reaches a container that exists only
+          # for this job, listens on the runner's loopback, and is destroyed
+          # with it.
+          POSTGRES_PASSWORD: ci_superuser_not_a_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: ci_superuser_not_a_secret
+      MVP_PROVISIONING_PASSWORD: ci_provisioning_not_a_secret
+      MVP_RUNTIME_PASSWORD: ci_runtime_not_a_secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      # Installs the package and the one runtime dependency the schema slice
+      # chose, from pyproject.toml, so the dependency list is the single
+      # source of truth rather than a command line that can drift from it.
+      # No extra: the adapter extra is how someone opts into the model SDK,
+      # and nothing in this run touches it.
+      - name: Install the package
+        run: python -m pip install --quiet -e .
+
+      - name: Provision the schema, the roles, and the fixtures
+        run: python -m evidence_first_rag.db.provision --recreate
+
+      # The runner connects as the read-only runtime identity, reads the
+      # registry state through the registered TPL_REGISTRY_STATE_V1, drives
+      # the forty registered cases, and judges the result against the
+      # Section 8.3 registration.
+      #
+      # It exits 0 when the run was judged, adoptable or not, and 2 when it
+      # was not -- no registered thresholds, a registration that is not
+      # strictly before the run, a registry other than the one the set was
+      # authored against, a set that is not the registered forty, or a set
+      # that breaks a Section 4.10 authoring rule. An unjudged run must not
+      # be cited, and a red job is how that is said, so there is deliberately
+      # no `continue-on-error` here: a failed job is the correct outcome.
+      - name: Run the registered set once
+        run: python -m evidence_first_rag.discovery.runner --artifact milestone-3-discovery-run.json
+
+      # `if: always()` so an unjudged run's document is still inspectable --
+      # the exit code says it must not be cited, not that nobody may read it.
+      #
+      # This is what the acceptance record commits to `docs/acceptance/`.
+      - name: Upload the artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: milestone-3-discovery-run
+          path: milestone-3-discovery-run.json
+          retention-days: 90
+          if-no-files-found: error
