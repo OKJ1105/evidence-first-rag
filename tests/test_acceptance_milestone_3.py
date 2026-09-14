@@ -26,13 +26,15 @@ one edited on a routed case is not.
 import json
 import math
 import pathlib
+import re
 import unittest
 
-from evidence_first_rag.discovery import CaseOutcome, compute, per_class
+from evidence_first_rag.discovery import METHOD_IDENTIFIER, CaseOutcome, compute, per_class
 from evidence_first_rag.discovery.evaluation import (
     REGISTERED_AGAINST_DIGEST,
     REGISTERED_AT,
     REGISTERED_SET,
+    SAMPLE,
     THRESHOLDS,
     rank_bound_violations,
 )
@@ -41,6 +43,13 @@ ARTIFACT = (
     pathlib.Path(__file__).resolve().parent.parent
     / "docs" / "acceptance" / "milestone-3" / "discovery-run.json"
 )
+
+#: A name in the artifact text: a run of identifier characters that starts
+#: where a word starts. The leading `\b` keeps the `T` and `Z` of an ISO
+#: timestamp out -- each is preceded by a digit, so neither begins a word --
+#: and a lower-case digest is matched but carries no upper-case letter, so
+#: the check below passes over it.
+NAME = re.compile(r"\b[A-Za-z][A-Za-z0-9_.\-]*")
 
 #: How far a recomputed mean may sit from the reported one, in units in the
 #: last place. `mrr` is the one reported quantity that is a mean of floats,
@@ -240,6 +249,41 @@ class TheCommittedMetricsRecomputeFromItsOwnCases(unittest.TestCase):
             if outcome.case.query_class == "Q-SEMANTIC"
         }
         self.assertEqual(rank_bound_violations(REGISTERED_SET, observed), [])
+
+
+class TheCommittedArtifactNamesNothingButSampleIdentifiers(unittest.TestCase):
+    """Charter Section 11, over a run document committed under `docs/`.
+
+    No standing check covers it there: `scripts/checks/validate_fixtures.py`
+    applies the `SAMPLE_*` convention under `fixtures/` only, and
+    `scripts/checks/scan_sensitive_strings.py` says in its own docstring that
+    the convention "is enforced by validate_fixtures.py, and nothing enforces
+    it for prose". The acceptance record states that the convention was
+    checked over this file; this is the mechanical half of that statement,
+    standing rather than the writer's word.
+
+    The artifact is machine output over the registered set, so it can carry a
+    name only where the set or the registry does -- which is exactly where a
+    real-world name would enter if one were ever loaded.
+    """
+
+    def test_every_name_it_carries_is_sample_or_a_registered_label(self):
+        allowed = (
+            {case.identifier for case in REGISTERED_SET}
+            | {case.query_class for case in REGISTERED_SET}
+            | {METHOD_IDENTIFIER}
+        )
+        offenders = sorted({
+            name
+            for name in NAME.findall(ARTIFACT.read_text(encoding="utf-8"))
+            if any(character.isupper() for character in name)
+            and name not in allowed
+            and not SAMPLE.match(name)
+        })
+        # A capitalised word -- the shape a person, product or company name
+        # takes -- is an offender by this rule, because it is neither
+        # `SAMPLE_*` nor a label the registration fixes.
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":
