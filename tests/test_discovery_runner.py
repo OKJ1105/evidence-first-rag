@@ -7,6 +7,7 @@ registered fixtures is `tests_database/test_discovery_runner.py`.
 """
 
 import contextlib
+import datetime
 import io
 import json
 import sys
@@ -48,7 +49,7 @@ def case(identifier, query_class, term, **overrides):
     return EvaluationCase(**values)
 
 
-def run(cases, *, exact=(), lexical=(), facts=(), clock=None):
+def run(cases, *, exact=(), lexical=(), facts=(), clock=None, started_at="2026-09-12T00:00:00Z"):
     db = database(exact=exact, lexical=lexical)
     db.rows["TPL_MESSAGE_FACTS_V1"] = tuple(facts)
     db.rows["TPL_SIGNAL_FACTS_V1"] = ()
@@ -60,7 +61,7 @@ def run(cases, *, exact=(), lexical=(), facts=(), clock=None):
         selection=Selection(database=db),
         registry_state=REGISTRY_STATE,
         run_id="SAMPLE_RUN",
-        started_at="2026-09-12T00:00:00Z",
+        started_at=started_at,
         clock=lambda: next(ticks),
     )
     return db, document
@@ -135,6 +136,63 @@ class TheArtifact(unittest.TestCase):
         # artifact rather than reporting numbers as if the set were sound.
         self.assertTrue(self.document["authoring_failures"])
         self.assertTrue(any("rule 4" in failure for failure in self.document["authoring_failures"]))
+
+
+class TheStartInstant(unittest.TestCase):
+    """Section 4.10 records "the run's start instant", and `judge` compares
+    Section 8.3's `registered_at` against it. A run that recorded its finish
+    instant under that key would report an instant it did not begin at, and
+    a run begun before the thresholds were registered and ended after them
+    -- reachable, because rule 8 re-registers `registered_at` whenever a case
+    or a threshold changes -- would be judged as though it began after them.
+    """
+
+    def test_the_instant_recorded_is_the_one_before_the_cases_ran(self):
+        # The two instants a run spanning twenty seconds could record: the
+        # one it began at and the one it ended at. A stand-in discovery that
+        # marks the clock as having moved on once a case has run leaves which
+        # of the two the artifact carries decided by where the read sits.
+        begun = datetime.datetime(2026, 9, 13, 15, 54, 50, tzinfo=datetime.timezone.utc)
+        finished = datetime.datetime(2026, 9, 13, 15, 55, 10, tzinfo=datetime.timezone.utc)
+        observed = []
+
+        class Slow:
+            def __init__(self, inner):
+                self.inner = inner
+
+            def execute(self, request):
+                observed.append(request)
+                return self.inner.execute(request)
+
+        db = database(exact=(discovery_row(),))
+        db.rows["TPL_MESSAGE_FACTS_V1"] = (message_row(),)
+        db.rows["TPL_SIGNAL_FACTS_V1"] = ()
+        db.rows["TPL_SIGNAL_MAPPING_V1"] = ()
+        clock = types.SimpleNamespace(
+            datetime=types.SimpleNamespace(now=lambda tz: finished if observed else begun),
+            timezone=datetime.timezone,
+        )
+        with unittest.mock.patch.object(runner, "datetime", clock):
+            document = perform(
+                [case("Q-1", "Q-EXACT", "SAMPLE_MSG_ENGINE_STATUS")],
+                discovery=Slow(Discovery(database=db)),
+                selection=Selection(database=db),
+                registry_state=REGISTRY_STATE,
+                run_id="SAMPLE_RUN",
+                clock=lambda: 0.0,
+            )
+        self.assertTrue(observed, "the case did not run, so the clock proves nothing")
+        self.assertEqual(document["started_at"], "2026-09-13T15:54:50Z")
+
+    def test_a_run_records_no_instant_later_than_one_read_after_it_returns(self):
+        # The same statement against the real clock, which is the one the
+        # wired `main` uses.
+        _, document = run(
+            [case("Q-1", "Q-EXACT", "SAMPLE_MSG_ENGINE_STATUS")],
+            exact=(discovery_row(),), facts=(message_row(),), started_at=None,
+        )
+        after = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.assertLessEqual(document["started_at"], after)
 
 
 class TaskCompletionDispatches(unittest.TestCase):

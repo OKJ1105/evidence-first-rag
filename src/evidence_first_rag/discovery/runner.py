@@ -175,13 +175,20 @@ def perform(cases, *, discovery, selection, registry_state, started_at=None, run
     database: `discovery` and `selection` arrive as arguments."""
     cases = tuple(cases)
     failures = authoring_failures(cases)
+    # Read before the cases run, not after: Section 4.10 records "the run's
+    # start instant", and `judge` compares Section 8.3's `registered_at`
+    # against it. A clock read after the loop would record the finish
+    # instant, so a run that began before the thresholds were registered and
+    # ended after them -- reachable, because Section 4.10 rule 8
+    # re-registers `registered_at` whenever a case or a threshold changes --
+    # would be judged as though it had begun after them.
+    started = started_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     outcomes = []
     records = []
     for case in cases:
         outcome, record = observe(case, discovery, selection, clock)
         outcomes.append(outcome)
         records.append(record)
-    started = started_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     classes = per_class(outcomes)
     judgement = judge(
         outcomes, classes,
