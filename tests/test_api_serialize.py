@@ -15,11 +15,12 @@ never-omitted rule exists to prevent -- and the one
 `conformance/normalize.py` has today for the selection record (#176).
 """
 
+import dataclasses
 import decimal
 import json
 import unittest
 
-from evidence_first_rag import Result, Status
+from evidence_first_rag import Limitation, LimitationKind, Result, Status
 from evidence_first_rag.api import NUMERIC_COLUMNS, as_json, dumps, from_json
 from evidence_first_rag.discovery import (
     Discovery,
@@ -340,6 +341,67 @@ class TheDumpIsTheOneTextTheDocumentHas(unittest.TestCase):
         self.assertNotIn("\\u00c9", text)
 
 
+class TheSelectionRecordHoldsOnlyJsonTypes(unittest.TestCase):
+    """The guarantee `_mapping_json` rests on, asserted against the record the
+    runtime builds rather than trusted.
+
+    `_value_object` converts a decimal back by column name, and no name in
+    the Section 4.8 record is one of the two Section 4.4 names -- so a decimal
+    or a tuple added to that record would be written correctly and read back
+    as text or as a list, on the one path this module exists to protect, with
+    no round-trip test failing. What stops that is Section 4.8 enumerating the
+    record's contents as strings, integers and mappings of those. This is that
+    enumeration checked against reality.
+    """
+
+    def test_every_value_in_the_record_is_a_json_type(self):
+        record = RESULTS["selection/dispatched"].evidence_bundle.selection
+        self.assertTrue(record)
+        for name, value in record.items():
+            with self.subTest(key=name):
+                self.assertTrue(_is_json_native(value), f"{name} is a {type(value).__name__}")
+
+    def test_every_value_in_an_alias_provenance_entry_is_a_json_type(self):
+        entries = RESULTS["selection/dispatched"].source_trace.alias_provenance
+        self.assertTrue(entries)
+        for index, entry in enumerate(entries):
+            for name, value in entry.items():
+                with self.subTest(entry=index, key=name):
+                    self.assertTrue(_is_json_native(value), f"{name} is a {type(value).__name__}")
+
+
+class TheEscapeSetIsTheContractsRatherThanAnyLibrarysDefault(unittest.TestCase):
+    """Section 4.4 cites entity-discovery-v0.1 Section 4.2's canonical rules,
+    and those fix U+0000-U+001F as `\\u` plus four lower-case hexadecimal
+    digits. `json.dumps` writes a newline as `\\n` instead -- valid JSON, and
+    not the byte sequence two implementations are required to agree on, which
+    is what Section 6 is about. `canonical.py`'s own docstring names this
+    divergence as the reason it does not use `json.dumps`."""
+
+    def _with_detail(self, detail):
+        base = RESULTS["success/message_facts"]
+        return dataclasses.replace(
+            base,
+            limitations=(Limitation(kind=LimitationKind.TRUNCATED_BY_LIMIT, detail=detail),),
+        )
+
+    def test_a_control_character_is_escaped_the_contracts_way(self):
+        text = dumps(as_json(self._with_detail("a\nb\tc")))
+        self.assertIn("a\\u000ab\\u0009c", text)
+        self.assertNotIn("a\\nb", text)
+
+    def test_the_escapes_are_lower_case_hexadecimal(self):
+        self.assertIn("\\u001f", dumps(as_json(self._with_detail("a\u001fb"))))
+
+    def test_a_quote_and_a_backslash_take_the_short_escape(self):
+        text = dumps(as_json(self._with_detail('a"b\\c')))
+        self.assertIn('a\\"b\\\\c', text)
+
+    def test_a_detail_with_a_control_character_still_round_trips(self):
+        result = self._with_detail("a\nb")
+        self.assertEqual(from_json(json.loads(dumps(as_json(result)))), result)
+
+
 class WhatTheModuleRefuses(unittest.TestCase):
     def test_a_value_no_registered_column_produces_raises(self):
         result = fact(
@@ -358,9 +420,17 @@ class WhatTheModuleRefuses(unittest.TestCase):
 
 
 def _fields(value):
-    import dataclasses
-
     return dataclasses.fields(value)
+
+
+def _is_json_native(value) -> bool:
+    if isinstance(value, (str, bool, int, type(None))):
+        return True
+    if isinstance(value, list):
+        return all(_is_json_native(item) for item in value)
+    if hasattr(value, "items"):
+        return all(_is_json_native(item) for item in value.values())
+    return False
 
 
 if __name__ == "__main__":

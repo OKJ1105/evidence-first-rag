@@ -31,13 +31,15 @@ contract named the two columns instead of leaving the wire to describe itself.
 A registry lookup could not have done it: a registered template records its
 result column list and no types (`registry/template.py`).
 
-**Why `discovery/canonical.py` is not the dumper.** Section 4.4 cites
-entity-discovery-v0.1 Section 4.2's canonical rules -- keys sorted byte-wise,
-no insignificant whitespace, UTF-8 -- and this module applies them. It does
-not call that module's `canonical_json`, which refuses a boolean by design
-because no digest input carries one. Three of these documents do:
-`read_only_safeguards` has two and every result has the third. The rules are
-shared; the function is narrower than the rules.
+**Where the dump comes from.** Section 4.4 cites entity-discovery-v0.1
+Section 4.2's canonical rules, so `dumps` calls that module's writer rather
+than `json.dumps`. The two differ in a way Section 6 cares about:
+`json.dumps` writes a newline as `\n` where those rules require `\u000a`, so
+two conforming implementations would produce different bytes for one result.
+`canonical_json` itself cannot serve, because it refuses a boolean by design
+-- no digest input carries one, and three of every document's values are
+booleans -- which is why that module grew `json_text`, the same rules over the
+wider vocabulary a response body needs. One escape set, one definition.
 
 Nothing here opens a connection, executes a template, or validates a request.
 A document reaching `from_json` is trusted to be one this module wrote; what
@@ -46,8 +48,8 @@ belongs to the slice that can produce one.
 """
 
 import decimal
-import json
 
+from ..discovery.canonical import json_text
 from ..discovery.candidate import AliasProvenance, Candidate
 from ..discovery.evidence import DiscoveryEvidence, DiscoveryLimitation, DiscoveryLimitationKind, DiscoveryTrace
 from ..discovery.result import DiscoveryResult
@@ -76,11 +78,12 @@ __all__ = ["as_json", "from_json", "dumps", "NUMERIC_COLUMNS"]
 def dumps(document: dict) -> str:
     """`document` as the one text Section 6 allows it to have.
 
-    Keys sorted byte-wise, no insignificant whitespace, and no `\\uXXXX`
-    escaping, so the bytes are UTF-8 rather than ASCII with the text hidden
-    inside it.
+    Keys sorted byte-wise, no insignificant whitespace, the RFC 8259 minimum
+    escape set with U+0000-U+001F as four lower-case hexadecimal digits, and
+    every other character as itself -- so the bytes are UTF-8 rather than
+    ASCII with the text hidden inside `\\uXXXX` escapes.
     """
-    return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json_text(document)
 
 
 def as_json(result) -> dict:
@@ -171,7 +174,7 @@ def _fact_result(document: dict) -> Result:
             resolved_scope=_scope_object(bundle["resolved_scope"]),
             collation=bundle["collation"],
             read_only_safeguards=_safeguards_object(bundle["read_only_safeguards"]),
-            selection=None if bundle["selection"] is None else dict(bundle["selection"]),
+            selection=None if bundle["selection"] is None else _row_object(bundle["selection"]),
         ),
         source_trace=SourceTrace(
             contributing_scopes=tuple(_scope_object(s) for s in trace["contributing_scopes"]),
@@ -185,7 +188,7 @@ def _fact_result(document: dict) -> Result:
             ),
             producing_layer=_enum_object(ProducingLayer, trace["producing_layer"]),
             fixture_provenance=tuple(trace["fixture_provenance"]),
-            alias_provenance=tuple(dict(a) for a in trace["alias_provenance"]),
+            alias_provenance=tuple(_row_object(a) for a in trace["alias_provenance"]),
             entity_approval_reference=trace["entity_approval_reference"],
         ),
         limitations=tuple(
@@ -340,7 +343,19 @@ def _alias_object(document: dict) -> AliasProvenance:
 def _reference_json(reference) -> dict:
     """Section 4.4: "a canonical reference is an object of its dimensions and
     keys". `as_parameters` is that object already -- it is what the registered
-    template binds -- so the wire form and the bound form cannot drift."""
+    template binds -- so the wire form and the bound form cannot drift.
+
+    **A reference's key set is its type's**, so the two shapes differ: a
+    message reference carries the four dimensions and `message_key`, a signal
+    reference adds `signal_key`, and the presence of that key is what
+    `_reference_object` reads. That is not an exception to Section 4.4's
+    never-omitted rule, which is about a field that exists and has no value: a
+    `MessageReference` has no `signal_key` field to leave empty. Writing one
+    as `null` would put a key in the document that the type does not have, and
+    a reader would have to know that `null` there means "message" rather than
+    "signal whose key is unknown" -- which is a worse thing to have to know
+    than two key sets.
+    """
     return dict(reference.as_parameters())
 
 
@@ -402,8 +417,25 @@ def _mapping_json(mapping) -> dict:
     The `selection` record (entity-discovery-v0.1 Section 4.8) and an alias
     provenance entry on a dispatched selection are both this: their keys are
     that contract's, and reproducing them here would be a second place for
-    them to be defined. Values are carried by `_value_json`, so a nested
-    decimal is still text and a nested list is still a list.
+    them to be defined.
+
+    **The guarantee that makes this reversible, and where it comes from.**
+    Section 4.8 enumerates the record's contents exactly -- two contract
+    identifiers and versions, `registry_digest`, `registry_built_at`, two
+    method fields, `candidate_set_id`, `selected_rank`, `candidate_count`,
+    `target_route`, the two `discovery_template_*` fields,
+    `discovery_bound_parameters` and `discovery_row_count` -- and every one is
+    a string, an integer, or a mapping of those. They are JSON's own types, so
+    `_value_json` changes none of them and `_row_object` reads them back
+    unchanged.
+
+    It is a guarantee rather than a property of this code: a decimal added to
+    that record would be written as text and read back as text, because
+    `_value_object` converts by column name and no name in the record is one
+    of the two Section 4.4 names. `TheSelectionRecordHoldsOnlyJsonTypes`
+    asserts the guarantee against the record the runtime actually builds, so
+    a change to Section 4.8 that broke it fails here rather than silently
+    costing a value on the one path this module exists to protect.
     """
     return {name: _value_json(value) for name, value in mapping.items()}
 
