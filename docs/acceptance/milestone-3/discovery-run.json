@@ -1,0 +1,1998 @@
+{
+  "run_id": "872e04e9-5879-412c-bfe1-f1a6a0aa4136",
+  "started_at": "2026-09-14T08:45:25Z",
+  "contract_identifier": "entity-discovery-v0.1",
+  "contract_version": "0.3.1",
+  "method_identifier": "M-LEX-1",
+  "method_version": "1",
+  "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+  "registry_built_at": "2026-09-14T08:45:25Z",
+  "authoring_failures": [],
+  "cases": [
+    {
+      "identifier": "EV-EXACT-1",
+      "query_class": "Q-EXACT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_TRANSMISSION_STATE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.015047703000000467
+    },
+    {
+      "identifier": "EV-EXACT-2",
+      "query_class": "Q-EXACT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_BRAKE_STATUS"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_BRAKE_STATUS"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.012903311000002304
+    },
+    {
+      "identifier": "EV-EXACT-3",
+      "query_class": "Q-EXACT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_FAULT_CODE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+          "signal_key": "SAMPLE_SIG_FAULT_CODE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.01334126000000424
+    },
+    {
+      "identifier": "EV-EXACT-4",
+      "query_class": "Q-EXACT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_BRAKE_PRESSURE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS",
+            "signal_key": "SAMPLE_SIG_BRAKE_PRESSURE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_BRAKE_STATUS",
+          "signal_key": "SAMPLE_SIG_BRAKE_PRESSURE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.013531911000001173
+    },
+    {
+      "identifier": "EV-EXACT-5",
+      "query_class": "Q-EXACT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_CLUTCH_STATE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_CLUTCH_STATE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "signal_key": "SAMPLE_SIG_CLUTCH_STATE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.013728955000004817
+    },
+    {
+      "identifier": "EV-ALIAS-1",
+      "query_class": "Q-ALIAS",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_ALIAS_GEARBOX_STATE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.014448173000005227
+    },
+    {
+      "identifier": "EV-ALIAS-2",
+      "query_class": "Q-ALIAS",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_TRANSMISION_STATE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.01430568199999982
+    },
+    {
+      "identifier": "EV-ALIAS-3",
+      "query_class": "Q-ALIAS",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_CHASSIS",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_ALIAS_WHEEL_SPEEDS"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.014551959999998587
+    },
+    {
+      "identifier": "EV-ALIAS-4",
+      "query_class": "Q-ALIAS",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_ALIAS_ENGINE_ROTATION_SPEED"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.016982995999995865
+    },
+    {
+      "identifier": "EV-ALIAS-5",
+      "query_class": "Q-ALIAS",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_ALIAS_COOLANT_TEMPERATURE"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.013073867999999322
+    },
+    {
+      "identifier": "EV-COLLIDE-1",
+      "query_class": "Q-COLLIDE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_ENGINE_STATUS"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.013120217999997408
+    },
+    {
+      "identifier": "EV-COLLIDE-2",
+      "query_class": "Q-COLLIDE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_B",
+        "network_name": "SAMPLE_NET_CHASSIS",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_WHEEL_SPEED"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_B",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.013827922000004378
+    },
+    {
+      "identifier": "EV-COLLIDE-3",
+      "query_class": "Q-COLLIDE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_B",
+        "network_name": "SAMPLE_NET_CHASSIS",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_WHEEL_SPEED_FL"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_B",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+            "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_B",
+          "network_name": "SAMPLE_NET_CHASSIS",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+          "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.017519635000006417
+    },
+    {
+      "identifier": "EV-COLLIDE-4",
+      "query_class": "Q-COLLIDE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_REVISED",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_ENGINE_SPEED"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_REVISED",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_REVISED",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.012675246000000584
+    },
+    {
+      "identifier": "EV-COLLIDE-5",
+      "query_class": "Q-COLLIDE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_TEMPERATURE",
+        "parent_message_key": "SAMPLE_MSG_ENGINE_STATUS"
+      },
+      "expected": {
+        "outcome": "resolved",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "resolved",
+        "resolved": {
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "signal_key": "SAMPLE_SIG_TEMPERATURE"
+        },
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.014592835999998499
+    },
+    {
+      "identifier": "EV-SEMANTIC-1",
+      "query_class": "Q-SEMANTIC",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "engine speed"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          }
+        ],
+        "rank_bound": 1,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          }
+        ],
+        "candidate_set_id": "1de74df57fff7a59299d0be191e3951b26277b55f36ed2d52d92504a1e1d6c8a",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.017125137000000734
+    },
+    {
+      "identifier": "EV-SEMANTIC-2",
+      "query_class": "Q-SEMANTIC",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "brake pressure"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS",
+            "signal_key": "SAMPLE_SIG_BRAKE_PRESSURE"
+          }
+        ],
+        "rank_bound": 1,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS",
+            "signal_key": "SAMPLE_SIG_BRAKE_PRESSURE"
+          }
+        ],
+        "candidate_set_id": "8ca03631f20788dec0dedbc0410664a6ce7d3d42be0f1d1704512098a26b4e18",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.017459461999997927
+    },
+    {
+      "identifier": "EV-SEMANTIC-3",
+      "query_class": "Q-SEMANTIC",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "clutch state"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_CLUTCH_STATE"
+          }
+        ],
+        "rank_bound": 1,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_CLUTCH_STATE"
+          }
+        ],
+        "candidate_set_id": "2f9f2f57f58f93bebe61783810a930216344c56c77825829834172d1fe4c1581",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.016825505999996437
+    },
+    {
+      "identifier": "EV-SEMANTIC-4",
+      "query_class": "Q-SEMANTIC",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "gear position"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION"
+          }
+        ],
+        "rank_bound": 2,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE"
+          },
+          {
+            "rank": 2,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION"
+          }
+        ],
+        "candidate_set_id": "b2aef18f66f1595e16d72f727c68018f4c9352a8173b1a65e8515636fa052022",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 2,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.017593422000004466
+    },
+    {
+      "identifier": "EV-SEMANTIC-5",
+      "query_class": "Q-SEMANTIC",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "coolant temperature"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "rank_bound": 1,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "candidate_set_id": "b65b43a79128927852229d3e2afcaa25268c245d8f19631773de036a001d09ec",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.01680553499999604
+    },
+    {
+      "identifier": "EV-MULTI-1",
+      "query_class": "Q-MULTI",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_GEAR_POSITION"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION"
+          },
+          {
+            "rank": 2,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE"
+          }
+        ],
+        "candidate_set_id": "2178926bfbf93efd76bd13e514696f85a81c36a240ae39efd57fd59c3e33169a",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.015474077000000364
+    },
+    {
+      "identifier": "EV-MULTI-2",
+      "query_class": "Q-MULTI",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "temperature"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          },
+          {
+            "rank": 2,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "candidate_set_id": "8411c962db8675b32b265fbc9da725a6467c1d153b07d367fdf6c7411199c0ab",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.01723145399999737
+    },
+    {
+      "identifier": "EV-MULTI-3",
+      "query_class": "Q-MULTI",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "status"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS"
+          },
+          {
+            "rank": 2,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          }
+        ],
+        "candidate_set_id": "58c353bd24e87a22c22c37df3ad04db2e32ec0b99b09c4f0270079c34ca064b5",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.018332548000003612
+    },
+    {
+      "identifier": "EV-MULTI-4",
+      "query_class": "Q-MULTI",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "sample msg"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "message_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS"
+          },
+          {
+            "rank": 2,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          },
+          {
+            "rank": 3,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE"
+          }
+        ],
+        "candidate_set_id": "98657e0b6db0101614dfcaa4ef89ff05f87a90d45463a11b5ef8cda2f1d40bc2",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.01615243600000582
+    },
+    {
+      "identifier": "EV-MULTI-5",
+      "query_class": "Q-MULTI",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "sample sig"
+      },
+      "expected": {
+        "outcome": "candidates",
+        "references": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS",
+            "signal_key": "SAMPLE_SIG_BRAKE_PRESSURE"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_CLUTCH_STATE"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "rank_bound": null,
+        "target_route": "signal_facts"
+      },
+      "observed": {
+        "status": "candidates",
+        "resolved": null,
+        "candidates": [
+          {
+            "rank": 1,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_BRAKE_STATUS",
+            "signal_key": "SAMPLE_SIG_BRAKE_PRESSURE"
+          },
+          {
+            "rank": 2,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE"
+          },
+          {
+            "rank": 3,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          },
+          {
+            "rank": 4,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          },
+          {
+            "rank": 5,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_CLUTCH_STATE"
+          },
+          {
+            "rank": 6,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION"
+          },
+          {
+            "rank": 7,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          }
+        ],
+        "candidate_set_id": "20bf942fdcd70cdde95b71ecdf09b4c32fe17238c005d3000a8274abdb4fcb23",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": {
+          "selected_rank": 1,
+          "status": "success"
+        }
+      },
+      "latency_seconds": 0.016319831000004115
+    },
+    {
+      "identifier": "EV-SCOPE-1",
+      "query_class": "Q-SCOPE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "entity_kind": "message",
+        "term": "engine status"
+      },
+      "expected": {
+        "outcome": "ambiguous",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "ambiguous",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.015620057999996106
+    },
+    {
+      "identifier": "EV-SCOPE-2",
+      "query_class": "Q-SCOPE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "entity_kind": "message",
+        "term": "transmission state"
+      },
+      "expected": {
+        "outcome": "ambiguous",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "ambiguous",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.016232398000006754
+    },
+    {
+      "identifier": "EV-SCOPE-3",
+      "query_class": "Q-SCOPE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_B",
+        "network_name": "SAMPLE_NET_CHASSIS",
+        "entity_kind": "message",
+        "term": "wheel speed"
+      },
+      "expected": {
+        "outcome": "ambiguous",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "ambiguous",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.013373696999998685
+    },
+    {
+      "identifier": "EV-SCOPE-4",
+      "query_class": "Q-SCOPE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "fault code"
+      },
+      "expected": {
+        "outcome": "ambiguous",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "ambiguous",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.0160032120000011
+    },
+    {
+      "identifier": "EV-SCOPE-5",
+      "query_class": "Q-SCOPE",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "entity_kind": "signal",
+        "term": "temperature reading"
+      },
+      "expected": {
+        "outcome": "ambiguous",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "ambiguous",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.01124622599999725
+    },
+    {
+      "identifier": "EV-NOMATCH-1",
+      "query_class": "Q-NOMATCH",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_ABSENT"
+      },
+      "expected": {
+        "outcome": "not_found",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "not_found",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": null
+      },
+      "latency_seconds": 0.016625541000003352
+    },
+    {
+      "identifier": "EV-NOMATCH-2",
+      "query_class": "Q-NOMATCH",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_ABSENT"
+      },
+      "expected": {
+        "outcome": "not_found",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "not_found",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": null
+      },
+      "latency_seconds": 0.015904624999997452
+    },
+    {
+      "identifier": "EV-NOMATCH-3",
+      "query_class": "Q-NOMATCH",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "SAMPLE_MSG_UNREGISTERED"
+      },
+      "expected": {
+        "outcome": "not_found",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "not_found",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": null
+      },
+      "latency_seconds": 0.016837805000001538
+    },
+    {
+      "identifier": "EV-NOMATCH-4",
+      "query_class": "Q-NOMATCH",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_UNREGISTERED"
+      },
+      "expected": {
+        "outcome": "not_found",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "not_found",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": null
+      },
+      "latency_seconds": 0.016751784999996744
+    },
+    {
+      "identifier": "EV-NOMATCH-5",
+      "query_class": "Q-NOMATCH",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "signal",
+        "term": "SAMPLE_SIG_MISSING"
+      },
+      "expected": {
+        "outcome": "not_found",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "not_found",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+        "completion": null
+      },
+      "latency_seconds": 0.017239015000001245
+    },
+    {
+      "identifier": "EV-OUT-1",
+      "query_class": "Q-OUT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "mapping",
+        "term": "signal mapping"
+      },
+      "expected": {
+        "outcome": "unsupported",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "unsupported",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 7.383799999871599e-05
+    },
+    {
+      "identifier": "EV-OUT-2",
+      "query_class": "Q-OUT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "snapshot",
+        "term": "snapshot listing"
+      },
+      "expected": {
+        "outcome": "unsupported",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "unsupported",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 7.044200000194678e-05
+    },
+    {
+      "identifier": "EV-OUT-3",
+      "query_class": "Q-OUT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "network",
+        "term": "network members"
+      },
+      "expected": {
+        "outcome": "unsupported",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "unsupported",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 6.125400000200898e-05
+    },
+    {
+      "identifier": "EV-OUT-4",
+      "query_class": "Q-OUT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "network_name": "SAMPLE_NET_BODY",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "body controller"
+      },
+      "expected": {
+        "outcome": "coverage_gap",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "coverage_gap",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.011730528000001073
+    },
+    {
+      "identifier": "EV-OUT-5",
+      "query_class": "Q-OUT",
+      "request": {
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_B",
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "snapshot_label": "SAMPLE_SNAP_BASE",
+        "entity_kind": "message",
+        "term": "powertrain revision b"
+      },
+      "expected": {
+        "outcome": "coverage_gap",
+        "references": [],
+        "rank_bound": null,
+        "target_route": null
+      },
+      "observed": {
+        "status": "coverage_gap",
+        "resolved": null,
+        "candidates": [],
+        "candidate_set_id": "",
+        "registry_digest": "",
+        "completion": null
+      },
+      "latency_seconds": 0.009962366000003442
+    }
+  ],
+  "metrics": {
+    "overall": {
+      "total": 40,
+      "recall_at_k": {
+        "recall_at_1": 0.76,
+        "recall_at_5": 0.96,
+        "recall_at_10": 1.0
+      },
+      "mrr": 0.859047619047619,
+      "false_resolution": 0.0,
+      "correct_abstention": 1.0,
+      "over_abstention": 0.0,
+      "task_completion": 1.0,
+      "latency": {
+        "median_seconds": 0.015260890000000416,
+        "p95_seconds": 0.017519635000006417
+      }
+    },
+    "per_class": {
+      "Q-EXACT": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": 1.0,
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0
+        },
+        "mrr": 1.0,
+        "false_resolution": 0.0,
+        "correct_abstention": null,
+        "over_abstention": 0.0,
+        "task_completion": 1.0,
+        "latency": {
+          "median_seconds": 0.013531911000001173,
+          "p95_seconds": 0.015047703000000467
+        }
+      },
+      "Q-ALIAS": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": 1.0,
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0
+        },
+        "mrr": 1.0,
+        "false_resolution": 0.0,
+        "correct_abstention": null,
+        "over_abstention": 0.0,
+        "task_completion": 1.0,
+        "latency": {
+          "median_seconds": 0.014448173000005227,
+          "p95_seconds": 0.016982995999995865
+        }
+      },
+      "Q-SEMANTIC": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": 0.8,
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0
+        },
+        "mrr": 0.9,
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": null,
+        "task_completion": 1.0,
+        "latency": {
+          "median_seconds": 0.017125137000000734,
+          "p95_seconds": 0.017593422000004466
+        }
+      },
+      "Q-SCOPE": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": null,
+          "recall_at_5": null,
+          "recall_at_10": null
+        },
+        "mrr": null,
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": null,
+        "task_completion": null,
+        "latency": {
+          "median_seconds": 0.015620057999996106,
+          "p95_seconds": 0.016232398000006754
+        }
+      },
+      "Q-COLLIDE": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": 1.0,
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0
+        },
+        "mrr": 1.0,
+        "false_resolution": 0.0,
+        "correct_abstention": null,
+        "over_abstention": 0.0,
+        "task_completion": 1.0,
+        "latency": {
+          "median_seconds": 0.013827922000004378,
+          "p95_seconds": 0.017519635000006417
+        }
+      },
+      "Q-MULTI": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.8,
+          "recall_at_10": 1.0
+        },
+        "mrr": 0.3952380952380952,
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": null,
+        "task_completion": 1.0,
+        "latency": {
+          "median_seconds": 0.016319831000004115,
+          "p95_seconds": 0.018332548000003612
+        }
+      },
+      "Q-NOMATCH": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": null,
+          "recall_at_5": null,
+          "recall_at_10": null
+        },
+        "mrr": null,
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": null,
+        "task_completion": null,
+        "latency": {
+          "median_seconds": 0.016751784999996744,
+          "p95_seconds": 0.017239015000001245
+        }
+      },
+      "Q-OUT": {
+        "total": 5,
+        "recall_at_k": {
+          "recall_at_1": null,
+          "recall_at_5": null,
+          "recall_at_10": null
+        },
+        "mrr": null,
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": null,
+        "task_completion": null,
+        "latency": {
+          "median_seconds": 7.383799999871599e-05,
+          "p95_seconds": 0.011730528000001073
+        }
+      }
+    }
+  },
+  "judgement": {
+    "adoptable": true,
+    "judged": true,
+    "reasons": [],
+    "registered_at": "2026-09-13T15:55:00Z",
+    "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+    "thresholds": {
+      "Q-EXACT": {
+        "false_resolution": 0.0,
+        "correct_abstention": "no denominator",
+        "over_abstention": 0.0,
+        "recall_at_1": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "task_completion": 1.0,
+        "mrr": "reported without a bar"
+      },
+      "Q-ALIAS": {
+        "false_resolution": 0.0,
+        "correct_abstention": "no denominator",
+        "over_abstention": 0.0,
+        "recall_at_1": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "task_completion": 1.0,
+        "mrr": "reported without a bar"
+      },
+      "Q-COLLIDE": {
+        "false_resolution": 0.0,
+        "correct_abstention": "no denominator",
+        "over_abstention": 0.0,
+        "recall_at_1": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "task_completion": 1.0,
+        "mrr": "reported without a bar"
+      },
+      "Q-SEMANTIC": {
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": "no denominator",
+        "recall_at_1": 0.8,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "task_completion": 1.0,
+        "mrr": "reported without a bar"
+      },
+      "Q-MULTI": {
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": "no denominator",
+        "recall_at_1": "reported without a bar",
+        "recall_at_5": 0.8,
+        "recall_at_10": 1.0,
+        "task_completion": 1.0,
+        "mrr": "reported without a bar"
+      },
+      "Q-SCOPE": {
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": "no denominator",
+        "recall_at_1": "no denominator",
+        "recall_at_5": "no denominator",
+        "recall_at_10": "no denominator",
+        "task_completion": "no denominator",
+        "mrr": "no denominator"
+      },
+      "Q-NOMATCH": {
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": "no denominator",
+        "recall_at_1": "no denominator",
+        "recall_at_5": "no denominator",
+        "recall_at_10": "no denominator",
+        "task_completion": "no denominator",
+        "mrr": "no denominator"
+      },
+      "Q-OUT": {
+        "false_resolution": 0.0,
+        "correct_abstention": 1.0,
+        "over_abstention": "no denominator",
+        "recall_at_1": "no denominator",
+        "recall_at_5": "no denominator",
+        "recall_at_10": "no denominator",
+        "task_completion": "no denominator",
+        "mrr": "no denominator"
+      }
+    }
+  },
+  "operational_complexity": "M-LEX-1 adds no dependency, service, provisioning step, index, or egress beyond the registry tables provisioning already loads; it runs entirely in the database as the runtime identity."
+}
