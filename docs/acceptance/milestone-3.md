@@ -2,13 +2,19 @@
 
 **Milestone:** 3 — Entity Discovery
 
-**Disposition:** *To be recorded by the repository owner.*
+**Disposition:** Accepted
 
-**Date:** *To be recorded with the disposition.*
+**Date:** 2026-09-16
 
-**Recorded by:** *To be recorded with the disposition — the repository owner's.*
+**Recorded by:** repository owner
 
-**Reasoning.** *The owner's, recorded with the disposition. Everything below is evidence, drafted from the committed run and from assertions that exist on `main`; none of it decides anything.*
+**Reasoning.** What this record establishes is not that the method retrieves well. It is that a method passed a test defined in advance, and that neither the cases nor the bars were changed after the run — evidence that the process was followed, and nothing more. I adopt it on that basis.
+
+What the run had to show, and did, is the behaviour this system exists for: when the answer is not known, it says so; when a term does not determine a single entity, it returns the alternatives rather than choosing among them. The failure this is built to prevent is handing an engineer a fact from the wrong revision in a form they will not question, and every case registered for it — the ten ambiguous requests and the five that name nothing in the registry — behaved that way.
+
+That `false_resolution` is zero by construction for any conforming method does not weaken it. Conformance is what the bar is for, and the bar earns its keep later: a retrieval method that ranks — BM25, vectors, or a learned layer — can drift here in a way the current one cannot, and this set is what will catch it.
+
+The forty cases were authored from the same tier table the method implements, and Section 8.3 registers in advance what a difficult semantic case is and that this set holds none. The question that matters is whether the cases are sound, not whether their author had read the rules, and the gap is named and counted rather than hidden. `M-LEX-1` is adopted as the Milestone 3 baseline; a later method is registered as a minor version of this contract under Section 4.9 and is measured against this same registered set and these same bars, so that what changes between methods is the method.
 
 This record collects the evidence for the Milestone 3 acceptance gate in [Project Charter](../PROJECT_CHARTER.md) Section 9. Every gate item below names the evidence that exists — an automated assertion over registered inputs, or a field of the committed run artifact — and where it runs. No item rests on a claim made only here. Drafted from that evidence by Claude Code, the writer session ([#167](https://github.com/OKJ1105/evidence-first-rag/issues/167)); **the disposition is the owner's alone**, and a judged artifact that had not cleared the registered bars would have produced a Rejected record with the same care.
 
