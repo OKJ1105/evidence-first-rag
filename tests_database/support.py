@@ -5,11 +5,36 @@ import pathlib
 
 import psycopg
 
+from evidence_first_rag.api import as_json, from_json
 from evidence_first_rag.db import provision
 
 REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = REPOSITORY / "fixtures"
 SQL = REPOSITORY / "sql"
+
+
+def assert_round_trips(result) -> None:
+    """api-v0.1 Section 4.4: the result survives its own wire form.
+
+    Section 8 registers, for Section 4.4, "every `FX-*` and `DX-*` result
+    serialized and read back equals the original". Those results exist only
+    here: `tests/` has no database, so the set it round-trips is built from
+    fakes, and the fakes decide the value types. Only a real query says what a
+    registered template actually returns -- the several `mapping_provenance`
+    entries of `FX-003` and `FX-104`, and every value psycopg builds -- so the
+    registered half of that row is discharged from the per-case helper of each
+    fixture file rather than from a hand-written row.
+
+    Raises rather than asserting through a `TestCase`, because one of the three
+    call sites is a module-level helper.
+    """
+    returned = from_json(as_json(result))
+    if returned != result:
+        raise AssertionError(
+            "the result did not survive its api-v0.1 Section 4.4 round trip\n"
+            f"  sent:      {result!r}\n"
+            f"  read back: {returned!r}"
+        )
 
 
 def build(database: str, fixtures: pathlib.Path = FIXTURES) -> None:

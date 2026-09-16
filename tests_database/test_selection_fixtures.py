@@ -55,7 +55,13 @@ def discover(arguments, database=DATABASE):
 
 
 def select(arguments, database=DATABASE):
-    return Selection(database=PsycopgDatabase(connection_parameters=connection_parameters(database)), fixture_provenance=PROVENANCE).execute(SelectionRequest(arguments=arguments))
+    result = Selection(database=PsycopgDatabase(connection_parameters=connection_parameters(database)), fixture_provenance=PROVENANCE).execute(SelectionRequest(arguments=arguments))
+    # api-v0.1 Section 8's row for Section 4.4, over the `DX-017` to `DX-023`
+    # results: the dispatched ones carry the `selection` record and the alias
+    # provenance that Section 7 of entity-discovery-v0.1 requires, which is the
+    # evidence this wire form exists to keep.
+    support.assert_round_trips(result)
+    return result
 
 
 class SelectionCases(unittest.TestCase):
