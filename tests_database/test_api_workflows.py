@@ -65,10 +65,6 @@ PROVENANCE = (
 )
 
 
-# This fires only where the rows were never going to run anyway -- a checkout
-# with no database. It is not the #101 failure, which is a skip standing in
-# for evidence something claimed: `database-checks` installs the extra and
-# executes this module, so the rows below are discharged rather than deferred.
 def setUpModule():
     """Skip where nothing could have run; **fail where it was meant to.**
 
@@ -82,9 +78,18 @@ def setUpModule():
     every run for a reason nobody on the branch may fix is not evidence either.
     The repository owner recorded the line on #179, so that reason is gone.
 
+    The two branches, and why only one of them is a skip: with no
+    `MVP_RUNTIME_PASSWORD` there is no database and these rows were never going
+    to run, so reporting them skipped is what is true; with one, the job stood
+    PostgreSQL up and meant them to run, and a skip there would be the #101
+    failure -- green standing in for rows that never executed.
+
     The decision itself is `guards.missing_dependency`, which needs neither a
-    driver nor a database, so `tests/test_suite_layout.py` asserts all three of
-    its branches in every job rather than leaving them to be observed here.
+    driver nor a database, so `tests/test_database_suite_guards.py` asserts all
+    three of its branches in every job rather than leaving them to be observed
+    here. That module also asserts this function's wiring, by reading it: a
+    guard whose decision is tested and whose application is not can be
+    disarmed here without a test turning red.
     """
     outcome = guards.missing_dependency(
         installed=HAS_API, provisioned=bool(os.environ.get("MVP_RUNTIME_PASSWORD"))
@@ -125,6 +130,10 @@ def client(**overrides):
     )
 
 
+# Subordinate to `setUpModule`, which has already decided and raised; this
+# decides nothing and is **not** this module's policy on a missing extra --
+# that policy is the RuntimeError above. Kept so a direct run of one class
+# reads honestly rather than failing on a missing import.
 @unittest.skipUnless(HAS_API, "the api extra is not installed")
 class WorkflowCase(unittest.TestCase):
     """What every step of every fixture owes, in one place."""

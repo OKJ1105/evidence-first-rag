@@ -15,6 +15,8 @@ stopped running. That is the failure #101 put the `adapter-checks` job in the
 tree to prevent, one job over.
 """
 
+import ast
+import pathlib
 import unittest
 
 from tests_database.guards import missing_dependency
@@ -83,6 +85,96 @@ class WhatTheFailureSays(unittest.TestCase):
             self.detail, pathlib.Path("guard-detail.txt"), failures
         )
         self.assertEqual(failures, [])
+
+
+class TheGuardIsWiredIn(unittest.TestCase):
+    """That `setUpModule` applies the decision, asserted by reading it.
+
+    The class above pins what `missing_dependency` decides. That is not the
+    same as the guard being armed: change `provisioned=` to `False`, or raise
+    only on a `SkipTest`, and every assertion above still passes while the
+    thirteen Section 8.1 rows go quiet again -- the precise failure this exists
+    to prevent.
+
+    Read with `ast` rather than executed, for the reason the guard was split
+    out in the first place: running `setUpModule` needs the extra and a
+    database, and this has to hold in the job that installs neither. It is the
+    idiom `tests/test_suite_layout.py` already uses over this tree.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        source = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "tests_database"
+            / "test_api_workflows.py"
+        ).read_text()
+        module = ast.parse(source)
+        cls.function = next(
+            node
+            for node in module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "setUpModule"
+        )
+        cls.call = next(
+            node
+            for node in ast.walk(cls.function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "missing_dependency"
+        )
+
+    def keyword(self, name):
+        return next(k for k in self.call.keywords if k.arg == name)
+
+    def test_it_asks_the_guard_at_all(self):
+        self.assertEqual(ast.unparse(self.call.func), "guards.missing_dependency")
+
+    def test_installed_is_the_module_s_own_import_result(self):
+        # Not a literal, and not something narrower: whether the dependency is
+        # there is exactly what `HAS_API` records.
+        self.assertEqual(ast.unparse(self.keyword("installed").value), "HAS_API")
+
+    def test_provisioned_is_read_from_the_database_environment(self):
+        # The discriminator. A literal here -- `False` above all -- disarms the
+        # failure branch while leaving the call in place, which is the change
+        # this test exists to catch.
+        expression = ast.unparse(self.keyword("provisioned").value)
+        self.assertIn("MVP_RUNTIME_PASSWORD", expression)
+        self.assertNotIn("True", expression)
+        self.assertNotIn("False", expression)
+
+    def test_whatever_the_guard_returns_is_raised(self):
+        # Unconditionally on a non-None value. Narrowing this to `SkipTest`
+        # would keep all three branches correct and still never fail a job.
+        raises = [n for n in ast.walk(self.function) if isinstance(n, ast.Raise)]
+        self.assertEqual(len(raises), 1)
+        guard = next(n for n in ast.walk(self.function) if isinstance(n, ast.If))
+        self.assertEqual(ast.unparse(guard.test), "outcome is not None")
+        self.assertEqual(ast.unparse(raises[0]), "raise outcome")
+
+    def test_nothing_runs_before_the_guard_has_decided(self):
+        """`support.build` provisions a database. Reaching it before the
+        decision means a job doing the work it was about to be told it could
+        not do -- and on the failure branch, doing it and then raising.
+
+        Only the docstring is skipped. An earlier version of this test
+        discarded every `ast.Expr`, which is what a bare `support.build(...)`
+        call is, so it discarded exactly the statement it was written to catch:
+        the mutation that provisions first survived it.
+        """
+        body = list(self.function.body)
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]
+        self.assertTrue(body, "setUpModule has no body beyond its docstring")
+        self.assertIsInstance(
+            body[0], ast.Assign, f"the first statement is {ast.unparse(body[0])!r}"
+        )
+        self.assertIn("missing_dependency", ast.unparse(body[0]))
 
 
 if __name__ == "__main__":
