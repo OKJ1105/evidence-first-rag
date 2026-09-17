@@ -16,8 +16,10 @@ tree to prevent, one job over.
 """
 
 import ast
+import os
 import pathlib
 import unittest
+import unittest.mock
 
 from tests_database.guards import missing_dependency
 
@@ -175,6 +177,89 @@ class TheGuardIsWiredIn(unittest.TestCase):
             body[0], ast.Assign, f"the first statement is {ast.unparse(body[0])!r}"
         )
         self.assertIn("missing_dependency", ast.unparse(body[0]))
+
+
+try:
+    import psycopg  # noqa: F401
+    import fastapi  # noqa: F401
+
+    from tests_database import test_api_workflows
+
+    CAN_IMPORT_THE_SUITE = True
+except ImportError:  # pragma: no cover - the extra-free job takes this path
+    CAN_IMPORT_THE_SUITE = False
+
+
+@unittest.skipUnless(CAN_IMPORT_THE_SUITE, "the database suite's imports are not installed")
+class TheGuardRunsWhenSetUpModuleDoes(unittest.TestCase):
+    """`setUpModule` executed, not read.
+
+    `TheGuardIsWiredIn` reads the source, which is what works in the job that
+    installs nothing. It cannot see anything the text does not say -- a
+    `HAS_API` rebound between the import and the call, a `guards` shadowed by
+    something else. This runs the function against a recorded stand-in, in the
+    jobs whose imports allow it, so the two together cover reading and running.
+
+    `support.build` is never reached: the stand-in returns an exception on both
+    calls below, and `setUpModule` raises it. Nothing here provisions, drops or
+    touches a database.
+    """
+
+    def drive(self, *, provisioned, returns):
+        """Call `setUpModule` with the guard replaced, and report the call."""
+        seen = {}
+
+        def recorder(**keywords):
+            seen.update(keywords)
+            return returns
+
+        environment = dict(os.environ)
+        environment.pop("MVP_RUNTIME_PASSWORD", None)
+        if provisioned:
+            environment["MVP_RUNTIME_PASSWORD"] = "SAMPLE_NOT_A_REAL_VALUE"
+
+        original = test_api_workflows.guards.missing_dependency
+        test_api_workflows.guards.missing_dependency = recorder
+        try:
+            with unittest.mock.patch.dict(os.environ, environment, clear=True):
+                raised = None
+                try:
+                    test_api_workflows.setUpModule()
+                except BaseException as outcome:  # noqa: BLE001 - that is the assertion
+                    raised = outcome
+        finally:
+            test_api_workflows.guards.missing_dependency = original
+        return seen, raised
+
+    def test_it_reports_whether_the_dependency_is_installed(self):
+        seen, _ = self.drive(provisioned=False, returns=RuntimeError("SAMPLE_SENTINEL"))
+        self.assertIn("installed", seen)
+        self.assertIs(seen["installed"], test_api_workflows.HAS_API)
+
+    def test_it_reports_the_database_environment_as_it_finds_it(self):
+        # Both directions. A wiring that ignored the environment, or swapped
+        # the two keywords, agrees with one of these and not the other.
+        for provisioned in (True, False):
+            with self.subTest(provisioned=provisioned):
+                seen, _ = self.drive(
+                    provisioned=provisioned, returns=RuntimeError("SAMPLE_SENTINEL")
+                )
+                self.assertIs(seen["provisioned"], provisioned)
+
+    def test_whatever_the_guard_returns_reaches_the_caller(self):
+        for returns in (RuntimeError("SAMPLE_SENTINEL"), unittest.SkipTest("SAMPLE_SENTINEL")):
+            with self.subTest(kind=type(returns).__name__):
+                _, raised = self.drive(provisioned=True, returns=returns)
+                self.assertIs(raised, returns)
+
+    def test_a_guard_that_permits_the_run_does_not_raise(self):
+        # `None` is the third outcome, and the one that must not be confused
+        # with the other two: it reaches `support.build`, which has no database
+        # here, so it raises something that is not the sentinel.
+        _, raised = self.drive(provisioned=True, returns=None)
+        self.assertIsNotNone(raised, "setUpModule returned without provisioning")
+        self.assertNotIsInstance(raised, unittest.SkipTest)
+        self.assertNotIn("SAMPLE_SENTINEL", str(raised))
 
 
 if __name__ == "__main__":

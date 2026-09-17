@@ -39,7 +39,7 @@ try:
     from fastapi.testclient import TestClient
 
     from evidence_first_rag.api import as_json
-    from evidence_first_rag.api.app import CONTRACT_IDENTIFIER, CONTRACT_VERSION, create_app, services
+    from evidence_first_rag.api.app import create_app, services
 
     HAS_API = True
 except ImportError:  # pragma: no cover - exercised by the driver-free job
@@ -392,9 +392,27 @@ class TheSurfaceProperties(WorkflowCase):
         self.assertEqual(response.status_code, 200)
         document = json.loads(response.text)
         self.assertEqual(set(document), {"contracts", "adapter_configured"})
+        # **Literals, deliberately, and not the constants** -- unlike the same
+        # assertion in `tests/test_api_surface.py`, which reads them.
+        #
+        # This is a pin, not a duplicate. The health document is built from
+        # `CONTRACT_IDENTIFIER` and `CONTRACT_VERSION`, so comparing it against
+        # those same two names asserts that a dict equals itself: a wrong
+        # version passes. The parity test in `tests/` catches that -- but it
+        # lives behind `skipUnless(HAS_API)` and so runs only in
+        # `adapter-checks`, whose install line is the one thing that could take
+        # it away. This job depends on a different install line, so a literal
+        # here is the pin that survives that scenario.
+        #
+        # An earlier revision of this slice read the constants here too, on the
+        # reasoning that a literal is a third place the value lives. That was
+        # wrong in the direction that matters: it removed the only assertion on
+        # the value that `adapter-checks` cannot silence. Raised as N5 on #183.
+        # The cost is that a version bump edits this line; #185 removes even
+        # that, by giving the parity tests a home with no optional import.
         self.assertEqual(
             document["contracts"],
-            {CONTRACT_IDENTIFIER: CONTRACT_VERSION, "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         self.assertIs(document["adapter_configured"], False)
 
