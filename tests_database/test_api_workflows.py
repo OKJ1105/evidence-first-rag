@@ -65,6 +65,11 @@ PROVENANCE = (
 )
 
 
+# The skip branch fires only where the rows were never going to run anyway --
+# a checkout with no database. It is not the #101 failure, which is a skip
+# standing in for evidence something claimed: `database-checks` installs the
+# extra and executes this module, so the rows below are discharged rather than
+# deferred. The other branch is the guard proper; the docstring has it.
 def setUpModule():
     """Skip where nothing could have run; **fail where it was meant to.**
 
