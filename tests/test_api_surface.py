@@ -9,11 +9,15 @@ proposal**, which is the division Section 8.1 states.
 **What a step's citation of a registered case means here.** Where a fixture
 names `FX-001` or `DX-017`, this file builds that case's *shape* -- its route,
 its arguments, and rows of the form the registered SQL returns -- and asserts
-what the surface does with the result. That the registered SQL returns those
-rows against the registered data is proven in `tests_database/`, where
-`test_api_workflows.py` runs the same steps against a real PostgreSQL and
-asserts the registered result. The split is `mvp-v0.1`'s: `tests/` proves the
-decisions given rows, `tests_database/` proves the rows.
+what the surface does with the result. The split is `mvp-v0.1`'s: `tests/`
+proves the decisions given rows, `tests_database/` proves the rows.
+
+**The second half is deferred, not done here.** The module
+`test_api_workflows.py` in `tests_database/` runs the same steps against a
+real PostgreSQL, but no CI job installs the `api` extra where a database is
+provisioned, so it skips;
+ADR-0003 records why and whose decision changes it. Read this file as evidence
+for what the surface decides, and not for what the registered SQL returns.
 
 Section 6's determinism, Section 7's evidence key sets, and Section 4.3's
 "the surface never joins" are properties of this layer alone, so they are
@@ -581,42 +585,70 @@ class TheNaturalLanguageRoute(SurfaceCase):
         """Section 4.3 step 1: every parseable proposal goes to revalidation,
         including one the Section 4.6 vocabulary does not contain. Returning a
         bodiless refusal would drop the evidence obligation Section 3.3
-        inherits for every negative outcome."""
+        inherits for every negative outcome.
+
+        **`WF-018` is outstanding and this slice does not claim it.** Its
+        registered row fixes the first case's producing layer at `adapter`,
+        and the `mvp-v0.1` path this route dispatches through records
+        `runtime`. Which of the two is wrong is a change to an accepted
+        contract under its Section 10, so it is the repository owner's
+        recorded disposition and not a writer's or a test's. What is asserted
+        here is the part of the row the surface decides and the disagreement
+        does not touch: a 200 carrying a status and its evidence structures,
+        never a 503. The layer itself is recorded, as behaviour and not as
+        acceptance evidence, in the test below.
+        """
         cases = {
-            # `mvp-v0.1` Section 5 requires the layer recorded and does not fix
-            # which value each case takes; `runtime/request.py` reads the
-            # Section 4.6 literal as the adapter's own refusal and anything
-            # else as the runtime declining to recognise what it was sent.
-            # **`api-v0.1` Section 8.1's `WF-018` row expects `adapter` here**,
-            # which is not what the contract this route passes through
-            # produces. Raised for the owner's disposition as a defect in that
-            # row (see the pull request); asserted against the runtime's actual
-            # output, because Section 5 of this contract makes the trace
-            # `mvp-v0.1`'s to decide and the surface's to carry unchanged.
             "route outside the vocabulary": (
                 Proposal(route="SAMPLE_NOT_A_ROUTE", arguments=dict(FACT_MESSAGE)),
                 Status.UNSUPPORTED,
-                "runtime",
             ),
-            # `invalid_request` records no layer: `mvp-v0.1` sets one for
-            # `unsupported` alone, and Section 4.4's never-omitted rule makes
-            # that visible as `null` rather than as a missing key.
             "argument the route does not allow": (
                 Proposal(route="message_facts", arguments=dict(FACT_MESSAGE) | {"nonsense": "SAMPLE_X"}),
                 Status.INVALID_REQUEST,
-                None,
             ),
         }
         text = f"{ASK_TEXT} SAMPLE_MSG_ENGINE_STATUS SAMPLE_X"
-        for name, (proposal, status, layer) in cases.items():
+        for name, (proposal, status) in cases.items():
             with self.subTest(case=name):
                 response, _, _ = self.ask(proposal, text=text)
                 document = self.assert_result_envelope(response, proposal=True)
                 self.assertEqual(document["result"]["status"], status.value)
-                self.assertEqual(document["result"]["source_trace"]["producing_layer"], layer)
                 # Each carries its evidence structures, which a 503 has none of.
                 for key in ("evidence_bundle", "source_trace", "limitations"):
                     self.assertIn(key, document["result"])
+
+    def test_the_layer_on_a_proposal_outside_the_vocabulary_is_the_runtimes(self):
+        """Section 5: the trace is `mvp-v0.1`'s to decide and this surface's to
+        carry unchanged. `runtime/request.py` reads the Section 4.6 literal as
+        the adapter's own refusal and anything else as the runtime declining to
+        recognise what it was sent, so a route outside the vocabulary is
+        `runtime` here.
+
+        **This contradicts `api-v0.1` Section 8.1's `WF-018` row, which says
+        `adapter`.** This test records what the system does; it does not
+        resolve the contradiction and must not be read as the row's acceptance
+        evidence. Either that row or `mvp-v0.1`'s layer attribution has to
+        change, and both are accepted contracts, so the resolution is the
+        repository owner's recorded decision. Until one is recorded, `WF-018`
+        is outstanding.
+        """
+        text = f"{ASK_TEXT} SAMPLE_MSG_ENGINE_STATUS SAMPLE_X"
+        response, _, _ = self.ask(
+            Proposal(route="SAMPLE_NOT_A_ROUTE", arguments=dict(FACT_MESSAGE)), text=text
+        )
+        document = self.assert_result_envelope(response, proposal=True)
+        self.assertEqual(document["result"]["source_trace"]["producing_layer"], "runtime")
+        # `invalid_request` records no layer: `mvp-v0.1` sets one for
+        # `unsupported` alone, and Section 4.4's never-omitted rule makes that
+        # visible as `null` rather than as a missing key. No row of Section 8.1
+        # fixes this one, so it is not in dispute.
+        response, _, _ = self.ask(
+            Proposal(route="message_facts", arguments=dict(FACT_MESSAGE) | {"nonsense": "SAMPLE_X"}),
+            text=text,
+        )
+        document = self.assert_result_envelope(response, proposal=True)
+        self.assertIsNone(document["result"]["source_trace"]["producing_layer"])
 
     def test_verbatim_is_this_contracts_rule_and_not_revalidations_return(self):
         """Section 4.2 makes `verbatim` the surface's own computation. On the
@@ -844,6 +876,22 @@ class TheRefusals(SurfaceCase):
                 # Neither a result nor a refusal: this contract says nothing
                 # about the path, so the body claims nothing either.
                 self.assertNotEqual(response.headers["content-type"], "application/json")
+
+    def test_a_trailing_slash_under_v1_is_unknown_route_and_not_a_redirect(self):
+        """Section 4.5 fixes a 200 result and six refusal codes; a 307 is
+        neither, and the path it redirects to is one Section 4.1 does not
+        name. The framework would answer one by default, so this is the
+        assertion that the default stays off."""
+        client, services = surface(fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)}))
+        for path in ("/v1/query/", "/v1/discover/", "/v1/select/", "/v1/ask/", "/v1/health/"):
+            with self.subTest(path=path):
+                response = client.post(
+                    path, json={"route": "message_facts", "arguments": FACT_MESSAGE}
+                )
+                self.assert_refusal(response, "unknown_route")
+        # The client follows redirects, so a surface that issued one would
+        # have reached an entry point here rather than a refusal.
+        self.assertEqual(dispatches(services), 0)
 
     def test_no_refusal_detail_names_a_host_path_or_credential(self):
         """Section 4.5: `detail` is text that names no credential, host, path,

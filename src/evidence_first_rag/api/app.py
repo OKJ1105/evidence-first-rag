@@ -400,6 +400,14 @@ def create_app(services: Services) -> fastapi.FastAPI:
             " entity-discovery-v0.1; this surface decides nothing about an"
             " answer."
         ),
+        # Starlette's default retries an unmatched path with its trailing
+        # slash added or removed and answers HTTP 307. Section 4.5 admits a
+        # 200 result and six refusal codes and nothing else -- "a client has
+        # three branches, not two" -- so a redirect is a fourth, and it would
+        # also serve a route at `/v1/query/`, a path Section 4.1 does not
+        # name. Off, an unmatched path under `/v1` reaches the 404 handler and
+        # leaves as `unknown_route`, which is what that namespace is for.
+        redirect_slashes=False,
     )
     _install_refusal_handlers(app)
     _install_routes(app, services)

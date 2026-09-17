@@ -2,28 +2,38 @@
 PostgreSQL database.
 
 `tests/test_api_surface.py` proves the surface's decisions given results. This
-file proves the steps whose expected value is a **registered** `FX-*` or
-`DX-*` outcome: Section 8.1 says a fixture citing one of those cases takes
-"that case's registered result, serialized", and only the registered data can
-supply it. The division is `mvp-v0.1`'s, and it is why both files exist.
+file is where the steps whose expected value is a **registered** `FX-*` or
+`DX-*` outcome are proved: Section 8.1 says a fixture citing one of those
+cases takes "that case's registered result, serialized", and only the
+registered data can supply it. The division is `mvp-v0.1`'s, and it is why
+both files exist.
 
 `WF-003` is why this file matters more than its size suggests. It is the whole
 target path -- a request that names no canonical reference, the candidate list
-that follows, a caller's selection, and a fact with its sources -- and until
-it ran here it had never run end to end against real rows through the surface
-a reader would use.
+that follows, a caller's selection, and a fact with its sources -- and it has
+never run end to end against real rows through the surface a reader would use.
+It still has not: see the deferral below.
 
 Not here: `WF-007` to `WF-010`, `WF-017`, `WF-018` and `WF-022`, which inject a
 proposal or a fault and so assert nothing about what the database returns; they
 are in `tests/`. `WF-011` and `WF-014` are refusals decided before any
 connection opens and are there too.
 
-**This module refuses to skip where it was meant to run.** It needs the `api`
-extra, and a job that provisions the database without installing it would
-otherwise report every step above as skipped and exit 0 -- the #101 failure,
-since a skip is green and the evidence for the registered rows would be
-carried by a file no check executes. `_refuse_to_skip_silently` is that guard:
-where the database environment is configured it fails instead.
+**No CI job runs this module today, and nothing in this slice claims it
+does.** It needs the `api` extra, and `database-checks` installs the package
+without one. Adding it there is a second one-line change to
+`.github/workflows/repository-checks.yml`, and the repository owner's recorded
+decision on #178 covers the `adapter-checks` line only, so the writer cannot
+make it. Failing here instead of skipping would only turn that into a job that
+is red on every run for a reason no one on this branch is authorised to fix.
+
+So the module skips, and the deferral is stated rather than hidden: **the
+registered `FX-*`/`DX-*` half of Section 8.1 is not this slice's acceptance
+evidence.** What this slice proves is in `tests/test_api_surface.py`, which
+runs in `adapter-checks` with the extra installed. This file is the evidence
+for the registered rows once the owner records the `database-checks` line;
+until then it is runnable by hand against a provisioned database and gated by
+nothing, and no row of Section 8.1 should be read as satisfied by it.
 """
 
 import json
@@ -66,36 +76,23 @@ PROVENANCE = (
 )
 
 
+# Why a skip here is honest rather than the #101 failure: a skip is green, and
+# a green skip is only a lie where something claimed the evidence. Nothing
+# does. The module docstring, ADR-0003 and the pull request all say that the
+# registered `FX-*`/`DX-*` half of Section 8.1 is deferred with this file, so
+# what this reports is what is true -- the steps did not run.
+SKIPPED = (
+    "the api extra is not installed; the database-checks job installs the"
+    " package without it, and adding it is the repository owner's recorded"
+    " decision (ADR-0003), so the Section 8.1 steps in this module are"
+    " deferred rather than gated"
+)
+
+
 def setUpModule():
-    if not HAS_API:  # pragma: no cover - the extra is installed in CI
-        _refuse_to_skip_silently()
+    if not HAS_API:  # pragma: no cover - exercised by the extra-free job
+        raise unittest.SkipTest(SKIPPED)
     support.build(DATABASE)
-
-
-def _refuse_to_skip_silently():  # pragma: no cover - the extra is installed in CI
-    """Skip only where a skip honestly means "this environment cannot run it".
-
-    Every step below is a registered `WF-*` whose expected value is an `FX-*`
-    or `DX-*` result, and Section 8.1 makes those steps this file's to prove.
-    A run that reports the module green having executed none of them is the
-    #101 failure exactly: a skip is green, and the acceptance evidence for the
-    rows citing registered cases would then live in a file no check executes.
-
-    `MVP_RUNTIME_PASSWORD` is what says the database environment is
-    provisioned -- `connection_parameters` cannot build a connection without
-    it. Where it is set, these tests were meant to run, and a missing `api`
-    extra is a configuration defect to fail on rather than to pass over. Where
-    it is unset there is no database either, nothing here could have run, and
-    the skip says so truthfully.
-    """
-    missing = "the api extra is not installed"
-    if "MVP_RUNTIME_PASSWORD" not in os.environ:
-        raise unittest.SkipTest(missing)
-    raise RuntimeError(
-        f"{missing}, but the database environment is configured, so the"
-        f" api-v0.1 Section 8.1 steps this file owns were meant to run;"
-        f" install the package with its `api` extra so they do"
-    )
 
 
 def tearDownModule():
@@ -129,7 +126,7 @@ def client(**overrides):
     )
 
 
-@unittest.skipUnless(HAS_API, "the api extra is not installed")
+@unittest.skipUnless(HAS_API, SKIPPED)
 class WorkflowCase(unittest.TestCase):
     """What every step of every fixture owes, in one place."""
 
