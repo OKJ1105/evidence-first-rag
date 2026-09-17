@@ -641,8 +641,10 @@ class TheNaturalLanguageRoute(SurfaceCase):
         self.assertEqual(document["result"]["source_trace"]["producing_layer"], "runtime")
         # `invalid_request` records no layer: `mvp-v0.1` sets one for
         # `unsupported` alone, and Section 4.4's never-omitted rule makes that
-        # visible as `null` rather than as a missing key. No row of Section 8.1
-        # fixes this one, so it is not in dispute.
+        # visible as `null` rather than as a missing key. **`WF-018` fixes this
+        # half too, as of `0.1.1`** -- the row said nothing about it before and
+        # read as though both halves carried a layer -- so this assertion is
+        # that row's acceptance evidence and not an aside.
         response, _, _ = self.ask(
             Proposal(route="message_facts", arguments=dict(FACT_MESSAGE) | {"nonsense": "SAMPLE_X"}),
             text=text,
