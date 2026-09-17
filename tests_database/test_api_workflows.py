@@ -33,13 +33,13 @@ from evidence_first_rag import Status
 from evidence_first_rag.discovery import DiscoveryStatus
 from evidence_first_rag.runtime.connection import PsycopgDatabase
 
-from . import support
+from . import guards, support
 
 try:
     from fastapi.testclient import TestClient
 
     from evidence_first_rag.api import as_json
-    from evidence_first_rag.api.app import create_app, services
+    from evidence_first_rag.api.app import CONTRACT_IDENTIFIER, CONTRACT_VERSION, create_app, services
 
     HAS_API = True
 except ImportError:  # pragma: no cover - exercised by the driver-free job
@@ -69,15 +69,28 @@ PROVENANCE = (
 # with no database. It is not the #101 failure, which is a skip standing in
 # for evidence something claimed: `database-checks` installs the extra and
 # executes this module, so the rows below are discharged rather than deferred.
-SKIPPED = (
-    "the api extra is not installed; database-checks installs it and is where"
-    " these Section 8.1 rows are discharged"
-)
-
-
 def setUpModule():
-    if not HAS_API:  # pragma: no cover - exercised by the extra-free job
-        raise unittest.SkipTest(SKIPPED)
+    """Skip where nothing could have run; **fail where it was meant to.**
+
+    Thirteen registered Section 8.1 rows live here -- `WF-003` among them --
+    and every one of them is reported by a single install line in a workflow
+    file. Drop `.[api]` from it and this module skips, a skip is green, and
+    nothing anywhere says the rows stopped running.
+
+    An earlier revision skipped in both cases, correctly at the time: that
+    install line was not a change a writer session could make, and a job red on
+    every run for a reason nobody on the branch may fix is not evidence either.
+    The repository owner recorded the line on #179, so that reason is gone.
+
+    The decision itself is `guards.missing_dependency`, which needs neither a
+    driver nor a database, so `tests/test_suite_layout.py` asserts all three of
+    its branches in every job rather than leaving them to be observed here.
+    """
+    outcome = guards.missing_dependency(
+        installed=HAS_API, provisioned=bool(os.environ.get("MVP_RUNTIME_PASSWORD"))
+    )
+    if outcome is not None:
+        raise outcome
     support.build(DATABASE)
 
 
@@ -112,7 +125,7 @@ def client(**overrides):
     )
 
 
-@unittest.skipUnless(HAS_API, SKIPPED)
+@unittest.skipUnless(HAS_API, "the api extra is not installed")
 class WorkflowCase(unittest.TestCase):
     """What every step of every fixture owes, in one place."""
 
@@ -367,7 +380,7 @@ class TheSurfaceProperties(WorkflowCase):
         self.assertEqual(set(document), {"contracts", "adapter_configured"})
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {CONTRACT_IDENTIFIER: CONTRACT_VERSION, "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         self.assertIs(document["adapter_configured"], False)
 
