@@ -65,10 +65,11 @@ PROVENANCE = (
 )
 
 
-# This fires only where the rows were never going to run anyway -- a checkout
-# with no database. It is not the #101 failure, which is a skip standing in
-# for evidence something claimed: `database-checks` installs the extra and
-# executes this module, so the rows below are discharged rather than deferred.
+# The skip branch fires only where the rows were never going to run anyway --
+# a checkout with no database. It is not the #101 failure, which is a skip
+# standing in for evidence something claimed: `database-checks` installs the
+# extra and executes this module, so the rows below are discharged rather than
+# deferred. The other branch is the guard proper; the docstring has it.
 def setUpModule():
     """Skip where nothing could have run; **fail where it was meant to.**
 
@@ -83,8 +84,9 @@ def setUpModule():
     The repository owner recorded the line on #179, so that reason is gone.
 
     The decision itself is `guards.missing_dependency`, which needs neither a
-    driver nor a database, so `tests/test_suite_layout.py` asserts all three of
-    its branches in every job rather than leaving them to be observed here.
+    driver nor a database, so `tests/test_database_suite_guards.py` asserts all
+    three of its branches in every job rather than leaving them to be observed
+    here.
     """
     outcome = guards.missing_dependency(
         installed=HAS_API, provisioned=bool(os.environ.get("MVP_RUNTIME_PASSWORD"))
