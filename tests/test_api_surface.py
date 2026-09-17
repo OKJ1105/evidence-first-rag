@@ -682,10 +682,18 @@ class TheNaturalLanguageRoute(SurfaceCase):
         """Section 4.2 puts untrusted adapter output on the wire, and
         `Adapter.read` passes `route` and a non-conforming `arguments` through
         unchanged -- so a model that answered with a number reaches this key.
-        A float and a negative integer are outside what the Section 4.4
-        canonical rules write; serializing one raw raises inside the handler
-        and the caller gets the framework's plain-text 500, which is a non-200
-        carrying neither a result nor one of Section 4.5's six refusals.
+        Serializing a value the Section 4.4 rules cannot write would raise
+        inside the handler, and a non-200 carrying neither a result nor one of
+        Section 4.5's six refusals is outside the contract's table.
+
+        **An integer of either sign is now written rather than coerced.**
+        Section 4.2 fixes `arguments` as "the adapter's output exactly as
+        returned", and a client comparing the proposal with the
+        `invalid_request` that followed must see the number the model sent,
+        not a string that looks like one. Only a float is still coerced, and
+        the `_wire` docstring says why: a float has no canonical text for two
+        implementations to agree on, and `mvp-v0.1` Section 6 forbids the
+        rounding one would imply.
         """
         proposal = Proposal(
             route="message_facts",
@@ -696,13 +704,9 @@ class TheNaturalLanguageRoute(SurfaceCase):
         # A result at 200: revalidation refuses the values, and its refusal is
         # a status family rather than a transport condition (Section 4.5).
         self.assertEqual(document["result"]["status"], Status.INVALID_REQUEST.value)
-        # What the vocabulary carries is unchanged -- the string, the array,
-        # the non-negative integer inside it -- and only what it cannot carry
-        # becomes text. Dropping the value instead would make an off-schema
-        # proposal indistinguishable from one that carried nothing.
         self.assertEqual(
             document["proposal"]["arguments"],
-            {"snapshot_label": "-1", "project_code": "1.5", "message_key": ["SAMPLE_A", 2]},
+            {"snapshot_label": -1, "project_code": "1.5", "message_key": ["SAMPLE_A", 2]},
         )
         self.assertEqual(document["proposal"]["verbatim"], [])
 
@@ -710,7 +714,30 @@ class TheNaturalLanguageRoute(SurfaceCase):
         response, _, _ = self.ask(Proposal(route=-1, arguments={}))
         document = self.assert_result_envelope(response, proposal=True)
         self.assertEqual(document["result"]["status"], Status.UNSUPPORTED.value)
-        self.assertEqual(document["proposal"]["route"], "-1")
+        self.assertEqual(document["proposal"]["route"], -1)
+
+    def test_a_negative_row_value_is_an_answer_and_not_a_fault(self):
+        """The unguarded side of the same limit, and the one that matters.
+
+        `sql/database/000_schema.sql` gives `frame_identifier`, `bit_offset`
+        and `transmit_period_ms` a plain `integer` with no non-negativity
+        CHECK, so a loaded row may carry a negative one. Before `json_text`
+        was widened, serializing that row raised and the caller received
+        **HTTP 500 `runtime_fault` for a correct `success`** -- a true answer
+        reported as a fault, which Charter Section 3.4 is written against.
+        Reproduced before the fix; this is the assertion that keeps it fixed.
+        """
+        db = fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(frame_identifier=-1),)})
+        client, _ = surface(db)
+        response = client.post(
+            "/v1/query", json={"route": "message_facts", "arguments": FACT_MESSAGE}
+        )
+        document = self.assert_result_envelope(response)
+        self.assertEqual(document["result"]["status"], Status.SUCCESS.value)
+        self.assertEqual(document["result"]["rows"][0]["frame_identifier"], -1)
+        # The value is a JSON number on the wire, not text: Section 4.4 makes
+        # an integer column a JSON number and only a `numeric` one a string.
+        self.assertIn('"frame_identifier":-1', response.text)
 
 
 # --------------------------------------------------------------------------
@@ -892,6 +919,34 @@ class TheRefusals(SurfaceCase):
         # The client follows redirects, so a surface that issued one would
         # have reached an entry point here rather than a refusal.
         self.assertEqual(dispatches(services), 0)
+
+    def test_a_path_outside_v1_carries_no_refusal_whatever_the_method(self):
+        """Section 4.5 bounds this contract's vocabulary to `/v1`, and the
+        bound is about the **path**, not about which status code the framework
+        raised. Testing the code first made `POST /docs` answer
+        `method_not_allowed`, telling a client that a vocabulary applies to a
+        path Section 3.2 says this contract says nothing about."""
+        client, _ = surface(fact_database())
+        for method, path in (
+            ("POST", "/docs"), ("POST", "/"), ("PUT", "/ui"), ("GET", "/openapi.json/x"),
+            ("DELETE", "/static/app.js"), ("GET", "/v1x/query"),
+        ):
+            with self.subTest(method=method, path=path):
+                response = client.request(method, path)
+                self.assertNotEqual(response.headers.get("content-type"), "application/json")
+                self.assertNotIn("refusal", response.text)
+                self.assertNotIn("result", response.text)
+
+    def test_the_method_not_allowed_detail_carries_nothing_read_off_the_request(self):
+        """Every refusal detail in this module is a fixed sentence. This one
+        used to interpolate the request's method, which is a token the caller
+        chose reaching a response body."""
+        client, _ = surface(fact_database())
+        for method in ("GET", "PUT", "DELETE", "PATCH"):
+            with self.subTest(method=method):
+                response = client.request(method, "/v1/query")
+                self.assert_refusal(response, "method_not_allowed")
+                self.assertNotIn(method, envelope_of(response)["detail"])
 
     def test_no_refusal_detail_names_a_host_path_or_credential(self):
         """Section 4.5: `detail` is text that names no credential, host, path,

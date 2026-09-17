@@ -267,21 +267,29 @@ def proposal_document(proposal: Proposal, request_text: str) -> dict:
 def _wire(value):
     """`value` as something the Section 4.4 canonical rules can write.
 
-    That vocabulary is `null`, a boolean, a non-negative integer, a string, an
-    array and an object (`discovery/canonical.py`). A value inside it is
+    That vocabulary is `null`, a boolean, an integer of either sign, a string,
+    an array and an object (`discovery/canonical.py`). A value inside it is
     returned unchanged, so a conforming proposal reaches the wire exactly as
     the adapter returned it. A value outside it becomes its text form rather
     than an exception, because the alternative on this path is not a better
     body -- it is a response outside Section 4.5's table.
+
+    **What is left outside is a float, and deliberately.** `json_text` was
+    widened to write a negative integer because a result row can carry one;
+    it was not widened to write a float, because a float has no canonical text
+    to agree on -- two conforming implementations would have to pick the same
+    one for Section 6's byte identity to hold -- and because `mvp-v0.1`
+    Section 6 forbids rounding anywhere, which is why a `numeric` column
+    travels as its stored decimal text rather than as a JSON number at all.
+    Choosing a float form here would be deciding that question in a helper.
+    A model that proposed `1.5` still has its value shown, as `"1.5"`.
 
     Text rather than omission: a reader comparing the proposal with the
     `invalid_request` that followed needs to see the value that caused it, and
     a dropped key would make an off-schema proposal look like one that carried
     nothing.
     """
-    if isinstance(value, (str, bool, type(None))):
-        return value
-    if isinstance(value, int) and value >= 0:
+    if isinstance(value, (str, bool, int, type(None))):
         return value
     if isinstance(value, (list, tuple)):
         return [_wire(item) for item in value]
@@ -476,22 +484,33 @@ def _install_refusal_handlers(app: fastapi.FastAPI) -> None:
 
     @app.exception_handler(starlette.exceptions.HTTPException)
     async def _http(request, error):
+        # **The namespace decides before the status code does.** Outside `/v1`
+        # this contract says nothing (Section 4.5), so no response there may
+        # carry a refusal -- including a 405. Testing the code first made
+        # `POST /docs` answer `method_not_allowed`, which told a client that a
+        # vocabulary applies to a path the contract disclaims.
+        if not _under_namespace(request.url.path):
+            # Neither a `result` nor a `refusal`, and not JSON at all, so a
+            # client reading the body cannot mistake it for either.
+            return starlette.responses.PlainTextResponse(
+                "Not Found", status_code=error.status_code
+            )
         if error.status_code == REFUSALS["method_not_allowed"]:
+            # A fixed sentence. The method is read off the request, and every
+            # other detail in this module deliberately carries nothing that was
+            # sent to it (Section 4.5).
             return refusal(
                 "method_not_allowed",
-                f"{request.method} is not a method this route accepts (Section 4.1)",
+                "this route does not accept the request method (Section 4.1)",
             )
-        if error.status_code == REFUSALS["unknown_route"] and _under_namespace(request.url.path):
+        if error.status_code == REFUSALS["unknown_route"]:
             return refusal(
                 "unknown_route",
                 f"no route of Section 4.1 is served at this path under {NAMESPACE}",
             )
-        # Outside `/v1` this contract says nothing (Section 4.5), so the
-        # response carries neither `result` nor `refusal` and is not JSON at
-        # all -- a client reading the body cannot mistake it for either.
-        return starlette.responses.PlainTextResponse(
-            "Not Found", status_code=error.status_code
-        )
+        # A status code under `/v1` that is neither of the two above is not a
+        # path this table covers; the catch-all below owns it.
+        return refusal("runtime_fault", RUNTIME_FAULT_DETAIL)
 
 
 def _under_namespace(path: str) -> bool:
