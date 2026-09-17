@@ -312,6 +312,24 @@ class SurfaceCase(unittest.TestCase):
         self.assertIsInstance(document["detail"], str)
         self.assertNotIn("result", document)
 
+    def assert_carries_neither(self, response):
+        """A response outside `/v1` carries none of this contract's vocabulary.
+
+        Asserted on the **parsed body**, not on the text. A page that explains
+        what a refusal is contains the word, and a JavaScript module that builds
+        one contains it too -- neither is a client reading a `refusal` off a
+        response. What the obligation forbids is a body a client could parse as
+        one, so that is what is checked.
+        """
+        self.assertNotEqual(response.headers.get("content-type", ""), "application/json")
+        try:
+            body = json.loads(response.text)
+        except ValueError:
+            return
+        if isinstance(body, dict):
+            self.assertNotIn("refusal", body)
+            self.assertNotIn("result", body)
+
     def assert_carries(self, document, result):
         """Section 4.2: `result` is the whole of what the runtime returned, and
         `rendered` is the Section 4.8 answer or `null`."""
@@ -921,17 +939,20 @@ class TheRefusals(SurfaceCase):
         )
 
     def test_unknown_route_governs_the_v1_namespace_and_nothing_else(self):
-        """Without this, Section 4.6 would oblige a UI a person opens while
-        Section 4.5 turned `GET /` into a 404, and the demo Charter Section 9's
-        fourth deliverable exists for could not be served at all."""
+        """Section 4.5's bound, and what it was written to permit.
+
+        **The obligation is that no response outside `/v1` carries this
+        contract's vocabulary — not that every such path is a 404.** An earlier
+        version of this test asserted the code, which was true while nothing
+        was served there and became false the moment Section 4.6's page was:
+        `GET /` is now the page, which is the whole reason the sentence bounding
+        `unknown_route` to `/v1` exists. What must not change is that a client
+        cannot read a `result` or a `refusal` off any of these.
+        """
         client, _ = surface(fact_database())
-        for path in ("/", "/ui", "/static/app.js"):
+        for path in ("/", "/view.mjs", "/static/app.js", "/docs"):
             with self.subTest(path=path):
-                response = client.get(path)
-                self.assertEqual(response.status_code, 404)
-                # Neither a result nor a refusal: this contract says nothing
-                # about the path, so the body claims nothing either.
-                self.assertNotEqual(response.headers["content-type"], "application/json")
+                self.assert_carries_neither(client.get(path))
 
     def test_a_trailing_slash_under_v1_is_unknown_route_and_not_a_redirect(self):
         """Section 4.5 fixes a 200 result and six refusal codes; a 307 is
@@ -961,10 +982,7 @@ class TheRefusals(SurfaceCase):
             ("DELETE", "/static/app.js"), ("GET", "/v1x/query"),
         ):
             with self.subTest(method=method, path=path):
-                response = client.request(method, path)
-                self.assertNotEqual(response.headers.get("content-type"), "application/json")
-                self.assertNotIn("refusal", response.text)
-                self.assertNotIn("result", response.text)
+                self.assert_carries_neither(client.request(method, path))
 
     def test_the_method_not_allowed_detail_carries_nothing_read_off_the_request(self):
         """Every refusal detail in this module is a fixed sentence. This one
@@ -1448,7 +1466,14 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
         registered = [
             route for route in app.routes if getattr(route, "path", "").startswith(NAMESPACE)
         ]
-        self.assertEqual(len(registered), 5)
+        # The five by name rather than by count, so the Section 4.6 catch-all
+        # joining them does not read as one of them going missing.
+        self.assertLessEqual(
+            {"/v1/query", "/v1/ask", "/v1/discover", "/v1/select", "/v1/health"},
+            {route.path for route in registered},
+        )
+        # The rule is about every handler under the namespace, including the
+        # catch-all: an exemption is a place for blocking work to reappear.
         for route in registered:
             with self.subTest(path=route.path):
                 self.assertFalse(

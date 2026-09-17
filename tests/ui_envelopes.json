@@ -1,0 +1,627 @@
+{
+  "ask_invented_scope": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "proposal": {
+      "arguments": {
+        "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+        "network_name": "SAMPLE_INVENTED_NETWORK_NAME",
+        "project_code": "SAMPLE_INVENTED_PROJECT_CODE",
+        "revision_label": "SAMPLE_INVENTED_REVISION_LABEL",
+        "snapshot_label": "SAMPLE_INVENTED_SNAPSHOT_LABEL"
+      },
+      "route": "message_facts",
+      "verbatim": []
+    },
+    "rendered": "Scope or arguments are malformed, contradictory, or name a parameter outside the route allowlist.\nRoute: message_facts, Status: invalid_request.\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {},
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": false,
+          "read_only_transaction": false,
+          "role_name": ""
+        },
+        "resolved_scope": null,
+        "route": "message_facts",
+        "row_count": 0,
+        "selection": null,
+        "template_name": "",
+        "template_version": ""
+      },
+      "limitations": [],
+      "rows": [],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "invalid_request"
+    }
+  },
+  "ask_verbatim_scope": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "proposal": {
+      "arguments": {
+        "network_name": "SAMPLE_NET_POWERTRAIN",
+        "project_code": "SAMPLE_PROJECT_ALPHA",
+        "revision_label": "SAMPLE_REV_A",
+        "snapshot_label": "SAMPLE_SNAP_BASE"
+      },
+      "route": "signal_facts",
+      "verbatim": [
+        "network_name",
+        "project_code",
+        "revision_label",
+        "snapshot_label"
+      ]
+    },
+    "rendered": "The route is determined, but no canonical reference could be formed.\nRoute: signal_facts, Status: needs_entity_discovery.\nLimitation (entity_discovery_not_implemented): Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {},
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": false,
+          "read_only_transaction": false,
+          "role_name": ""
+        },
+        "resolved_scope": null,
+        "route": "signal_facts",
+        "row_count": 0,
+        "selection": null,
+        "template_name": "",
+        "template_version": ""
+      },
+      "limitations": [
+        {
+          "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+          "kind": "entity_discovery_not_implemented"
+        }
+      ],
+      "rows": [],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "needs_entity_discovery"
+    }
+  },
+  "candidates": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [
+        {
+          "alias": null,
+          "entity_approval_reference": "SAMPLE_APPROVAL_M3_001",
+          "entity_kind": "signal",
+          "match_kind": "lookup_key",
+          "match_tier": 1,
+          "matched_text": "SAMPLE_SIG_GEAR_POSITION",
+          "rank": 1,
+          "reference": {
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "signal_key": "SAMPLE_SIG_GEAR_POSITION",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        },
+        {
+          "alias": {
+            "approval_reference": "SAMPLE_APPROVAL_M3_101",
+            "approved_at": "2026-03-05T00:00:00Z",
+            "asserting_scope": {
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          },
+          "entity_approval_reference": "SAMPLE_APPROVAL_M3_001",
+          "entity_kind": "signal",
+          "match_kind": "approved_alias",
+          "match_tier": 2,
+          "matched_text": "SAMPLE_SIG_GEAR_POSITION",
+          "rank": 2,
+          "reference": {
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "signal_key": "SAMPLE_SIG_FAULT_CODE",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        }
+      ],
+      "evidence_bundle": {
+        "bound_parameters": {
+          "entity_kind": "signal",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "parent_message_key": null,
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "term": "SAMPLE_SIG_GEAR_POSITION"
+        },
+        "candidate_count": 2,
+        "candidate_set_id": "9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "M-LEX-1",
+        "method_version": "1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "registry_built_at": "2026-09-12T00:00:00Z",
+        "registry_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "route": "entity_discovery",
+        "row_count": 2,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "TPL_DISCOVERY_EXACT_V1",
+        "template_version": "1"
+      },
+      "limitations": [
+        {
+          "detail": "No reference was resolved: the term matched more than one approved entity, or matched only below tier 2, and Section 4.7 permits no automatic choice among candidates. An explicit selection is required (Section 4.8).",
+          "kind": "no_reference_resolved"
+        }
+      ],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [
+          {
+            "approval_reference": "SAMPLE_APPROVAL_M3_101",
+            "approved_at": "2026-03-05T00:00:00Z",
+            "asserting_scope": {
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          }
+        ],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [
+          {
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          {
+            "message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "producing_layer": null,
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      },
+      "status": "candidates"
+    }
+  },
+  "discovery_not_found": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {
+          "entity_kind": "message",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "normalized_term": [
+            "sample",
+            "msg",
+            "engine",
+            "status"
+          ],
+          "parent_message_key": null,
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "M-LEX-1",
+        "method_version": "1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "registry_built_at": "2026-09-12T00:00:00Z",
+        "registry_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "route": "entity_discovery",
+        "row_count": 0,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "TPL_DISCOVERY_LEXICAL_V1",
+        "template_version": "1"
+      },
+      "limitations": [
+        {
+          "detail": "No approved entity matched the term at any tier. Absence from the approved registry is not absence from the data: the registry is an allowlist (Section 4.2), and this result establishes nothing about what the loaded data contains.",
+          "kind": "not_in_registry"
+        }
+      ],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": null,
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      },
+      "status": "not_found"
+    }
+  },
+  "fact_not_found": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "Scope resolved to one snapshot within approved coverage, and no row matched the lookup key.\nRoute: message_facts, Status: not_found.\nResolved scope: SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE.\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "route": "message_facts",
+        "row_count": 0,
+        "selection": null,
+        "template_name": "TPL_MESSAGE_FACTS_V1",
+        "template_version": "2"
+      },
+      "limitations": [],
+      "rows": [],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "not_found"
+    }
+  },
+  "fact_success": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "The registered template returned these rows.\nRoute: signal_facts, Status: success.\nResolved scope: SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE, message_key: SAMPLE_MSG_ENGINE_STATUS, signal_key: SAMPLE_SIG_ENGINE_SPEED, unit_label: SAMPLE_UNIT_RPM, scale_factor: 0.250, scale_offset: 0.000, bit_width: 16, bit_offset: 8\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "route": "signal_facts",
+        "row_count": 1,
+        "selection": null,
+        "template_name": "TPL_SIGNAL_FACTS_V1",
+        "template_version": "2"
+      },
+      "limitations": [],
+      "rows": [
+        {
+          "bit_offset": 8,
+          "bit_width": 16,
+          "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "scale_factor": "0.250",
+          "scale_offset": "0.000",
+          "signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "superseded_by_network_name": null,
+          "superseded_by_project_code": null,
+          "superseded_by_revision_label": null,
+          "superseded_by_snapshot_label": null,
+          "unit_label": "SAMPLE_UNIT_RPM"
+        }
+      ],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "success"
+    }
+  },
+  "needs_entity_discovery": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "The route is determined, but no canonical reference could be formed.\nRoute: signal_facts, Status: needs_entity_discovery.\nLimitation (entity_discovery_not_implemented): Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {},
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": false,
+          "read_only_transaction": false,
+          "role_name": ""
+        },
+        "resolved_scope": null,
+        "route": "signal_facts",
+        "row_count": 0,
+        "selection": null,
+        "template_name": "",
+        "template_version": ""
+      },
+      "limitations": [
+        {
+          "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)",
+          "kind": "entity_discovery_not_implemented"
+        }
+      ],
+      "rows": [],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "needs_entity_discovery"
+    }
+  },
+  "refusal": {
+    "detail": "the request body must be a JSON object carrying exactly the keys this route names, each of the stated type (Section 4.4)",
+    "refusal": "malformed_request"
+  },
+  "selection_two_limitations": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "The registered template returned these rows.\nRoute: signal_facts, Status: success.\nResolved scope: SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE, message_key: SAMPLE_MSG_TRANSMISSION_STATE, signal_key: SAMPLE_SIG_GEAR_POSITION, unit_label: SAMPLE_UNIT_RPM, scale_factor: 0.250, scale_offset: 0.000, bit_width: 16, bit_offset: 8, superseded_by_project_code: SAMPLE_PROJECT_ALPHA, superseded_by_revision_label: SAMPLE_REV_A, superseded_by_network_name: SAMPLE_NET_CHASSIS, superseded_by_snapshot_label: SAMPLE_SNAP_BASE\nLimitation (superseded_snapshot): SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2).\nLimitation (scope_selected_by_user): This reference was selected explicitly, at rank 1 of 2 candidates in candidate set 9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7, and dispatched to signal_facts. The selection was verified by re-deriving the candidate set (entity-discovery-v0.1 Section 4.8).\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "signal_key": "SAMPLE_SIG_GEAR_POSITION",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "route": "signal_facts",
+        "row_count": 1,
+        "selection": {
+          "candidate_count": 2,
+          "candidate_set_id": "9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7",
+          "contract_identifier": "entity-discovery-v0.1",
+          "contract_version": "0.3.1",
+          "discovery_bound_parameters": {
+            "entity_kind": "signal",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "parent_message_key": null,
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "term": "SAMPLE_SIG_GEAR_POSITION"
+          },
+          "discovery_row_count": 2,
+          "discovery_template_name": "TPL_DISCOVERY_EXACT_V1",
+          "discovery_template_version": "1",
+          "method_identifier": "M-LEX-1",
+          "method_version": "1",
+          "registry_built_at": "2026-09-12T00:00:00Z",
+          "registry_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "selected_rank": 1,
+          "target_route": "signal_facts"
+        },
+        "template_name": "TPL_SIGNAL_FACTS_V1",
+        "template_version": "2"
+      },
+      "limitations": [
+        {
+          "detail": "SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2).",
+          "kind": "superseded_snapshot"
+        },
+        {
+          "detail": "This reference was selected explicitly, at rank 1 of 2 candidates in candidate set 9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7, and dispatched to signal_facts. The selection was verified by re-deriving the candidate set (entity-discovery-v0.1 Section 4.8).",
+          "kind": "scope_selected_by_user"
+        }
+      ],
+      "rows": [
+        {
+          "bit_offset": 8,
+          "bit_width": 16,
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "scale_factor": "0.250",
+          "scale_offset": "0.000",
+          "signal_key": "SAMPLE_SIG_GEAR_POSITION",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "superseded_by_network_name": "SAMPLE_NET_CHASSIS",
+          "superseded_by_project_code": "SAMPLE_PROJECT_ALPHA",
+          "superseded_by_revision_label": "SAMPLE_REV_A",
+          "superseded_by_snapshot_label": "SAMPLE_SNAP_BASE",
+          "unit_label": "SAMPLE_UNIT_RPM"
+        }
+      ],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "entity_approval_reference": "SAMPLE_APPROVAL_M3_001",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "success"
+    }
+  }
+}

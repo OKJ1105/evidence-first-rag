@@ -77,7 +77,8 @@
       "command": [
         "node",
         "--test",
-        "scripts/agent/*.test.mjs"
+        "scripts/agent/*.test.mjs",
+        "ui/*.test.mjs"
       ]
     }
   ]

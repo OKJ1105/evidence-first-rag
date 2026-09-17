@@ -38,8 +38,11 @@ check the contract requires.
 import dataclasses
 import json
 
+import pathlib
+
 import fastapi
 import fastapi.exceptions
+import fastapi.staticfiles
 import pydantic
 import starlette.exceptions
 import starlette.responses
@@ -420,7 +423,76 @@ def create_app(services: Services) -> fastapi.FastAPI:
     )
     _install_refusal_handlers(app)
     _install_routes(app, services)
+    _install_presentation(app)
     return app
+
+
+# Section 4.6's page, and Section 3.2's reason it is not fixed by the contract.
+PRESENTATION = pathlib.Path(__file__).resolve().parents[3] / "ui"
+
+
+def _install_presentation(app: fastapi.FastAPI) -> None:
+    """Serve the Section 4.6 page, from outside `/v1`.
+
+    Section 4.5 bounds `unknown_route` to the `/v1` namespace "and nothing
+    else", and says why in as many words: without that bound, Section 4.6 would
+    oblige a UI a person opens while Section 4.5 turned `GET /` into a 404. So
+    this mount is what that sentence was written to permit.
+
+    **It adds no route under `/v1`**, which Section 4.1 fixes exhaustively, and
+    Section 9 puts that bound on this slice explicitly. Mounted last, after the
+    five routes are registered, so a path under `/v1` reaches one of them or the
+    Section 4.5 handler and never this.
+
+    Absent — a checkout that installed the package without the tree beside it —
+    the surface still serves the API. The page is a client of it, not a part of
+    it, and a missing page is not a reason for `/v1/query` to stop answering.
+    """
+    if not PRESENTATION.is_dir():  # pragma: no cover - a package without the tree
+        return
+
+    # The Section 4.1 paths, **read off the routes already registered** rather
+    # than listed again here. A second list is a second place for the five to
+    # be wrong, and this one would only be consulted on the failure path, where
+    # nobody would notice it had drifted.
+    registered = {
+        route.path
+        for route in app.routes
+        if getattr(route, "path", "").startswith(NAMESPACE + "/")
+    }
+
+    @app.api_route(
+        "/v1/{rest:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+        include_in_schema=False,
+    )
+    def _nothing_else_under_the_namespace(request: fastapi.Request, rest: str):
+        """Every `/v1` request the five routes do not answer, **before** the mount.
+
+        Without this, mounting at `/` makes the static files the catch-all for
+        the whole tree, and `POST /v1/nowhere` is answered by them: they serve
+        GET and HEAD, so it would leave as `method_not_allowed` where Section
+        4.5 fixes `unknown_route` — "the path is under `/v1` and is none of
+        Section 4.1's". A caller debugging a typo would be told its method was
+        the problem.
+
+        Catching everything also swallows the 405 the router would have raised
+        for a **known** path with the wrong method, so the two are told apart
+        here by the same set the five routes registered. Both refusals stay the
+        ones Section 4.5 names.
+
+        Registered here rather than beside the five, because order decides it:
+        the router tries routes in registration order, so this comes after them
+        and before the mount.
+        """
+        kind = "method_not_allowed" if request.url.path in registered else "unknown_route"
+        raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])
+
+    app.mount(
+        "/",
+        fastapi.staticfiles.StaticFiles(directory=PRESENTATION, html=True),
+        name="presentation",
+    )
 
 
 def _install_refusal_handlers(app: fastapi.FastAPI) -> None:
