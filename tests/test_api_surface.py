@@ -985,6 +985,17 @@ class TheRefusals(SurfaceCase):
             with self.subTest(method=method, path=path):
                 self.assert_carries_neither(client.request(method, path))
 
+    def test_an_unknown_v1_path_is_unknown_route_whatever_the_method(self):
+        """Section 4.5 decides these two by the **path**, and the catch-all is
+        registered for every method so that it can. Registered for a list of
+        methods instead, a `TRACE /v1/nowhere` is a partial match -- path yes,
+        method no -- which Starlette answers with 405, and an unknown path
+        would be reported as a method problem for the methods nobody listed."""
+        client, _ = surface(fact_database())
+        for method in ("TRACE", "PROPFIND", "GET", "POST"):
+            with self.subTest(method=method):
+                self.assert_refusal(client.request(method, "/v1/nowhere"), "unknown_route")
+
     def test_the_method_not_allowed_detail_carries_nothing_read_off_the_request(self):
         """Every refusal detail in this module is a fixed sentence. This one
         used to interpolate the request's method, which is a token the caller
@@ -1515,20 +1526,59 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
         registered = [
             route for route in app.routes if getattr(route, "path", "").startswith(NAMESPACE)
         ]
-        # The five by name rather than by count, so the Section 4.6 catch-all
-        # joining them does not read as one of them going missing.
-        self.assertLessEqual(
-            {"/v1/query", "/v1/ask", "/v1/discover", "/v1/select", "/v1/health"},
+        # The exact set, with the Section 4.6 catch-all named. A subset
+        # assertion would have let a later slice register a sixth path under
+        # `/v1`, and this is the only place in the suite where Section 4.1's
+        # "fixes the namespace exhaustively" is a test rather than prose.
+        self.assertEqual(
             {route.path for route in registered},
+            {
+                "/v1/query",
+                "/v1/ask",
+                "/v1/discover",
+                "/v1/select",
+                "/v1/health",
+                "/v1/{rest:path}",
+            },
         )
-        # The rule is about every handler under the namespace, including the
-        # catch-all: an exemption is a place for blocking work to reappear.
+        # The rule is about every handler that answers a request under the
+        # namespace: an exemption is a place for blocking work to reappear, so
+        # the one exemption is asserted below rather than assumed.
         for route in registered:
+            if route.path == "/v1/{rest:path}":
+                continue
             with self.subTest(path=route.path):
                 self.assertFalse(
                     inspect.iscoroutinefunction(route.endpoint),
                     f"{route.path} is async and would run blocking work on the event loop",
                 )
+
+    def test_the_catch_all_runs_on_the_event_loop_and_does_nothing_there(self):
+        """The one exemption above, asserted rather than assumed.
+
+        The Section 4.6 catch-all is an ASGI endpoint — which is what lets it
+        match every method — so it runs on the event loop, and
+        `iscoroutinefunction` over `route.endpoint` would say nothing about it
+        either way: the endpoint is an instance, not a function. What makes
+        that safe is its body, so that is what is pinned here: it reads the
+        path off the scope and raises, opening no connection and reading no
+        request body."""
+        app = create_app(Services(runtime=None, discovery=None, selection=None))
+        (catch_all,) = [
+            route for route in app.routes if getattr(route, "path", "") == "/v1/{rest:path}"
+        ]
+        # "Any method", which is the whole reason it is an ASGI endpoint.
+        self.assertIsNone(catch_all.methods)
+        source = inspect.getsource(type(catch_all.endpoint).__call__)
+        body = [line.strip() for line in source.splitlines()[1:] if line.strip()]
+        self.assertEqual(
+            body,
+            [
+                'kind = "method_not_allowed" if scope["path"] in self._registered'
+                ' else "unknown_route"',
+                "raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])",
+            ],
+        )
 
     def test_a_slow_request_does_not_delay_the_health_probe(self):
         """The behavioural half, and the one the Section 4.7 stack cares about.

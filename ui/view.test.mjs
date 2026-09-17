@@ -208,6 +208,26 @@ describe("obligation 3 — a candidate list is not an answer", () => {
     assert.equal(model.selection.chosenRank, null);
   });
 
+  it("shows a resolved outcome whole, with the tier and text that resolved it", () => {
+    const resolved = view(envelopes.discovery_resolved);
+    assert.equal(resolved.status, "resolved");
+    assert.equal(resolved.candidates.length, 0, "a resolved outcome lists no candidates");
+    assert.notEqual(resolved.resolved, null);
+    // Every key, not a chosen few: obligation 1 applies to this outcome too.
+    assert.deepEqual(
+      resolved.resolved.map((field) => field.key).sort(),
+      Object.keys(envelopes.discovery_resolved.result.resolved).sort(),
+    );
+    const shown = new Map(resolved.resolved.map((field) => [field.key, field.value]));
+    assert.equal(shown.get("match_tier"), envelopes.discovery_resolved.result.resolved.match_tier);
+    assert.equal(
+      shown.get("matched_text"),
+      envelopes.discovery_resolved.result.resolved.matched_text,
+    );
+    // And nothing is offered to select against an outcome with no list.
+    assert.equal(resolved.selection, null);
+  });
+
   it("shows the limitation that says nothing was resolved", () => {
     assert.ok(envelopes.candidates.result.limitations.length > 0);
     const section = model.evidence.find((s) => s.key === "limitations");

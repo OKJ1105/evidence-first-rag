@@ -308,6 +308,15 @@ document.getElementById("discover-send").addEventListener("click", async () => {
   for (const input of document.querySelectorAll("#discover-fields [data-name]")) {
     if (input.value !== "") args[input.dataset.name] = input.value;
   }
+  // Obligation 4 names "one listed rank": a rank chosen against the previous
+  // candidate set is not one this screen lists once a new set arrives, so the
+  // panel goes away before the request rather than only when the new response
+  // happens to carry candidates.
+  document.getElementById("select-panel").hidden = true;
+  document.getElementById("select-send").disabled = true;
+  state.selection = null;
+  state.candidates = [];
+  state.candidateSetId = null;
   const { body } = await send("/v1/discover", { arguments: args });
   state.discoveryArguments = args;
   // Section 4.1: the caller cites the set it was given. Read off the response

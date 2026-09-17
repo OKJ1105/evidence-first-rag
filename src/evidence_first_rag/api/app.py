@@ -461,12 +461,7 @@ def _install_presentation(app: fastapi.FastAPI) -> None:
         if getattr(route, "path", "").startswith(NAMESPACE + "/")
     }
 
-    @app.api_route(
-        "/v1/{rest:path}",
-        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-        include_in_schema=False,
-    )
-    def _nothing_else_under_the_namespace(request: fastapi.Request, rest: str):
+    class _NothingElseUnderTheNamespace:
         """Every `/v1` request the five routes do not answer, **before** the mount.
 
         Without this, mounting at `/` makes the static files the catch-all for
@@ -484,9 +479,32 @@ def _install_presentation(app: fastapi.FastAPI) -> None:
         Registered here rather than beside the five, because order decides it:
         the router tries routes in registration order, so this comes after them
         and before the mount.
+
+        **It matches every method, and is an ASGI endpoint in order to.** A
+        route registered for a list of methods makes `TRACE /v1/nowhere` a
+        partial match — the path matches, the method does not — which Starlette
+        answers with 405, so a path Section 4.5 calls `unknown_route` would be
+        reported as a method problem, for exactly the methods nobody thought to
+        list. `starlette.routing.Route` leaves the method set as "any" only for
+        an endpoint it treats as ASGI, and a plain function is not one, so this
+        is a class with `__call__`. It reads the path and raises: no body is
+        read, nothing blocks, and being the one thing under `/v1` that runs on
+        the event loop rather than the threadpool costs nothing.
         """
-        kind = "method_not_allowed" if request.url.path in registered else "unknown_route"
-        raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])
+
+        def __init__(self, registered: frozenset[str]) -> None:
+            self._registered = registered
+
+        async def __call__(self, scope, receive, send):
+            kind = "method_not_allowed" if scope["path"] in self._registered else "unknown_route"
+            raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])
+
+    app.router.add_route(
+        "/v1/{rest:path}",
+        _NothingElseUnderTheNamespace(frozenset(registered)),
+        include_in_schema=False,
+        name="nothing_else_under_the_namespace",
+    )
 
     app.mount(
         "/",

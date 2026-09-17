@@ -120,6 +120,15 @@ def _envelopes():
     client = _client(_database({}, exact=TWO_SIGNALS))
     built["candidates"] = client.post("/v1/discover", json={"arguments": SELECT_TERM}).text
 
+    # Obligation 3's other discovery outcome: one match resolves, and the tier
+    # and matched text that resolved it are what a screen has to show. Without
+    # this case `result.resolved` is null in every envelope and the view
+    # model's `resolved` branch is asserted by nothing.
+    client = _client(_database({}, exact=TWO_SIGNALS[:1]))
+    built["discovery_resolved"] = client.post(
+        "/v1/discover", json={"arguments": SELECT_TERM}
+    ).text
+
     # A discovery negative: nothing resolved, and no prose about it.
     client = _client(_database({}))
     built["discovery_not_found"] = client.post("/v1/discover", json={"arguments": MESSAGE}).text

@@ -342,6 +342,108 @@
       "status": "not_found"
     }
   },
+  "discovery_resolved": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {
+          "entity_kind": "signal",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "parent_message_key": null,
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE",
+          "term": "SAMPLE_SIG_GEAR_POSITION"
+        },
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": 1,
+        "matched_text": "SAMPLE_SIG_GEAR_POSITION",
+        "method_identifier": "M-LEX-1",
+        "method_version": "1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "registry_built_at": "2026-09-12T00:00:00Z",
+        "registry_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        "route": "entity_discovery",
+        "row_count": 1,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "TPL_DISCOVERY_EXACT_V1",
+        "template_version": "1"
+      },
+      "limitations": [],
+      "resolved": {
+        "alias": null,
+        "entity_approval_reference": "SAMPLE_APPROVAL_M3_001",
+        "entity_kind": "signal",
+        "match_kind": "lookup_key",
+        "match_tier": 1,
+        "matched_text": "SAMPLE_SIG_GEAR_POSITION",
+        "rank": 1,
+        "reference": {
+          "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "signal_key": "SAMPLE_SIG_GEAR_POSITION",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      },
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "entity_approval_reference": "SAMPLE_APPROVAL_M3_001",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [
+          {
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "producing_layer": null,
+        "resolved_scope": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      },
+      "status": "resolved"
+    }
+  },
   "fact_not_found": {
     "contract": {
       "identifier": "api-v0.1",
