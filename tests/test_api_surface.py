@@ -12,12 +12,10 @@ its arguments, and rows of the form the registered SQL returns -- and asserts
 what the surface does with the result. The split is `mvp-v0.1`'s: `tests/`
 proves the decisions given rows, `tests_database/` proves the rows.
 
-**The second half is deferred, not done here.** The module
-`test_api_workflows.py` in `tests_database/` runs the same steps against a
-real PostgreSQL, but no CI job installs the `api` extra where a database is
-provisioned, so it skips;
-ADR-0003 records why and whose decision changes it. Read this file as evidence
-for what the surface decides, and not for what the registered SQL returns.
+**The second half is `tests_database/test_api_workflows.py`**, which runs the
+same steps against a real PostgreSQL in the `database-checks` job. Read this
+file as evidence for what the surface decides, and that one for what the
+registered SQL returns.
 
 Section 6's determinism, Section 7's evidence key sets, and Section 4.3's
 "the surface never joins" are properties of this layer alone, so they are
@@ -26,7 +24,11 @@ asserted here and nowhere else.
 
 import contextlib
 import dataclasses
+import inspect
 import pathlib
+import threading
+import types
+import time
 import json
 import unittest
 
@@ -52,6 +54,7 @@ try:
 
     from evidence_first_rag.api.app import (
         CONTRACT_IDENTIFIER,
+        NAMESPACE,
         CONTRACT_VERSION,
         CONTRACTS,
         REFUSALS,
@@ -191,11 +194,13 @@ class Call:
 
 @dataclasses.dataclass
 class RecordingAdapter:
-    """An `Adapter` double: it returns a proposal and keeps the raw text.
+    """An `Adapter` double: it returns a proposal and the record of that call.
 
-    `SurfaceProposer` reads the text off the record to decide which side of
-    Section 4.5's transport boundary a call fell on, so a double has to carry
-    one for that decision to be exercised at all.
+    `SurfaceProposer` reads the raw text off the record to decide which side of
+    Section 4.5's transport boundary the call fell on, so a double has to carry
+    one for that decision to be exercised at all. It returns the record rather
+    than exposing only `calls`, which is `propose_with_call`'s contract and the
+    reason the surface is safe to run in a threadpool.
     """
 
     text: str
@@ -203,9 +208,10 @@ class RecordingAdapter:
     stop_reason: str | None = "end_turn"
     calls: tuple = ()
 
-    def propose(self, request_text):
-        self.calls = self.calls + (Call(text=self.text, stop_reason=self.stop_reason),)
-        return self.proposal
+    def propose_with_call(self, request_text):
+        record = Call(text=self.text, stop_reason=self.stop_reason)
+        self.calls = self.calls + (record,)
+        return self.proposal, record
 
 
 # What a driver's connection error actually reads like. Carried by the fake so
@@ -1356,3 +1362,207 @@ class NoFrameworkDefaultEscapes(SurfaceCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(term, response.text)
         self.assertNotIn("\\u00c9", response.text)
+
+
+# --------------------------------------------------------------------------
+# Concurrency: the event loop, and the shared state that used to sit on the
+# request path.
+# --------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class Blocking:
+    """A database whose session does not return until it is released.
+
+    Stands in for the two blocking things a handler actually does -- psycopg
+    opening a connection and running statements, and a model call -- so the
+    question "does one slow request delay the others" can be asked without
+    either.
+    """
+
+    inner: object
+    entered: threading.Event = dataclasses.field(default_factory=threading.Event)
+    release: threading.Event = dataclasses.field(default_factory=threading.Event)
+
+    @contextlib.contextmanager
+    def session(self):
+        self.entered.set()
+        self.release.wait(timeout=10)
+        with self.inner.session() as session:
+            yield session
+
+
+@dataclasses.dataclass
+class RacingAdapter:
+    """Two calls in flight, each with its own record.
+
+    `text` decides which side of Section 4.5's transport boundary a call falls
+    on, so giving the two requests different texts makes a crossed record
+    visible as the wrong HTTP status rather than as a subtly wrong body.
+    """
+
+    texts: dict
+    proposal: object
+    started: threading.Barrier
+
+    def propose_with_call(self, request_text):
+        record = Call(text=self.texts[request_text])
+        # Both calls are inside this method before either returns, which is
+        # the interleaving a threadpool makes real.
+        self.started.wait(timeout=10)
+        return self.proposal, record
+
+
+class TheSurfaceDoesNotBlockItself(SurfaceCase):
+    """Every handler is `def`, so Starlette runs it in its threadpool and the
+    event loop stays free for the next request."""
+
+    def test_no_route_handler_runs_on_the_event_loop(self):
+        """The structural half. An `async def` handler doing blocking work is
+        the defect; this asserts the shape that prevents it, over every route
+        the app registers rather than over a list written here."""
+        app = create_app(Services(runtime=None, discovery=None, selection=None))
+        registered = [
+            route for route in app.routes if getattr(route, "path", "").startswith(NAMESPACE)
+        ]
+        self.assertEqual(len(registered), 5)
+        for route in registered:
+            with self.subTest(path=route.path):
+                self.assertFalse(
+                    inspect.iscoroutinefunction(route.endpoint),
+                    f"{route.path} is async and would run blocking work on the event loop",
+                )
+
+    def test_a_slow_request_does_not_delay_the_health_probe(self):
+        """The behavioural half, and the one the Section 4.7 stack cares about.
+
+        One worker, a `/v1/query` stuck in the database, and a liveness probe
+        that opens no connection: if the slow handler holds the event loop, the
+        probe cannot be answered until it finishes, and the process is reported
+        dead for a reason that has nothing to do with liveness.
+
+        **The client is entered as a context manager, and that is what makes
+        this a test.** Used call by call, `TestClient` starts a fresh portal --
+        a fresh event loop -- per request, so two requests never share one and
+        no amount of blocking in the first can be seen by the second. An
+        earlier version of this test did that and passed with the handlers
+        declared `async def`, which is the defect it exists to catch. Entered
+        once, every request goes through one loop, exactly as a served process
+        has one.
+        """
+        database = Blocking(inner=fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)}))
+        services = Services(
+            runtime=Counting(Runtime(database=database, fixture_provenance=PROVENANCE)),
+            discovery=None,
+            selection=None,
+        )
+        slow = []
+        with TestClient(create_app(services)) as client:
+            def run():
+                slow.append(
+                    client.post(
+                        "/v1/query", json={"route": "message_facts", "arguments": FACT_MESSAGE}
+                    )
+                )
+
+            worker = threading.Thread(target=run, daemon=True)
+            worker.start()
+            try:
+                self.assertTrue(database.entered.wait(timeout=10), "the slow request never started")
+                # The slow handler is inside the database and has not returned.
+                started = time.monotonic()
+                probe = client.get("/v1/health")
+                elapsed = time.monotonic() - started
+                self.assertEqual(probe.status_code, 200)
+                self.assertLess(elapsed, 3, "the probe waited on the slow request")
+            finally:
+                database.release.set()
+                worker.join(timeout=15)
+        self.assertEqual(slow[0].status_code, 200)
+
+    def test_the_real_adapter_hands_each_call_its_own_record(self):
+        """`Adapter.propose_with_call` under two threads, over the real class.
+
+        The surface test above uses a double, so it pins what the surface does
+        with the record it is given and not what the adapter returns. This one
+        drives `adapter.Adapter` itself: two calls interleaved inside
+        `messages.create`, each asserting the record it received is the one
+        built from its own response. Reading `self._records[-1]` instead passes
+        single-threaded and fails here.
+        """
+        from evidence_first_rag.adapter.client import Adapter
+
+        entered = threading.Barrier(2, timeout=10)
+
+        class Stub:
+            """Returns a response whose text echoes the request, and holds
+            both calls inside `create` until the other arrives."""
+
+            class messages:
+                @staticmethod
+                def create(**parameters):
+                    asked = parameters["messages"][0]["content"]
+                    entered.wait(timeout=10)
+                    return types.SimpleNamespace(
+                        content=[types.SimpleNamespace(type="text", text=json.dumps(
+                            {"route": "unsupported", "arguments": {"asked": asked}}
+                        ))],
+                        stop_reason="end_turn",
+                        usage=None,
+                    )
+
+        adapter = Adapter(client=Stub())
+        seen = {}
+
+        def call(text):
+            _, record = adapter.propose_with_call(text)
+            seen[text] = record.text
+
+        texts = ("SAMPLE_ASK_ONE", "SAMPLE_ASK_TWO")
+        workers = [threading.Thread(target=call, args=(text,), daemon=True) for text in texts]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=15)
+            self.assertFalse(worker.is_alive(), "a call never finished")
+
+        self.assertEqual(set(seen), set(texts))
+        for text in texts:
+            with self.subTest(text=text):
+                self.assertIn(text, seen[text])
+        # Both records are still in `calls`: the Milestone 2 harness reads the
+        # whole sequence afterwards, which this change does not disturb.
+        self.assertEqual(len(adapter.calls), 2)
+
+    def test_two_concurrent_asks_each_read_their_own_adapter_call(self):
+        """The race the threadpool makes real, and why `SurfaceProposer` takes
+        the record of its own call rather than the adapter's last one.
+
+        One request's model output is unparseable and the other's is not, so a
+        crossed record shows up as the wrong status: reading `calls[-1]` would
+        let the parseable request answer 503, or the unparseable one answer 200
+        over output that was never a JSON object.
+        """
+        parseable, unparseable = "SAMPLE_ASK_GOOD", "SAMPLE_ASK_BAD"
+        adapter = RacingAdapter(
+            texts={parseable: '{"route": "unsupported", "arguments": {}}',
+                   unparseable: "SAMPLE_NOT_JSON"},
+            proposal=Proposal(route="unsupported", arguments={}),
+            started=threading.Barrier(2, timeout=10),
+        )
+        client, _ = surface(fact_database({}), proposer=SurfaceProposer(adapter=adapter))
+        answers = {}
+
+        def ask(text):
+            answers[text] = client.post("/v1/ask", json={"request_text": text})
+
+        workers = [threading.Thread(target=ask, args=(text,), daemon=True)
+                   for text in (parseable, unparseable)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=10)
+            self.assertFalse(worker.is_alive(), "a request never finished")
+
+        self.assertEqual(answers[parseable].status_code, 200)
+        self.assert_refusal(answers[unparseable], "adapter_unavailable")

@@ -353,23 +353,24 @@ class SurfaceProposer:
     failure as a runtime outcome (`WF-022`).
 
     So this wraps rather than replaces: the adapter parses, and this reads the
-    raw text off the call record it kept to decide which side of the line the
-    call fell on. There is no second parser producing a proposal.
+    raw text off the record of **its own** call to decide which side of the
+    line that call fell on. There is no second parser producing a proposal.
+
+    `propose_with_call` rather than `propose` plus `calls[-1]`: the handlers
+    are `def` and therefore run in Starlette's threadpool, so two requests can
+    be inside this method at once and the shared list's last element is not
+    reliably the one this call appended.
     """
 
     adapter: object
 
     def propose(self, request_text: str) -> Proposal:
         try:
-            proposal = self.adapter.propose(request_text)
+            proposal, call = self.adapter.propose_with_call(request_text)
         except Exception as unreachable:
             raise AdapterUnavailable(
                 "the adapter could not be reached"
             ) from unreachable
-        calls = getattr(self.adapter, "calls", ())
-        if not calls:
-            raise AdapterUnavailable("the adapter returned nothing")
-        call = calls[-1]
         if getattr(call, "stop_reason", None) == "refusal":
             # A model that declined has said "no route applies", which
             # Section 4.6 of `mvp-v0.1` gives it a vocabulary for. That is a
@@ -524,27 +525,40 @@ def _install_routes(app: fastapi.FastAPI, services: Services) -> None:
     There is no branch here on a result's status, and in particular no path
     from `needs_entity_discovery` to a discovery request: Section 4.3 stops the
     surface there and the caller issues the next request.
+
+    **`def`, not `async def`, and that is the whole point.** Every call below
+    is blocking -- psycopg opens a connection and runs statements, and
+    `/v1/ask` waits on a model. An `async def` handler runs those on the event
+    loop, so under the Section 4.7 stack, which is one worker, a ten-second
+    `/v1/ask` delays every other request in the process -- including
+    `GET /v1/health`, which opens no connection and would then report the
+    process dead for a reason that has nothing to do with liveness. Declared
+    `def`, Starlette runs each in its threadpool and the loop stays free.
+
+    That is why `SurfaceProposer` takes the record of its own call rather than
+    the adapter's last one: concurrency here is real, so shared mutable state
+    on the request path is a race rather than a style question.
     """
 
     @app.post("/v1/query")
-    async def query(body: QueryBody):
+    def query(body: QueryBody):
         result = services.runtime.execute(
             RuntimeRequest(route=body.route, arguments=body.arguments)
         )
         return _json(envelope(result))
 
     @app.post("/v1/discover")
-    async def discover(body: DiscoverBody):
+    def discover(body: DiscoverBody):
         result = services.discovery.execute(DiscoveryRequest(arguments=body.arguments))
         return _json(envelope(result))
 
     @app.post("/v1/select")
-    async def select(body: SelectBody):
+    def select(body: SelectBody):
         result = services.selection.execute(SelectionRequest(arguments=body.arguments))
         return _json(envelope(result))
 
     @app.post("/v1/ask")
-    async def ask(body: AskBody):
+    def ask(body: AskBody):
         if services.proposer is None:
             # Section 4.3: the adapter is the only proposer, and nothing runs
             # in its place. Not the Section 4.7 baseline, which mvp-v0.1 keeps
@@ -571,7 +585,7 @@ def _install_routes(app: fastapi.FastAPI, services: Services) -> None:
         return _json(envelope(result, proposal=proposal_document(proposal, body.request_text)))
 
     @app.get("/v1/health")
-    async def health():
+    def health():
         # Section 4.5: neither a result nor a refusal, and identified by
         # carrying neither key. It opens no connection, so it says nothing
         # about the database; a readiness probe that does is Milestone 5's.

@@ -201,7 +201,14 @@ jobs:
       # chose, from pyproject.toml, so the dependency list is the single
       # source of truth rather than a command line that can drift from it.
       - name: Install the package
-        run: python -m pip install --quiet -e .
+        # `.[api]` because tests_database/test_api_workflows.py drives the
+        # Section 8.1 workflow fixtures -- WF-003, the whole target path,
+        # among them -- through the HTTP surface against the registered data,
+        # and without the extra the module skips. A skip is green, which is
+        # the failure #101 put the adapter-checks job in the tree to prevent.
+        # Approved as a recorded owner decision on #179; the adapter extra is
+        # not installed here, because nothing in tests_database/ calls a model.
+        run: python -m pip install --quiet -e ".[api]"
 
       - name: Provision the schema, the roles, and the fixtures
         run: python -m evidence_first_rag.db.provision --recreate

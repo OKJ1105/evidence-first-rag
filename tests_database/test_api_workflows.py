@@ -10,30 +10,19 @@ both files exist.
 
 `WF-003` is why this file matters more than its size suggests. It is the whole
 target path -- a request that names no canonical reference, the candidate list
-that follows, a caller's selection, and a fact with its sources -- and it has
-never run end to end against real rows through the surface a reader would use.
-It still has not: see the deferral below.
+that follows, a caller's selection, and a fact with its sources -- and until
+this module ran it had never gone end to end against real rows through the
+surface a reader would use.
 
 Not here: `WF-007` to `WF-010`, `WF-017`, `WF-018` and `WF-022`, which inject a
 proposal or a fault and so assert nothing about what the database returns; they
 are in `tests/`. `WF-011` and `WF-014` are refusals decided before any
 connection opens and are there too.
 
-**No CI job runs this module today, and nothing in this slice claims it
-does.** It needs the `api` extra, and `database-checks` installs the package
-without one. Adding it there is a second one-line change to
-`.github/workflows/repository-checks.yml`, and the repository owner's recorded
-decision on #178 covers the `adapter-checks` line only, so the writer cannot
-make it. Failing here instead of skipping would only turn that into a job that
-is red on every run for a reason no one on this branch is authorised to fix.
-
-So the module skips, and the deferral is stated rather than hidden: **the
-registered `FX-*`/`DX-*` half of Section 8.1 is not this slice's acceptance
-evidence.** What this slice proves is in `tests/test_api_surface.py`, which
-runs in `adapter-checks` with the extra installed. This file is the evidence
-for the registered rows once the owner records the `database-checks` line;
-until then it is runnable by hand against a provisioned database and gated by
-nothing, and no row of Section 8.1 should be read as satisfied by it.
+**This module runs in `database-checks`**, which installs the `api` extra --
+the repository owner's recorded decision on #179, made after an earlier
+revision of this file had to defer these rows for want of it. The skip below
+fires only outside that job, where there is no database to run against.
 """
 
 import json
@@ -76,16 +65,13 @@ PROVENANCE = (
 )
 
 
-# Why a skip here is honest rather than the #101 failure: a skip is green, and
-# a green skip is only a lie where something claimed the evidence. Nothing
-# does. The module docstring, ADR-0003 and the pull request all say that the
-# registered `FX-*`/`DX-*` half of Section 8.1 is deferred with this file, so
-# what this reports is what is true -- the steps did not run.
+# This fires only where the rows were never going to run anyway -- a checkout
+# with no database. It is not the #101 failure, which is a skip standing in
+# for evidence something claimed: `database-checks` installs the extra and
+# executes this module, so the rows below are discharged rather than deferred.
 SKIPPED = (
-    "the api extra is not installed; the database-checks job installs the"
-    " package without it, and adding it is the repository owner's recorded"
-    " decision (ADR-0003), so the Section 8.1 steps in this module are"
-    " deferred rather than gated"
+    "the api extra is not installed; database-checks installs it and is where"
+    " these Section 8.1 rows are discharged"
 )
 
 
