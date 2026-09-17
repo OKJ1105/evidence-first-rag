@@ -33,7 +33,7 @@ from evidence_first_rag import Status
 from evidence_first_rag.discovery import DiscoveryStatus
 from evidence_first_rag.runtime.connection import PsycopgDatabase
 
-from . import support
+from . import guards, support
 
 try:
     from fastapi.testclient import TestClient
@@ -65,19 +65,42 @@ PROVENANCE = (
 )
 
 
-# This fires only where the rows were never going to run anyway -- a checkout
-# with no database. It is not the #101 failure, which is a skip standing in
-# for evidence something claimed: `database-checks` installs the extra and
-# executes this module, so the rows below are discharged rather than deferred.
-SKIPPED = (
-    "the api extra is not installed; database-checks installs it and is where"
-    " these Section 8.1 rows are discharged"
-)
-
-
+# The skip branch fires only where the rows were never going to run anyway --
+# a checkout with no database. It is not the #101 failure, which is a skip
+# standing in for evidence something claimed: `database-checks` installs the
+# extra and executes this module, so the rows below are discharged rather than
+# deferred. The other branch is the guard proper; the docstring has it.
 def setUpModule():
-    if not HAS_API:  # pragma: no cover - exercised by the extra-free job
-        raise unittest.SkipTest(SKIPPED)
+    """Skip where nothing could have run; **fail where it was meant to.**
+
+    Thirteen registered Section 8.1 rows live here -- `WF-003` among them --
+    and every one of them is reported by a single install line in a workflow
+    file. Drop `.[api]` from it and this module skips, a skip is green, and
+    nothing anywhere says the rows stopped running.
+
+    An earlier revision skipped in both cases, correctly at the time: that
+    install line was not a change a writer session could make, and a job red on
+    every run for a reason nobody on the branch may fix is not evidence either.
+    The repository owner recorded the line on #179, so that reason is gone.
+
+    The two branches, and why only one of them is a skip: with no
+    `MVP_RUNTIME_PASSWORD` there is no database and these rows were never going
+    to run, so reporting them skipped is what is true; with one, the job stood
+    PostgreSQL up and meant them to run, and a skip there would be the #101
+    failure -- green standing in for rows that never executed.
+
+    The decision itself is `guards.missing_dependency`, which needs neither a
+    driver nor a database, so `tests/test_database_suite_guards.py` asserts all
+    three of its branches in every job rather than leaving them to be observed
+    here. That module also asserts this function's wiring, by reading it: a
+    guard whose decision is tested and whose application is not can be
+    disarmed here without a test turning red.
+    """
+    outcome = guards.missing_dependency(
+        installed=HAS_API, provisioned=bool(os.environ.get("MVP_RUNTIME_PASSWORD"))
+    )
+    if outcome is not None:
+        raise outcome
     support.build(DATABASE)
 
 
@@ -112,7 +135,11 @@ def client(**overrides):
     )
 
 
-@unittest.skipUnless(HAS_API, SKIPPED)
+# Subordinate to `setUpModule`, which has already decided and raised; this
+# decides nothing and is **not** this module's policy on a missing extra --
+# that policy is the RuntimeError above. Kept so a direct run of one class
+# reads honestly rather than failing on a missing import.
+@unittest.skipUnless(HAS_API, "the api extra is not installed")
 class WorkflowCase(unittest.TestCase):
     """What every step of every fixture owes, in one place."""
 
@@ -365,6 +392,24 @@ class TheSurfaceProperties(WorkflowCase):
         self.assertEqual(response.status_code, 200)
         document = json.loads(response.text)
         self.assertEqual(set(document), {"contracts", "adapter_configured"})
+        # **Literals, deliberately, and not the constants** -- unlike the same
+        # assertion in `tests/test_api_surface.py`, which reads them.
+        #
+        # This is a pin, not a duplicate. The health document is built from
+        # `CONTRACT_IDENTIFIER` and `CONTRACT_VERSION`, so comparing it against
+        # those same two names asserts that a dict equals itself: a wrong
+        # version passes. The parity test in `tests/` catches that -- but it
+        # lives behind `skipUnless(HAS_API)` and so runs only in
+        # `adapter-checks`, whose install line is the one thing that could take
+        # it away. This job depends on a different install line, so a literal
+        # here is the pin that survives that scenario.
+        #
+        # An earlier revision of this slice read the constants here too, on the
+        # reasoning that a literal is a third place the value lives. That was
+        # wrong in the direction that matters: it removed the only assertion on
+        # the value that `adapter-checks` cannot silence. Raised as N5 on #183.
+        # The cost is that a version bump edits this line; #185 removes even
+        # that, by giving the parity tests a home with no optional import.
         self.assertEqual(
             document["contracts"],
             {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},

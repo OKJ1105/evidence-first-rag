@@ -400,9 +400,12 @@ class TheFiveRoutes(SurfaceCase):
         self.assertEqual(set(document), {"contracts", "adapter_configured"})
         self.assertNotIn("result", document)
         self.assertNotIn("refusal", document)
+        # Read off the constants rather than written out again. A literal here
+        # is a third place the version lives, and the version-parity test below
+        # only guards the one in `app.py`.
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {CONTRACT_IDENTIFIER: CONTRACT_VERSION, "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         # `export-v0.1` is not among them: it is not in this tree and no route
         # here serves one.
@@ -879,6 +882,30 @@ class TheRefusals(SurfaceCase):
         # Nothing read off what was raised, for the reason every other refusal
         # detail is the surface's own sentence.
         self.assertNotIn("SAMPLE_UNEXPECTED_CONDITION", response.text)
+
+    def test_the_version_constant_is_the_one_the_contract_document_declares(self):
+        """`mvp-v0.1` has this test because the drift it guards actually
+        happened: `0.6.0` merged while its constant still said `0.5.0`, and
+        every evidence bundle then cited a version the document no longer
+        carried. `api-v0.1` reports its version in two places Section 4 fixes
+        -- `GET /v1/health` (Section 4.5) and every result-carrying response's
+        `contract` key (Section 4.2) -- and had no such test.
+
+        Without it, an amendment that moves the document to `0.1.2` and leaves
+        `app.py` behind fails nothing, and the surface reports a version that
+        does not exist. `api-v0.1` `0.1.1` was the first time the two had to be
+        kept in step by hand; this is so there is not a second.
+        """
+        import re
+
+        contract = pathlib.Path(__file__).resolve().parents[1] / "docs" / "contracts" / "api-v0.1.md"
+        match = re.search(r"^\*\*Version:\*\* `(\d+\.\d+\.\d+)`", contract.read_text(), re.M)
+        self.assertIsNotNone(match, "Section 1 of the contract has no **Version:** line")
+        self.assertEqual(CONTRACT_VERSION, match.group(1))
+
+    def test_the_identifier_constant_is_the_one_the_contract_document_declares(self):
+        contract = pathlib.Path(__file__).resolve().parents[1] / "docs" / "contracts" / "api-v0.1.md"
+        self.assertIn(f"**Identifier:** `{CONTRACT_IDENTIFIER}`", contract.read_text())
 
     def test_the_table_is_six_kinds_with_the_codes_the_contract_fixes(self):
         self.assertEqual(
