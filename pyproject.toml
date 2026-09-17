@@ -37,6 +37,25 @@ dependencies = ["psycopg[binary]>=3.2"]
 [project.optional-dependencies]
 adapter = ["anthropic>=1.4"]
 
+# The HTTP surface, and an extra for the same reason the adapter is one: the
+# runtime, the registry, the provisioning path and the conformance runner all
+# execute without it, and `pip install evidence-first-rag` still gives a system
+# with one runtime dependency. Installing this extra is how someone opts into
+# serving contract `api-v0.1` over HTTP.
+#
+# FastAPI is used as a router and a body parser and as nothing else; see
+# docs/adr/0003-fastapi-for-the-http-surface.md for why a framework whose
+# defaults this contract mostly forbids is still the right choice, and
+# src/evidence_first_rag/api/app.py for which of its defaults are replaced.
+# `httpx` is here because `fastapi.testclient` needs it -- the surface's own
+# tests drive the app through it, and without it every test in
+# tests/test_api_surface.py skips, which is green and proves nothing (#101).
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+]
+
 [project.urls]
 Repository = "https://github.com/OKJ1105/evidence-first-rag"
 

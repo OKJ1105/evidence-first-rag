@@ -80,9 +80,22 @@ def _write(value, parts: list[str], *, booleans: bool = False) -> None:
             raise CanonicalError("a boolean is not a Section 4.2 digest input")
         parts.append("true" if value else "false")
     elif isinstance(value, int):
-        # Shortest decimal form. Python's int repr has no sign for a
-        # non-negative value, no fraction, and no exponent.
-        if value < 0:
+        # Shortest decimal form. Python's int repr has no fraction and no
+        # exponent, and carries a leading `-` exactly when the value is
+        # negative, which is the same shortest form JSON gives it.
+        #
+        # A negative integer is refused for a digest input and written for a
+        # wire document, for the reason the boolean split above gives. No
+        # Section 4.2 digest input is negative -- ranks, counts, tiers and
+        # widths are all non-negative -- so one reaching `canonical_json` is a
+        # caller error. A **result row** is a different matter: the schema
+        # gives `frame_identifier`, `bit_offset` and `transmit_period_ms` a
+        # plain `integer` with no non-negativity CHECK, so a loaded row may
+        # carry one, and `api-v0.1` Section 4.2 has to put it on the wire. A
+        # serializer that refused would turn a correct `success` into an
+        # HTTP 500 `runtime_fault` -- a true answer reported as a fault, which
+        # Charter Section 3.4 is written against.
+        if value < 0 and not booleans:
             raise CanonicalError("a negative integer is not a Section 4.2 digest input")
         parts.append(str(value))
     elif isinstance(value, str):

@@ -86,7 +86,7 @@ def _values_come_from_the_request(arguments: Mapping[str, str], request_text: st
             f" without it no argument value can be checked against what was asked",
         )
     invented = sorted(
-        name for name, value in arguments.items() if not _is_verbatim_token(value, request_text)
+        name for name, value in arguments.items() if not is_verbatim(value, request_text)
     )
     if invented:
         raise Refusal(
@@ -97,8 +97,17 @@ def _values_come_from_the_request(arguments: Mapping[str, str], request_text: st
         )
 
 
-def _is_verbatim_token(value: str, request_text: str) -> bool:
+def is_verbatim(value: str, request_text: str) -> bool:
     """Whole-token containment, not substring containment.
+
+    Public because `api-v0.1` Section 4.3 obliges the surface to report, on
+    `/v1/ask`, which of the adapter's argument values are verbatim in the
+    request text -- including on the path where revalidation *passed* and
+    therefore returned nothing to read that off. The contract states the rule
+    normatively in its Section 4.3 and `mvp-v0.1` Section 4.6 is what this
+    function enforces; both are the same rule, so the surface calls this
+    rather than carrying a second copy that could come to disagree with the
+    check that actually refuses.
 
     Raw `in` lets a hallucinated value that happens to be a prefix or suffix
     of a real identifier in the request text (e.g. `SAMPLE_MSG_ENGINE_STATUS`

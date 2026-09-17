@@ -226,6 +226,28 @@ class Adapter:
     def propose(self, request_text: str) -> Proposal:
         """One request in, one `{route, arguments}` proposal out.
 
+        A thin wrapper over `propose_with_call`, kept because it is the
+        signature the Milestone 2 comparison harness calls.
+        """
+        proposal, _ = self.propose_with_call(request_text)
+        return proposal
+
+    def propose_with_call(self, request_text: str) -> tuple[Proposal, Call]:
+        """The proposal, **and the record of the call it came from.**
+
+        Added rather than folded into `propose` because a caller that needs
+        both had only one way to get them: read `calls[-1]` after calling. That
+        is correct exactly while no two calls can interleave, and
+        `api-v0.1`'s surface stopped guaranteeing that when its handlers moved
+        to Starlette's threadpool -- two requests in flight, and the second
+        appends before the first reads, so a response reports the other
+        request's model output. Returning the record removes the shared list
+        from the path instead of documenting a rule around it.
+
+        `calls` still accumulates every record: the Milestone 2 harness reads
+        the whole sequence afterwards, which is a different question from
+        "which record was mine".
+
         The call carries the fixed instructions, the route and scope
         vocabulary, and the request. It carries no row, no fixture and no
         evidence bundle; `vocabulary.payload()` is built from the contract's
@@ -258,14 +280,17 @@ class Adapter:
             ],
             messages=[{"role": "user", "content": request_text}],
         )
-        self._records.append(
-            Call(
-                text=_first_text(response),
-                stop_reason=getattr(response, "stop_reason", None),
-                usage=_usage_as_json(response),
-            )
+        record = Call(
+            text=_first_text(response),
+            stop_reason=getattr(response, "stop_reason", None),
+            usage=_usage_as_json(response),
         )
-        return self.read(response)
+        # `list.append` is atomic, so concurrent calls cannot corrupt the
+        # sequence; what they can do is make `calls[-1]` name another call's
+        # record, which is why this returns the record rather than the caller
+        # reaching for it.
+        self._records.append(record)
+        return self.read(response), record
 
     @staticmethod
     def read(response) -> Proposal:
