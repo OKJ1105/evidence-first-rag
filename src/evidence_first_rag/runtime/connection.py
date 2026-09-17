@@ -29,7 +29,7 @@ from psycopg.rows import dict_row
 
 from ..registry import UnregisteredTemplate, get
 from .execution import Execution
-from .faults import Fault
+from .faults import ConnectionUnavailable, Fault
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -51,9 +51,23 @@ class PsycopgDatabase:
 
     @contextlib.contextmanager
     def session(self):
-        connection = psycopg.connect(
-            row_factory=dict_row, **dict(self.connection_parameters)
-        )
+        try:
+            connection = psycopg.connect(
+                row_factory=dict_row, **dict(self.connection_parameters)
+            )
+        except psycopg.OperationalError as unreachable:
+            # `api-v0.1` Section 4.5 answers this with `database_unavailable`
+            # at HTTP 503, and a request that ran and failed with
+            # `runtime_fault` at 500. Translated here because this is the one
+            # module that imports the driver: a surface that caught
+            # `psycopg.OperationalError` itself would have to import psycopg to
+            # name it, and `tests/` would then need the driver to test a
+            # refusal that opens no connection. Narrow on purpose --
+            # `OperationalError` from `connect` is the connection failing;
+            # anything else psycopg raises here is a defect and stays raw.
+            raise ConnectionUnavailable(
+                "no session could be opened, so the request was never attempted"
+            ) from unreachable
         try:
             # Set before any statement runs, so the first transaction the
             # session opens is already read-only. Section 4.3 wants the

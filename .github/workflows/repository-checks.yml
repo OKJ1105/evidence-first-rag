@@ -139,12 +139,17 @@ jobs:
         with:
           python-version-file: .python-version
 
-      # `.[adapter]` is the package plus the adapter extra, and the package's
+      # `.[adapter,api]` is the package plus both extras, and the package's
       # own dependency list carries psycopg — so this one command installs
-      # both of the imports the skips above are waiting on, from
+      # every one of the imports the skips above are waiting on, from
       # pyproject.toml rather than from a command line that can drift from it.
+      #
+      # The `api` extra joined it when the HTTP surface landed: without it
+      # every test in tests/test_api_surface.py is a skip, and a skip is green,
+      # which is the failure this job exists to prevent. Approved as a recorded
+      # owner decision on #178.
       - name: Install the package with its optional dependencies
-        run: python -m pip install --quiet -e ".[adapter]"
+        run: python -m pip install --quiet -e ".[adapter,api]"
 
       - name: Package unit tests with the optional dependencies installed
         # The same command as `repository-checks`, deliberately: the

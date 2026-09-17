@@ -25,7 +25,7 @@ from evidence_first_rag.adapter import Baseline, Proposal, Thresholds, measure
 from evidence_first_rag.adapter import run as runner
 from evidence_first_rag.adapter import vocabulary
 from evidence_first_rag.adapter.evaluation import CURATED, EVALUATION_SET, THRESHOLDS, family
-from evidence_first_rag.adapter.revalidation import _is_verbatim_token, answer
+from evidence_first_rag.adapter.revalidation import is_verbatim, answer
 from evidence_first_rag.conformance.normalize import normalize as normalize_result
 from evidence_first_rag.evidence import (
     EvidenceBundle,
@@ -89,7 +89,7 @@ def perfect(text):
         return Proposal(route=case.expected_route, arguments=dict(case.expected_arguments))
     if kind == "X":
         for dimension in SCOPE_DIMENSIONS:
-            values = sorted({s[dimension] for s in LOADED_SCOPES if _is_verbatim_token(s[dimension], text)})
+            values = sorted({s[dimension] for s in LOADED_SCOPES if is_verbatim(s[dimension], text)})
             if len(values) == 2:
                 return Proposal(route="message_facts", arguments={dimension: values})
     return Proposal(route="unsupported", arguments={})

@@ -35,3 +35,24 @@ class DataFault(Fault):
     """
 
     conformance_class = "data"
+
+
+class ConnectionUnavailable(Exception):
+    """No session could be opened, so no request was attempted.
+
+    Deliberately **not** a `Fault`. A `Fault` is a request that ran and failed
+    for a reason Section 5 has no status for, which `api-v0.1` Section 4.5
+    answers with `runtime_fault` at HTTP 500. Being unable to reach the
+    database at all is that contract's `database_unavailable` at HTTP 503, and
+    the two are different rows of the same table -- so they have to be
+    distinguishable by type, not by reading a message.
+
+    Raised by the session provider rather than derived by a caller, because
+    which driver exception means "could not connect" is knowledge that belongs
+    to the module holding the driver. `api/` catches this and imports no
+    driver, which is what keeps the surface's test suite runnable from a clean
+    checkout.
+
+    It carries no `conformance_class`: the request never ran, so there is
+    nothing for Section 4.9 to class.
+    """

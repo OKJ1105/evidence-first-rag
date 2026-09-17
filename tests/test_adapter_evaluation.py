@@ -23,7 +23,7 @@ from evidence_first_rag.adapter.evaluation import (
     THRESHOLDS,
     family,
 )
-from evidence_first_rag.adapter.revalidation import _is_verbatim_token
+from evidence_first_rag.adapter.revalidation import is_verbatim
 from evidence_first_rag.conformance.cases import REGISTERED
 from evidence_first_rag.references import SCOPE_DIMENSIONS
 from evidence_first_rag.runtime.request import required_lookup_keys
@@ -59,7 +59,7 @@ def tokens(text):
 
 
 def loaded_values_present(text, dimension):
-    return {scope[dimension] for scope in LOADED_SCOPES if _is_verbatim_token(scope[dimension], text)}
+    return {scope[dimension] for scope in LOADED_SCOPES if is_verbatim(scope[dimension], text)}
 
 
 def by_family():
@@ -129,14 +129,14 @@ class TheAuthoringRules(unittest.TestCase):
         for case in EVALUATION_SET:
             for name, value in case.expected_arguments.items():
                 with self.subTest(case=case.identifier, argument=name):
-                    self.assertTrue(_is_verbatim_token(value, case.text), value)
+                    self.assertTrue(is_verbatim(value, case.text), value)
 
     def test_rule_3_every_negative_case_carries_a_complete_loaded_scope(self):
         groups = by_family()
         for case in groups["D"] + groups["X"] + groups["U"]:
             with self.subTest(case=case.identifier):
                 complete = any(
-                    all(_is_verbatim_token(scope[d], case.text) for d in SCOPE_DIMENSIONS)
+                    all(is_verbatim(scope[d], case.text) for d in SCOPE_DIMENSIONS)
                     for scope in LOADED_SCOPES
                 )
                 self.assertTrue(complete, case.text)
