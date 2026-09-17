@@ -57,6 +57,7 @@ try:
         NAMESPACE,
         CONTRACT_VERSION,
         CONTRACTS,
+        PRESENTATION,
         REFUSALS,
         AdapterUnavailable,
         Services,
@@ -1034,6 +1035,54 @@ class TheRefusals(SurfaceCase):
                     failures,
                 )
                 self.assertEqual(failures, [])
+
+
+# --------------------------------------------------------------------------
+# Section 4.6: the page a person opens is actually served.
+# --------------------------------------------------------------------------
+
+
+class ThePageIsServed(SurfaceCase):
+    """The positive half of the mount, which no `/v1` assertion can make.
+
+    `test_unknown_route_governs_the_v1_namespace_and_nothing_else` asserts that
+    no path outside `/v1` carries this contract's vocabulary — and **a surface
+    serving nothing at all satisfies it**. `_install_presentation` returns early
+    when the tree is not beside the package, and the plain-text 404 `_http` then
+    writes for `/` carries neither a `result` nor a `refusal`, so every other
+    assertion in this file about a path outside `/v1` would still pass with the
+    page gone. That is the shape of failure #101 and #182 are cited for: a
+    negative assertion holds whether or not the thing runs.
+
+    What it would cost is the one thing this slice exists to produce. The early
+    return is deliberate — a checkout without the tree beside it still serves
+    the API — so nothing about it should raise; the assertion has to be that in
+    *this* tree, where the page is committed beside the package, a person
+    opening the surface is given it.
+    """
+
+    def test_the_page_is_what_get_slash_returns(self):
+        client, _ = surface(fact_database())
+        response = client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        # The committed file itself, rather than a marker that a placeholder
+        # could also carry: what is asserted is that `GET /` **is** `ui/`'s
+        # page, not that it resembles one.
+        self.assertEqual(response.content, (PRESENTATION / "index.html").read_bytes())
+        # And that that page is the Section 4.6 surface: the panel a person
+        # chooses a candidate on, and the module that decides what they see.
+        self.assertIn('id="select-panel"', response.text)
+        self.assertIn("./view.mjs", response.text)
+
+    def test_the_module_the_page_imports_is_served_beside_it(self):
+        """A page whose module 404s is a blank screen, and `GET /` alone cannot
+        tell the two apart: the import fails in the browser, not on the wire."""
+        client, _ = surface(fact_database())
+        response = client.get("/view.mjs")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, (PRESENTATION / "view.mjs").read_bytes())
+        self.assertIn(b"export function viewFor", response.content)
 
 
 def _patterns(patterns):

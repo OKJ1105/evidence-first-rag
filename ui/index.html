@@ -96,7 +96,7 @@
 </main>
 
 <script type="module">
-import { discoveryForm, maySend, selectionForm, viewFor } from "./view.mjs";
+import { chooseRank, discoveryForm, maySend, selectionForm, viewFor } from "./view.mjs";
 
 const SCOPE_DIMENSIONS = ["project_code", "revision_label", "network_name", "snapshot_label"];
 const out = document.getElementById("out");
@@ -220,21 +220,34 @@ function showSelection(form) {
   for (const value of form.ranks) rank.append(new Option(`rank ${value}`, String(value)));
 
   const route = el("select");
-  // Obligation 4: no default, for a signal candidate or any other.
-  route.append(new Option("— choose a route —", ""));
-  for (const value of form.targetRoutes) route.append(new Option(value, value));
-
+  // Obligation 4: the routes offered are the ones the chosen candidate's kind
+  // permits, and never a default. Before a rank is chosen there is no such
+  // candidate, so the list is the prompt alone. `view.mjs` decides which
+  // routes those are; this rewrites the options it returned.
+  const fillRoutes = () => {
+    route.replaceChildren(new Option("— choose a route —", ""));
+    for (const value of state.selection.targetRoutes) route.append(new Option(value, value));
+  };
+  // Obligation 4: nothing is sent until both come from an act.
   const sync = () => {
-    state.selection = {
-      ...form,
-      chosenRank: rank.value === "" ? null : Number(rank.value),
-      chosenTargetRoute: route.value === "" ? null : route.value,
-    };
-    // Obligation 4: nothing is sent until both come from an act.
     document.getElementById("select-send").disabled = !maySend(state.selection);
   };
-  rank.addEventListener("change", sync);
-  route.addEventListener("change", sync);
+
+  rank.addEventListener("change", () => {
+    state.selection = chooseRank(state.selection, rank.value === "" ? null : Number(rank.value));
+    fillRoutes();
+    sync();
+  });
+  route.addEventListener("change", () => {
+    state.selection = {
+      ...state.selection,
+      chosenTargetRoute: route.value === "" ? null : route.value,
+    };
+    sync();
+  });
+
+  fillRoutes();
+  sync();
 
   const left = el("div");
   left.append(el("label", "Candidate"), rank);

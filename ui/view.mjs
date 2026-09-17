@@ -7,25 +7,55 @@
  * browser. `ui/index.html` applies what these return and decides nothing.
  *
  * **The UI holds no vocabulary of its own**, which is Section 4.1's rule about
- * the surface applied one layer out. Two consequences worth stating, because
- * both look like omissions:
+ * the surface applied one layer out. One consequence of that and the single
+ * exception to it, both worth stating: the first looks like an omission and
+ * the second looks like a violation.
  *
  * - The evidence sections are built by walking the keys the result carries,
  *   not from a list written here. A key added to `mvp-v0.1` Section 7 or
  *   `entity-discovery-v0.1` Section 7 appears on screen without this file
  *   changing, and obligation 1's "may not omit" holds structurally rather
  *   than by maintenance.
- * - The three fact route names appear, because a `/v1/select` form has to
- *   offer something. The map from an `entity_kind` to the routes it permits
- *   does not. Section 4.6 obligation 4 *permits* prefilling `target_route`
- *   for a `message` candidate and never requires it, so declining to prefill
- *   costs nothing and keeps `entity-discovery-v0.1` Section 4.8's rule in the
- *   one place that enforces it. A wrong choice is refused there, as a result
- *   with its evidence.
+ * - The one map that does appear is `entity_kind` to the `target_route` values
+ *   that kind permits, and it is not a second copy of a decision: `api-v0.1`
+ *   Section 4.3 states it for this surface in as many words — "offering a
+ *   target the selected candidate does not permit would be offering an option
+ *   this contract's own selection path refuses" — and obligation 4 requires
+ *   the route sent to be "one the person chose **from the permitted values**".
+ *   Prefilling is still declined for both kinds, including the `message` kind
+ *   where only one value is permitted: obligation 4 permits that prefill and
+ *   never requires it. What is enforced here is the **offer**, and what is
+ *   refused remains `entity-discovery-v0.1` Section 4.8 step 6's to refuse —
+ *   a value typed past this page is still judged there, as a result with its
+ *   evidence.
  */
 
-/** `mvp-v0.1` Section 4.5. The options a select form offers, never a default. */
+/** `mvp-v0.1` Section 4.5. The three fact routes, as their union. */
 export const FACT_ROUTES = ["message_facts", "signal_facts", "signal_mapping"];
+
+/**
+ * `entity-discovery-v0.1` Section 4.8's table, which `api-v0.1` Section 4.3
+ * restates for this surface. A `Map` rather than an object literal so that a
+ * kind read off a response cannot reach a prototype property and be answered
+ * with something that is not a route list.
+ */
+const TARGET_ROUTES = new Map([
+  ["message", ["message_facts"]],
+  ["signal", ["signal_facts", "signal_mapping"]],
+]);
+
+/**
+ * The routes a candidate of `entityKind` permits, and no others.
+ *
+ * A kind outside the two is not one this table covers, so it offers nothing:
+ * `entity-discovery-v0.1` Section 5 makes such a request `unsupported` and no
+ * candidate carries such a kind, and offering the union on a kind nobody
+ * recognises would be guessing on the one field this function exists to stop
+ * guessing on.
+ */
+export function targetRoutesFor(entityKind) {
+  return [...(TARGET_ROUTES.get(entityKind) ?? [])];
+}
 
 /** The three top-level result keys every outcome carries (Section 4.4). */
 const EVIDENCE_KEYS = ["evidence_bundle", "source_trace", "limitations"];
@@ -87,6 +117,10 @@ export function candidatesOf(result) {
   if (!Array.isArray(candidates)) return [];
   return candidates.map((candidate) => ({
     rank: candidate.rank,
+    // Carried out of `fields` as well as in it, because the selection form
+    // below decides the routes it may offer from this one value. It is shown
+    // by `fields` like every other; naming it twice hides nothing.
+    entityKind: candidate.entity_kind ?? null,
     fields: entries(candidate),
     selected: false,
     highlighted: false,
@@ -184,12 +218,24 @@ export function discoveryForm({ requestText = "", proposal = null, scopeDimensio
  * No default on `target_route`, ever — see this module's docstring. `rank` has
  * no default either: obligation 3 forbids a pre-selected candidate, and a
  * prefilled rank is one.
+ *
+ * `targetRoutes` is **empty until a rank is chosen**, which is not the same
+ * omission as having no default: which routes are permitted is a property of
+ * the selected candidate, and before an act there is no selected candidate to
+ * read it off. `choices` carries each candidate's permitted set so that
+ * `chooseRank` can answer the question without a second pass over the result.
  */
 export function selectionForm({ candidates = [] } = {}) {
+  const choices = candidates.map((candidate) => ({
+    rank: candidate.rank,
+    entityKind: candidate.entityKind ?? null,
+    targetRoutes: targetRoutesFor(candidate.entityKind),
+  }));
   return {
-    ranks: candidates.map((candidate) => candidate.rank),
+    ranks: choices.map((choice) => choice.rank),
+    choices,
     chosenRank: null,
-    targetRoutes: [...FACT_ROUTES],
+    targetRoutes: [],
     chosenTargetRoute: null,
     // `ui/index.html` may send only when both are set by an act.
     sendable: false,
@@ -197,13 +243,43 @@ export function selectionForm({ candidates = [] } = {}) {
   };
 }
 
-/** Whether a `/v1/select` may be sent. Both choices, and both from an act. */
+/**
+ * One person's act: this rank, and therefore these routes.
+ *
+ * A route chosen for a different candidate is dropped rather than carried
+ * across, because a value that was permitted for the previous rank may not be
+ * permitted for this one — and a choice the person made about another
+ * candidate was never a choice about this one.
+ *
+ * A rank that names no listed candidate chooses nothing. Obligation 4 admits a
+ * selection only on "one listed rank", so an unlisted one is not a narrower
+ * selection; it is none.
+ */
+export function chooseRank(form, rank) {
+  const choice = (form?.choices ?? []).find((entry) => entry.rank === rank) ?? null;
+  return {
+    ...form,
+    chosenRank: choice === null ? null : choice.rank,
+    targetRoutes: choice === null ? [] : [...choice.targetRoutes],
+    chosenTargetRoute: null,
+  };
+}
+
+/**
+ * Whether a `/v1/select` may be sent. Both choices, both from an act, and the
+ * route among the ones the chosen candidate permits.
+ *
+ * The last clause is the guard, not a restatement: without it a page could
+ * offer the permitted set and still send a value from outside it, which is the
+ * option `entity-discovery-v0.1` Section 4.8 step 6 refuses.
+ */
 export function maySend(form) {
   return (
     form?.chosenRank !== null &&
     form?.chosenRank !== undefined &&
     typeof form?.chosenTargetRoute === "string" &&
-    form.chosenTargetRoute.length > 0
+    form.chosenTargetRoute.length > 0 &&
+    (form?.targetRoutes ?? []).includes(form.chosenTargetRoute)
   );
 }
 

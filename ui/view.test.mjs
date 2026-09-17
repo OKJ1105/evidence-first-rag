@@ -20,11 +20,13 @@ import {
   FACT_ROUTES,
   answerOf,
   candidatesOf,
+  chooseRank,
   discoveryForm,
   evidenceOf,
   maySend,
   proposalOf,
   selectionForm,
+  targetRoutesFor,
   view,
   viewFor,
 } from "./view.mjs";
@@ -37,6 +39,18 @@ const envelopes = JSON.parse(
 );
 
 const SCOPE_DIMENSIONS = ["project_code", "revision_label", "network_name", "snapshot_label"];
+
+// The `message` kind, read off an envelope the surface really produced rather
+// than typed here. No fixture carries a message-kind **candidate list** — the
+// discovery cases that return one return signals — so the list below is built
+// locally, which is sound because what it exercises is the map from a kind to
+// the routes that kind permits and not the shape of a candidate on the wire.
+const MESSAGE_KIND =
+  envelopes.discovery_not_found.result.evidence_bundle.bound_parameters.entity_kind;
+
+function messageCandidates() {
+  return candidatesOf({ candidates: [{ rank: 1, entity_kind: MESSAGE_KIND }] });
+}
 
 /** Every scalar a value contains, flattened, so containment can be asserted. */
 function scalars(value, into = []) {
@@ -205,24 +219,83 @@ describe("obligation 4 — a selection is a person's act, and a prefilled field 
   it("sends no selection until a rank and a route are both chosen", () => {
     const form = selectionForm({ candidates: view(envelopes.candidates).candidates });
     assert.equal(maySend(form), false, "sendable with nothing chosen");
-    assert.equal(maySend({ ...form, chosenRank: 1 }), false, "sendable with no route");
+    assert.equal(maySend(chooseRank(form, 1)), false, "sendable with no route");
+    // The rank withdrawn from a form that had one, so the route on it is a
+    // permitted value and the missing rank is the only defect left.
     assert.equal(
-      maySend({ ...form, chosenTargetRoute: "signal_facts" }),
+      maySend({ ...chooseRank(form, 1), chosenRank: null, chosenTargetRoute: "signal_facts" }),
       false,
       "sendable with no rank",
     );
-    assert.equal(maySend({ ...form, chosenRank: 1, chosenTargetRoute: "signal_facts" }), true);
+    assert.equal(
+      maySend({ ...chooseRank(form, 1), chosenTargetRoute: "signal_facts" }),
+      true,
+    );
   });
 
   it("offers `target_route` with no default, for a signal candidate or any other", () => {
     const form = selectionForm({ candidates: view(envelopes.candidates).candidates });
     assert.equal(form.chosenTargetRoute, null);
-    assert.deepEqual(form.targetRoutes, FACT_ROUTES);
+    // Empty before an act: which routes are permitted is the chosen
+    // candidate's property, and nothing is chosen.
+    assert.deepEqual(form.targetRoutes, []);
+    for (const rank of form.ranks) {
+      assert.equal(chooseRank(form, rank).chosenTargetRoute, null, `rank ${rank} carries a default`);
+    }
+  });
+
+  it("offers a signal candidate exactly the two routes its kind permits", () => {
     // The fixture's candidates are signals, where two routes are permitted and
     // `entity-discovery-v0.1` Section 4.8 makes the choice the caller's.
     for (const candidate of envelopes.candidates.result.candidates) {
       assert.equal(candidate.entity_kind, "signal");
     }
+    const form = selectionForm({ candidates: view(envelopes.candidates).candidates });
+    for (const rank of form.ranks) {
+      assert.deepEqual(chooseRank(form, rank).targetRoutes, ["signal_facts", "signal_mapping"]);
+    }
+  });
+
+  it("offers a message candidate exactly `message_facts`", () => {
+    // `entity-discovery-v0.1` Section 4.8 step 6 refuses a `message` candidate
+    // dispatched to a signal route (`DX-021`), so offering one would be
+    // offering an option the selection path refuses.
+    const form = selectionForm({ candidates: messageCandidates() });
+    assert.deepEqual(chooseRank(form, 1).targetRoutes, ["message_facts"]);
+    assert.equal(chooseRank(form, 1).chosenTargetRoute, null);
+  });
+
+  it("never offers a route outside the three, and none at all for a kind it does not know", () => {
+    // The map adds no route name of its own: its union is `mvp-v0.1`'s three.
+    const offered = [...targetRoutesFor(MESSAGE_KIND), ...targetRoutesFor("signal")];
+    assert.deepEqual([...new Set(offered)].sort(), [...FACT_ROUTES].sort());
+    assert.deepEqual(targetRoutesFor("SAMPLE_NOT_A_KIND"), []);
+    assert.deepEqual(targetRoutesFor(null), []);
+  });
+
+  it("will not send a route the chosen candidate does not permit", () => {
+    // The guard behind the offer: a value that reached the form some other way
+    // is still not sendable.
+    const message = selectionForm({ candidates: messageCandidates() });
+    assert.equal(
+      maySend({ ...chooseRank(message, 1), chosenTargetRoute: "signal_facts" }),
+      false,
+      "a message candidate was sendable to a signal route",
+    );
+    const signal = selectionForm({ candidates: view(envelopes.candidates).candidates });
+    assert.equal(
+      maySend({ ...chooseRank(signal, 1), chosenTargetRoute: "message_facts" }),
+      false,
+      "a signal candidate was sendable to the message route",
+    );
+  });
+
+  it("drops a route chosen for another candidate when the rank changes", () => {
+    const form = selectionForm({ candidates: view(envelopes.candidates).candidates });
+    const chosen = { ...chooseRank(form, 1), chosenTargetRoute: "signal_mapping" };
+    assert.equal(maySend(chosen), true);
+    assert.equal(chooseRank(chosen, 2).chosenTargetRoute, null);
+    assert.equal(maySend(chooseRank(chosen, 2)), false);
   });
 
   it("puts the person's own request text in the term field", () => {
