@@ -367,7 +367,7 @@ class TheSurfaceProperties(WorkflowCase):
         self.assertEqual(set(document), {"contracts", "adapter_configured"})
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.1.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         self.assertIs(document["adapter_configured"], False)
 

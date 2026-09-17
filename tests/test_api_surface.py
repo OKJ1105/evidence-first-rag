@@ -402,7 +402,7 @@ class TheFiveRoutes(SurfaceCase):
         self.assertNotIn("refusal", document)
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.1.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         # `export-v0.1` is not among them: it is not in this tree and no route
         # here serves one.
@@ -593,16 +593,10 @@ class TheNaturalLanguageRoute(SurfaceCase):
         bodiless refusal would drop the evidence obligation Section 3.3
         inherits for every negative outcome.
 
-        **`WF-018` is outstanding and this slice does not claim it.** Its
-        registered row fixes the first case's producing layer at `adapter`,
-        and the `mvp-v0.1` path this route dispatches through records
-        `runtime`. Which of the two is wrong is a change to an accepted
-        contract under its Section 10, so it is the repository owner's
-        recorded disposition and not a writer's or a test's. What is asserted
-        here is the part of the row the surface decides and the disagreement
-        does not touch: a 200 carrying a status and its evidence structures,
-        never a 503. The layer itself is recorded, as behaviour and not as
-        acceptance evidence, in the test below.
+        What is asserted here is the part of the row the surface decides: a 200
+        carrying a status and its evidence structures, never a 503. The
+        producing layer is asserted in the test below, which the row now agrees
+        with -- see #180.
         """
         cases = {
             "route outside the vocabulary": (
@@ -631,13 +625,13 @@ class TheNaturalLanguageRoute(SurfaceCase):
         recognise what it was sent, so a route outside the vocabulary is
         `runtime` here.
 
-        **This contradicts `api-v0.1` Section 8.1's `WF-018` row, which says
-        `adapter`.** This test records what the system does; it does not
-        resolve the contradiction and must not be read as the row's acceptance
-        evidence. Either that row or `mvp-v0.1`'s layer attribution has to
-        change, and both are accepted contracts, so the resolution is the
-        repository owner's recorded decision. Until one is recorded, `WF-018`
-        is outstanding.
+        `WF-018` said `adapter` until `api-v0.1` `0.1.1`. The row was the
+        defect, not the attribution: `mvp-v0.1`'s own conformance expectation
+        `FX-108` has pinned `runtime` for this shape since Milestone 1, and
+        Section 5 of `api-v0.1` makes the trace `mvp-v0.1`'s to decide either
+        way. The owner's recorded decision and the evidence are on
+        [#180](https://github.com/OKJ1105/evidence-first-rag/issues/180). This
+        test is now that row's acceptance evidence rather than a note beside it.
         """
         text = f"{ASK_TEXT} SAMPLE_MSG_ENGINE_STATUS SAMPLE_X"
         response, _, _ = self.ask(
