@@ -28,6 +28,7 @@ import {
   selectionForm,
   targetRoutesFor,
   view,
+  unreachedView,
   viewFor,
 } from "./view.mjs";
 
@@ -392,6 +393,26 @@ describe("obligation 5 — a negative status is rendered as itself", () => {
     assert.equal(model.status, undefined, "a refusal was given a status family");
     assert.equal(model.refusal, envelopes.refusal.refusal);
     assert.equal(viewFor(envelopes.fact_success).kind, "result");
+  });
+
+  it("is a third kind again when the request never reached the surface", () => {
+    const unreached = unreachedView(new TypeError("Failed to fetch"));
+    // Not a result and not a Section 4.5 refusal: no status family, no refusal
+    // kind, and nothing a reader could mistake for either.
+    assert.equal(unreached.kind, "unreached");
+    assert.equal(unreached.status, undefined);
+    assert.equal(unreached.refusal, undefined);
+    assert.equal(unreached.result, undefined);
+    assert.match(unreached.detail, /nothing was answered/);
+    // The cause is text for a reader, never a value anything branches on.
+    assert.equal(unreached.cause, "Failed to fetch");
+    assert.equal(unreachedView(undefined).cause, "");
+    // And the three kinds are distinct, which is what lets the page tell them
+    // apart without reading a status.
+    assert.deepEqual(
+      new Set([unreached.kind, viewFor(envelopes.refusal).kind, viewFor(envelopes.fact_success).kind]),
+      new Set(["unreached", "refusal", "result"]),
+    );
   });
 });
 

@@ -321,6 +321,26 @@ export function refusalView(body) {
   return { kind: "refusal", refusal: body?.refusal ?? null, detail: body?.detail ?? null };
 }
 
+/**
+ * A request that never reached the surface, which is neither of the two above.
+ *
+ * Obligation 5 forbids showing a surface refusal as a result. A `fetch` that
+ * rejects is a third thing again -- no response exists at all -- and the
+ * failure it invites is quieter: the previous request's result and evidence
+ * stay on screen, and are read as the answer to the question just asked. So it
+ * has its own `kind`, and `ui/index.html` clears the screen before showing it.
+ *
+ * The cause is carried as text for a reader, never parsed: nothing downstream
+ * branches on why the request failed.
+ */
+export function unreachedView(cause) {
+  return {
+    kind: "unreached",
+    detail: "the request did not reach the surface; nothing was answered",
+    cause: cause === null || cause === undefined ? "" : String(cause?.message ?? cause),
+  };
+}
+
 /** Which of the two a response body is, by the key that distinguishes them. */
 export function viewFor(body, options) {
   if (body && "refusal" in body) return refusalView(body);

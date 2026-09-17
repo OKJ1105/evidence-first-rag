@@ -96,7 +96,7 @@
 </main>
 
 <script type="module">
-import { chooseRank, discoveryForm, maySend, selectionForm, viewFor } from "./view.mjs";
+import { chooseRank, discoveryForm, maySend, selectionForm, unreachedView, viewFor } from "./view.mjs";
 
 const SCOPE_DIMENSIONS = ["project_code", "revision_label", "network_name", "snapshot_label"];
 const out = document.getElementById("out");
@@ -108,6 +108,15 @@ const el = (tag, text, className) => {
   if (className) node.className = className;
   return node;
 };
+
+/** Obligation 4: no rank stays chosen once the list that named it is gone. */
+function clearSelection() {
+  document.getElementById("select-panel").hidden = true;
+  document.getElementById("select-send").disabled = true;
+  state.selection = null;
+  state.candidates = [];
+  state.candidateSetId = null;
+}
 
 async function send(path, body) {
   const response = await fetch(path, {
@@ -147,6 +156,17 @@ function evidenceBlock(sections) {
 function render(model) {
   out.replaceChildren();
   const panel = el("section");
+
+  if (model.kind === "unreached") {
+    // Neither a result nor a Section 4.5 refusal, and labelled as neither: the
+    // request never reached the surface, so nothing answered it.
+    panel.className = "refusal";
+    panel.append(el("h2", "The request did not reach the surface"));
+    panel.append(el("p", model.detail, "status"));
+    if (model.cause) panel.append(el("p", model.cause, "note"));
+    out.append(panel);
+    return;
+  }
 
   if (model.kind === "refusal") {
     // Obligation 5: a refusal is not a result, and is not shown as one.
@@ -291,7 +311,27 @@ function showDiscovery() {
   document.getElementById("discover-panel").hidden = false;
 }
 
-document.getElementById("ask-send").addEventListener("click", async () => {
+/**
+ * Every click handler, with the one case a `fetch` can fail in.
+ *
+ * Without this, a rejected `fetch` leaves the previous request's result and
+ * evidence on screen with nothing saying the new request was never answered,
+ * and a true result is read as the answer to a different question. The screen
+ * is cleared first, so what a person sees after a failure is the failure.
+ */
+function wire(id, handler) {
+  document.getElementById(id).addEventListener("click", async () => {
+    try {
+      await handler();
+    } catch (cause) {
+      document.getElementById("discover-panel").hidden = true;
+      clearSelection();
+      render(unreachedView(cause));
+    }
+  });
+}
+
+wire("ask-send", async () => {
   state.requestText = document.getElementById("ask").value;
   document.getElementById("discover-panel").hidden = true;
   document.getElementById("select-panel").hidden = true;
@@ -303,7 +343,7 @@ document.getElementById("ask-send").addEventListener("click", async () => {
   if (model.kind === "result" && model.status === "needs_entity_discovery") showDiscovery();
 });
 
-document.getElementById("discover-send").addEventListener("click", async () => {
+wire("discover-send", async () => {
   const args = {};
   for (const input of document.querySelectorAll("#discover-fields [data-name]")) {
     if (input.value !== "") args[input.dataset.name] = input.value;
@@ -312,11 +352,7 @@ document.getElementById("discover-send").addEventListener("click", async () => {
   // candidate set is not one this screen lists once a new set arrives, so the
   // panel goes away before the request rather than only when the new response
   // happens to carry candidates.
-  document.getElementById("select-panel").hidden = true;
-  document.getElementById("select-send").disabled = true;
-  state.selection = null;
-  state.candidates = [];
-  state.candidateSetId = null;
+  clearSelection();
   const { body } = await send("/v1/discover", { arguments: args });
   state.discoveryArguments = args;
   // Section 4.1: the caller cites the set it was given. Read off the response
@@ -325,7 +361,7 @@ document.getElementById("discover-send").addEventListener("click", async () => {
   render(viewFor(body, { requestText: state.requestText }));
 });
 
-document.getElementById("select-send").addEventListener("click", async () => {
+wire("select-send", async () => {
   if (!maySend(state.selection)) return;
   const { body } = await send("/v1/select", {
     arguments: {
@@ -336,6 +372,9 @@ document.getElementById("select-send").addEventListener("click", async () => {
       target_route: state.selection.chosenTargetRoute,
     },
   });
+  // The candidate list this selection was made against is gone from the screen
+  // once the result replaces it, so the panel that names its ranks goes too.
+  clearSelection();
   render(viewFor(body, { requestText: state.requestText }));
 });
 </script>
