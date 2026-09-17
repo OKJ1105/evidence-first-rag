@@ -99,6 +99,9 @@ class FixtureCase(unittest.TestCase):
     def answer(self, arguments, database=DATABASE):
         result = discovery(database).execute(DiscoveryRequest(arguments=arguments))
         self.assert_evidence(result, database)
+        # api-v0.1 Section 8's row for Section 4.4: every `DX-*` result
+        # serialized and read back equals the original.
+        support.assert_round_trips(result)
         return result
 
     def assert_evidence(self, result, database):

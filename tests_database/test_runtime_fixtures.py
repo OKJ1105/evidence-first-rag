@@ -82,6 +82,9 @@ class FixtureCase(unittest.TestCase):
         result = runtime().execute(Request(route=route, arguments=arguments, **request))
         self.assert_evidence(result)
         self.assert_rendering(result)
+        # api-v0.1 Section 8's row for Section 4.4: every `FX-*` result
+        # serialized and read back equals the original.
+        support.assert_round_trips(result)
         return result
 
     def assert_evidence(self, result):

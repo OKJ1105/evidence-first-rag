@@ -42,19 +42,43 @@ def canonical_json(value) -> bytes:
     return "".join(parts).encode("utf-8")
 
 
+def json_text(value) -> str:
+    """The Section 4.2 rules over the one value a digest input may not hold.
+
+    Same escape set, same key order, same absence of whitespace as
+    `canonical_json` -- and a boolean is written rather than refused.
+    `api-v0.1` Section 4.4 cites these rules for a wire document, and three of
+    every document's values are booleans: `read_only_safeguards` carries
+    `read_only_transaction` and `connection_opened`, and no result lacks them.
+
+    Kept here rather than written a second time in `api/`, because the rules
+    this module's docstring lists are the thing two implementations have to
+    agree on, and an escape set defined in two places is an escape set that
+    will one day differ in one of them. `canonical_json` still refuses a
+    boolean: a digest input may not hold one, and that is a different
+    obligation from what a response body may carry.
+    """
+    parts: list[str] = []
+    _write(value, parts, booleans=True)
+    return "".join(parts)
+
+
 def sha256_hex(data: bytes) -> str:
     """Lower-case hexadecimal SHA-256, the form every digest in the contract
     takes."""
     return hashlib.sha256(data).hexdigest()
 
 
-def _write(value, parts: list[str]) -> None:
+def _write(value, parts: list[str], *, booleans: bool = False) -> None:
     # bool is checked before int: True is an int in Python, and the contract's
-    # digest inputs carry no boolean, so one reaching here is a caller error.
+    # digest inputs carry no boolean, so one reaching here is a caller error
+    # unless the caller is `json_text`, which serializes a wire document.
     if value is None:
         parts.append("null")
     elif isinstance(value, bool):
-        raise CanonicalError("a boolean is not a Section 4.2 digest input")
+        if not booleans:
+            raise CanonicalError("a boolean is not a Section 4.2 digest input")
+        parts.append("true" if value else "false")
     elif isinstance(value, int):
         # Shortest decimal form. Python's int repr has no sign for a
         # non-negative value, no fraction, and no exponent.
@@ -68,7 +92,7 @@ def _write(value, parts: list[str]) -> None:
         for index, item in enumerate(value):
             if index:
                 parts.append(",")
-            _write(item, parts)
+            _write(item, parts, booleans=booleans)
         parts.append("]")
     elif isinstance(value, dict):
         parts.append("{")
@@ -82,7 +106,7 @@ def _write(value, parts: list[str]) -> None:
                 parts.append(",")
             _write_string(key, parts)
             parts.append(":")
-            _write(value[key], parts)
+            _write(value[key], parts, booleans=booleans)
         parts.append("}")
     else:
         raise CanonicalError(
