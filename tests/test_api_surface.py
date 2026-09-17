@@ -255,6 +255,24 @@ class FaultySession:
         raise Fault("SAMPLE_STATEMENT_TIMEOUT")
 
 
+@dataclasses.dataclass
+class Exploding:
+    """An entry point that raises what no handler names.
+
+    `runtime/connection.py` wraps two driver conditions as
+    `ConnectionUnavailable` and `Fault`. A third -- and any defect in the
+    surface itself -- is neither, and Section 4.5 still admits only six kinds.
+    Raised from the entry point rather than patched into the app, because the
+    claim under test is about what leaves the surface and not about where the
+    exception came from.
+    """
+
+    fixture_provenance: tuple = PROVENANCE
+
+    def execute(self, request):
+        raise RuntimeError("SAMPLE_UNEXPECTED_CONDITION")
+
+
 def envelope_of(response) -> dict:
     return json.loads(response.text)
 
@@ -628,6 +646,40 @@ class TheNaturalLanguageRoute(SurfaceCase):
         # proposal is the empty list, not a refusal.
         self.assertEqual(verbatim_arguments(Proposal(route="message_facts", arguments=None), "x"), [])
 
+    def test_a_proposal_outside_the_json_vocabulary_is_still_an_envelope(self):
+        """Section 4.2 puts untrusted adapter output on the wire, and
+        `Adapter.read` passes `route` and a non-conforming `arguments` through
+        unchanged -- so a model that answered with a number reaches this key.
+        A float and a negative integer are outside what the Section 4.4
+        canonical rules write; serializing one raw raises inside the handler
+        and the caller gets the framework's plain-text 500, which is a non-200
+        carrying neither a result nor one of Section 4.5's six refusals.
+        """
+        proposal = Proposal(
+            route="message_facts",
+            arguments={"snapshot_label": -1, "project_code": 1.5, "message_key": ["SAMPLE_A", 2]},
+        )
+        response, _, _ = self.ask(proposal)
+        document = self.assert_result_envelope(response, proposal=True)
+        # A result at 200: revalidation refuses the values, and its refusal is
+        # a status family rather than a transport condition (Section 4.5).
+        self.assertEqual(document["result"]["status"], Status.INVALID_REQUEST.value)
+        # What the vocabulary carries is unchanged -- the string, the array,
+        # the non-negative integer inside it -- and only what it cannot carry
+        # becomes text. Dropping the value instead would make an off-schema
+        # proposal indistinguishable from one that carried nothing.
+        self.assertEqual(
+            document["proposal"]["arguments"],
+            {"snapshot_label": "-1", "project_code": "1.5", "message_key": ["SAMPLE_A", 2]},
+        )
+        self.assertEqual(document["proposal"]["verbatim"], [])
+
+    def test_a_route_that_is_not_a_string_is_a_result_too(self):
+        response, _, _ = self.ask(Proposal(route=-1, arguments={}))
+        document = self.assert_result_envelope(response, proposal=True)
+        self.assertEqual(document["result"]["status"], Status.UNSUPPORTED.value)
+        self.assertEqual(document["proposal"]["route"], "-1")
+
 
 # --------------------------------------------------------------------------
 # Section 4.5: the six refusals.
@@ -744,6 +796,28 @@ class TheRefusals(SurfaceCase):
         self.assertFalse(issubclass(ConnectionUnavailable, Fault))
         self.assertFalse(issubclass(Fault, ConnectionUnavailable))
         self.assertNotEqual(REFUSALS["database_unavailable"], REFUSALS["runtime_fault"])
+
+    def test_an_exception_no_handler_names_is_still_one_of_the_six_kinds(self):
+        """Section 4.5 is the whole of what a non-200 may say, so "every
+        non-200 is written by `refusal`" has to be a property of the module
+        rather than of the list of exceptions someone thought of. Without the
+        catch-all the framework answers with plain-text `Internal Server
+        Error`: a non-200 carrying neither a result nor a refusal.
+        """
+        services = Services(runtime=Exploding(), discovery=Exploding(), selection=Exploding())
+        # The framework re-raises after this response is sent, so a server logs
+        # the condition and an ordinary test still sees the exception. This
+        # client asks for the response instead, which is what Section 4.5
+        # governs.
+        client = TestClient(create_app(services), raise_server_exceptions=False)
+        response = client.post(
+            "/v1/query", json={"route": "message_facts", "arguments": FACT_MESSAGE}
+        )
+        self.assert_refusal(response, "runtime_fault")
+        self.assertEqual(response.headers["content-type"], "application/json")
+        # Nothing read off what was raised, for the reason every other refusal
+        # detail is the surface's own sentence.
+        self.assertNotIn("SAMPLE_UNEXPECTED_CONDITION", response.text)
 
     def test_the_table_is_six_kinds_with_the_codes_the_contract_fixes(self):
         self.assertEqual(

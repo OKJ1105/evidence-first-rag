@@ -90,6 +90,16 @@ NAMESPACE = "/v1"
 
 JSON_MEDIA_TYPE = "application/json"
 
+# Section 4.5's sentence for `runtime_fault`, written once because two handlers
+# below give it: the `Fault` the runtime raises on purpose, and the exception
+# nothing named. What a caller can do about either is the same, and a second
+# sentence would only say which of the two happened -- which is exactly the
+# thing Section 4.5 keeps out of a refusal body.
+RUNTIME_FAULT_DETAIL = (
+    "the request failed for a reason the seven status families do not cover"
+    " (mvp-v0.1 Section 4.4)"
+)
+
 
 class AdapterUnavailable(Exception):
     """The adapter could not be reached, timed out, or said nothing usable.
@@ -235,12 +245,57 @@ def proposal_document(proposal: Proposal, request_text: str) -> dict:
     what happened to it. Presenting the revalidated request here instead would
     hide every case where the two differ, which is every case revalidation
     exists for.
+
+    **Both go through `_wire`, because this is the one key of Section 4.2 that
+    carries untrusted output.** `Adapter.read` passes `document.get("route")`
+    and a non-conforming `arguments` through unchanged -- deliberately, so that
+    revalidation is what judges a proposal -- so either can be any JSON value a
+    model emitted, and a float or a negative integer is outside the vocabulary
+    the Section 4.4 canonical rules write. Serializing one raw raises inside
+    the handler, and what a caller then receives is the framework's plain-text
+    500: a non-200 carrying neither a result nor one of Section 4.5's six
+    refusals. `_wire` keeps the envelope in the vocabulary without dropping the
+    proposal, which is what Section 4.3's report is for.
     """
     return {
-        "route": proposal.route,
-        "arguments": proposal.arguments,
+        "route": _wire(proposal.route),
+        "arguments": _wire(proposal.arguments),
         "verbatim": verbatim_arguments(proposal, request_text),
     }
+
+
+def _wire(value):
+    """`value` as something the Section 4.4 canonical rules can write.
+
+    That vocabulary is `null`, a boolean, a non-negative integer, a string, an
+    array and an object (`discovery/canonical.py`). A value inside it is
+    returned unchanged, so a conforming proposal reaches the wire exactly as
+    the adapter returned it. A value outside it becomes its text form rather
+    than an exception, because the alternative on this path is not a better
+    body -- it is a response outside Section 4.5's table.
+
+    Text rather than omission: a reader comparing the proposal with the
+    `invalid_request` that followed needs to see the value that caused it, and
+    a dropped key would make an off-schema proposal look like one that carried
+    nothing.
+    """
+    if isinstance(value, (str, bool, type(None))):
+        return value
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_wire(item) for item in value]
+    if isinstance(value, dict):
+        return {_wire_name(name): _wire(item) for name, item in value.items()}
+    return str(value)
+
+
+def _wire_name(name):
+    """An object key as the string those rules require one to be.
+
+    JSON gives no other kind of key, so this is reachable only from a proposal
+    injected in-process; it exists so that `_wire` has no path that raises."""
+    return name if isinstance(name, str) else str(name)
 
 
 # --------------------------------------------------------------------------
@@ -360,11 +415,17 @@ def _install_refusal_handlers(app: fastapi.FastAPI) -> None:
     is this contract's vocabulary, and the first would also put a value read
     off the request into a refusal body.
 
-    The other two catch the repository's own exception types. Registering them
+    The next two catch the repository's own exception types. Registering them
     on the app rather than wrapping each dispatch keeps the five handlers free
     of error handling, and costs nothing in precision: `ConnectionUnavailable`
     and `Fault` are raised by the session provider and the runtime and by
     nothing else, so neither can be produced by building an envelope.
+
+    The last catches what none of the others names, which is what makes "every
+    non-200 response is written by `refusal`" a property of this module rather
+    than of the list of exceptions someone thought of. `runtime/connection.py`
+    wraps two driver conditions; a third would otherwise leave as a plain-text
+    500, and so would any defect here.
     """
 
     @app.exception_handler(fastapi.exceptions.RequestValidationError)
@@ -388,11 +449,22 @@ def _install_refusal_handlers(app: fastapi.FastAPI) -> None:
 
     @app.exception_handler(Fault)
     async def _fault(request, error):
-        return refusal(
-            "runtime_fault",
-            "the request failed for a reason the seven status families do not"
-            " cover (mvp-v0.1 Section 4.4)",
-        )
+        return refusal("runtime_fault", RUNTIME_FAULT_DETAIL)
+
+    @app.exception_handler(Exception)
+    async def _unexpected(request, error):
+        # Nothing is read off `error`, for the reason `refusal` states: a
+        # driver's message names a host and a port, and a traceback names a
+        # path. The sentence is `Fault`'s, because the condition a caller sees
+        # is the same one -- the request failed, and no status family covers it.
+        #
+        # Registered for `Exception` rather than for a list of types, so a
+        # driver condition `runtime/connection.py` does not wrap, and a defect
+        # in this module, both land inside Section 4.5's table. The framework
+        # re-raises after this response is sent, so a test still sees the
+        # exception and a server still logs it; what changes is only what
+        # reaches the wire.
+        return refusal("runtime_fault", RUNTIME_FAULT_DETAIL)
 
     @app.exception_handler(starlette.exceptions.HTTPException)
     async def _http(request, error):

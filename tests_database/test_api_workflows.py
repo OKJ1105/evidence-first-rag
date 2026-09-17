@@ -17,6 +17,13 @@ Not here: `WF-007` to `WF-010`, `WF-017`, `WF-018` and `WF-022`, which inject a
 proposal or a fault and so assert nothing about what the database returns; they
 are in `tests/`. `WF-011` and `WF-014` are refusals decided before any
 connection opens and are there too.
+
+**This module refuses to skip where it was meant to run.** It needs the `api`
+extra, and a job that provisions the database without installing it would
+otherwise report every step above as skipped and exit 0 -- the #101 failure,
+since a skip is green and the evidence for the registered rows would be
+carried by a file no check executes. `_refuse_to_skip_silently` is that guard:
+where the database environment is configured it fails instead.
 """
 
 import json
@@ -61,8 +68,34 @@ PROVENANCE = (
 
 def setUpModule():
     if not HAS_API:  # pragma: no cover - the extra is installed in CI
-        raise unittest.SkipTest("the api extra is not installed")
+        _refuse_to_skip_silently()
     support.build(DATABASE)
+
+
+def _refuse_to_skip_silently():  # pragma: no cover - the extra is installed in CI
+    """Skip only where a skip honestly means "this environment cannot run it".
+
+    Every step below is a registered `WF-*` whose expected value is an `FX-*`
+    or `DX-*` result, and Section 8.1 makes those steps this file's to prove.
+    A run that reports the module green having executed none of them is the
+    #101 failure exactly: a skip is green, and the acceptance evidence for the
+    rows citing registered cases would then live in a file no check executes.
+
+    `MVP_RUNTIME_PASSWORD` is what says the database environment is
+    provisioned -- `connection_parameters` cannot build a connection without
+    it. Where it is set, these tests were meant to run, and a missing `api`
+    extra is a configuration defect to fail on rather than to pass over. Where
+    it is unset there is no database either, nothing here could have run, and
+    the skip says so truthfully.
+    """
+    missing = "the api extra is not installed"
+    if "MVP_RUNTIME_PASSWORD" not in os.environ:
+        raise unittest.SkipTest(missing)
+    raise RuntimeError(
+        f"{missing}, but the database environment is configured, so the"
+        f" api-v0.1 Section 8.1 steps this file owns were meant to run;"
+        f" install the package with its `api` extra so they do"
+    )
 
 
 def tearDownModule():
