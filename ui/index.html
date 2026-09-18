@@ -228,7 +228,17 @@ function render(model) {
     state.candidates = model.candidates;
     const list = el("section");
     list.append(el("h2", "Candidates"));
-    list.append(el("p", "None is chosen. None is more likely than another here.", "note"));
+    // Obligation 3: the list is shown under the `limitations` entry that says
+    // no reference was resolved, and that entry is the result's own words.
+    // "None is chosen" is the page describing itself, which is a fixed label
+    // (obligation 2) rather than a claim about the candidates; the sentence
+    // that used to follow it -- that none was more likely than another -- was
+    // the page stating something the response does not say, and which the
+    // `match_tier` ordering contradicts.
+    list.append(el("p", "None is chosen.", "note"));
+    if (model.candidatesNotice) {
+      list.append(el("p", model.candidatesNotice.detail));
+    }
     for (const candidate of model.candidates) {
       const block = el("div", null, "candidate");
       block.append(el("h3", `rank ${candidate.rank}`));

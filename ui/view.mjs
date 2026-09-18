@@ -283,6 +283,28 @@ export function maySend(form) {
   );
 }
 
+/** `entity-discovery-v0.1`'s entry for "nothing was resolved" (obligation 3). */
+const NO_REFERENCE_RESOLVED = "no_reference_resolved";
+
+/**
+ * Obligation 3: the sentence a candidate list is shown **under**.
+ *
+ * Taken verbatim from the result's `limitations`, never written here. A page
+ * that introduced a list in its own words would be stating something about
+ * the candidates that the response does not say -- obligation 2 forbids prose
+ * stating a fact where `rendered` is null, and obligation 7 forbids a summary
+ * the response does not contain. The page's own text about a list is limited
+ * to what is true of the page itself ("None is chosen").
+ *
+ * `null` when the result carries no such entry, so the page shows nothing
+ * rather than a sentence of its own.
+ */
+export function candidatesNotice(result) {
+  const limitations = Array.isArray(result?.limitations) ? result.limitations : [];
+  const entry = limitations.find((item) => item?.kind === NO_REFERENCE_RESOLVED);
+  return entry ? { kind: entry.kind, detail: entry.detail } : null;
+}
+
 /**
  * The whole screen for one envelope.
  *
@@ -305,6 +327,7 @@ export function view(envelope, { requestText = "" } = {}) {
     evidence: evidenceOf(result),
     proposal,
     contract: envelope?.contract ?? null,
+    candidatesNotice: candidatesNotice(result),
     selection: candidates.length > 0 ? selectionForm({ candidates }) : null,
     requestText,
   };

@@ -229,6 +229,20 @@ describe("obligation 3 — a candidate list is not an answer", () => {
     assert.equal(resolved.selection, null);
   });
 
+  it("introduces the list in the result's words, and never in its own", () => {
+    // Obligation 3 names what a candidate list is shown under, and obligations
+    // 2 and 7 forbid the page adding a sentence of its own about the data. The
+    // notice is therefore an equality with the result, not a string here.
+    const entry = envelopes.candidates.result.limitations.find(
+      (item) => item.kind === "no_reference_resolved",
+    );
+    assert.ok(entry, "the fixture no longer carries the entry obligation 3 names");
+    assert.deepEqual(model.candidatesNotice, { kind: entry.kind, detail: entry.detail });
+    // And an outcome without that entry gets no notice rather than an invented
+    // one: a page with nothing to quote says nothing.
+    assert.equal(view(envelopes.fact_success).candidatesNotice, null);
+  });
+
   it("shows the limitation that says nothing was resolved", () => {
     assert.ok(envelopes.candidates.result.limitations.length > 0);
     const section = model.evidence.find((s) => s.key === "limitations");
