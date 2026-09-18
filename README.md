@@ -83,13 +83,23 @@ See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, archit
 
 ## Running it
 
+You need a container runtime that provides `docker compose` — Docker Desktop,
+Colima, Podman with the compose plugin — and nothing else. No Python
+environment, no PostgreSQL, no model credential.
+
 ```
 docker compose up
 ```
 
 That is the whole of it. The stack starts PostgreSQL 17, provisions it with the
 committed SQL and fixtures, and serves the API and the page at
-<http://127.0.0.1:8000>. Open that address, type a question in your own words,
+<http://127.0.0.1:8000>. Only that port is published; the database is reachable
+from the stack's own containers and not from your machine.
+
+After changing anything under `src/`, `ui/`, `sql/` or `fixtures/`, start it
+with `docker compose up --build`: the image is built from those directories
+rather than mounting them, so without `--build` a second `up` serves the image
+it built the first time. Open that address, type a question in your own words,
 choose among the candidates it offers, and read the fact it returns with its
 scope, its template, its bound parameters and its limitations beside it.
 

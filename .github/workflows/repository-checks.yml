@@ -248,105 +248,17 @@ jobs:
       - name: Start the stack with the one command
         run: docker compose up --detach --wait
 
-      - name: Drive the stack through the surface
-        # Python from the runner, standard library only: the point is to reach
-        # the stack the way a person would, over HTTP, without installing this
-        # repository's package beside it. A caller that imported the package
-        # would be testing the code again rather than the stack.
-        run: |
-          python3 - <<'PROBE'
-          import json, urllib.error, urllib.request
-
-          BASE = "http://127.0.0.1:8000"
-          POWERTRAIN = {
-              "project_code": "SAMPLE_PROJECT_ALPHA",
-              "revision_label": "SAMPLE_REV_A",
-              "network_name": "SAMPLE_NET_POWERTRAIN",
-              "snapshot_label": "SAMPLE_SNAP_BASE",
-          }
-
-          def call(path, body=None):
-              """One request. Returns (status, parsed body)."""
-              request = urllib.request.Request(
-                  BASE + path,
-                  data=None if body is None else json.dumps(body).encode(),
-                  headers={} if body is None else {"content-type": "application/json"},
-              )
-              try:
-                  with urllib.request.urlopen(request) as response:
-                      return response.status, json.loads(response.read())
-              except urllib.error.HTTPError as refused:
-                  return refused.code, json.loads(refused.read())
-
-          def expect(condition, message):
-              if not condition:
-                  raise SystemExit("FAILED: " + message)
-              print("ok:", message)
-
-          # Section 4.5: health reports the three contracts this surface serves,
-          # and whether an adapter is configured. Neither is wrapped in the
-          # Section 4.2 envelope -- health is not a result.
-          status, health = call("/v1/health")
-          expect(status == 200, "GET /v1/health is 200")
-          expect(
-              set(health["contracts"]) == {"api-v0.1", "mvp-v0.1", "entity-discovery-v0.1"},
-              f"health names the three contracts: {health['contracts']}",
-          )
-          expect(
-              health["adapter_configured"] is False,
-              "health reports no adapter, which is what this stack started without",
-          )
-
-          # WF-003, the path this milestone exists for, against the data the
-          # stack provisioned -- not a fixture this job carries.
-          status, first = call("/v1/query", {"route": "signal_facts", "arguments": dict(POWERTRAIN)})
-          expect(
-              first["result"]["status"] == "needs_entity_discovery",
-              f"a complete scope with no lookup key needs discovery: {first['result']['status']}",
-          )
-
-          discovery = POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_GEAR_POSITION"}
-          status, second = call("/v1/discover", {"arguments": discovery})
-          expect(second["result"]["status"] == "candidates", "the term returns a candidate list")
-          candidates = second["result"]["candidates"]
-          expect(len(candidates) >= 2, f"more than one candidate: {len(candidates)}")
-          digest = second["result"]["evidence_bundle"]["candidate_set_id"]
-
-          status, third = call(
-              "/v1/select",
-              {
-                  "arguments": discovery
-                  | {
-                      "candidate_set_id": digest,
-                      "selected_rank": str(candidates[0]["rank"]),
-                      "target_route": "signal_facts",
-                  }
-              },
-          )
-          result = third["result"]
-          expect(result["status"] == "success", f"the selection answers: {result['status']}")
-          expect(bool(result["rows"]), "the answer carries rows")
-          expect(isinstance(third["rendered"], str), "the answer carries its rendered text")
-          # Charter Section 3.1, on the stack rather than in a unit test.
-          expect(result["evidence_bundle"]["selection"] is not None, "the evidence records the selection")
-          expect(bool(result["source_trace"]), "the evidence carries the source trace")
-          expect(bool(result["limitations"]), "the evidence carries what the answer does not establish")
-
-          # Section 4.7: with no adapter credential, `/v1/ask` refuses and
-          # every other route works -- which the four calls above just showed.
-          status, refused = call("/v1/ask", {"request_text": "SAMPLE_TEXT"})
-          expect(status == 503, f"/v1/ask without a credential is 503: {status}")
-          expect(
-              refused["refusal"] == "adapter_unavailable",
-              f"and refuses by name: {refused.get('refusal')}",
-          )
-
-          # Section 4.6: the page is there to open.
-          with urllib.request.urlopen(BASE + "/") as page:
-              text = page.read().decode()
-          expect(page.status == 200, "GET / is the page")
-          expect('id="discover-panel"' in text, "the page carries its discovery panel")
-          PROBE
+      - name: The registered workflow rows, against the stack
+        # `api-v0.1` Section 8's acceptance row for Section 4.7: "the stack
+        # provisions from a clean state and `WF-001` to `WF-015` pass against
+        # it". Twelve of the fifteen are in `tests_stack/`; the three that are
+        # not each inject a proposal, which a stack cannot do, and that module
+        # says so. Nothing is installed here on purpose -- the module is
+        # standard library only and imports this repository's package nowhere,
+        # so what it exercises is the stack rather than the code again.
+        env:
+          EFR_STACK_URL: http://127.0.0.1:8000
+        run: python3 -m unittest discover --start-directory tests_stack --top-level-directory . --verbose
 
       - name: The surface process holds no provisioning credential
         # `tests/test_local_stack.py` asserts this against the file. Here it is
@@ -362,6 +274,52 @@ jobs:
             fi
             echo "ok: the surface process does not carry ${name}"
           done
+
+      - name: The surface's own connection cannot write
+        # The other half of Section 4.7's separation, and the half the step
+        # above cannot reach. Not carrying the provisioning password is what
+        # the stack hands the process; being unable to write is what the
+        # database grants it, and `mvp-v0.1` Section 4.10 requires that refusal
+        # to come from PostgreSQL privileges rather than from an application
+        # guard.
+        #
+        # Run **inside the surface container with its own environment**, so the
+        # credential under test is the one the surface actually serves with. A
+        # check from the runner would need the database published and would be
+        # testing a connection nothing uses.
+        #
+        # `tests_database/test_roles.py` covers the grants against a service
+        # container; this covers the deployment. Swap `RUNTIME_ROLE` for the
+        # provisioning identity and every response stays identical -- a
+        # connection that can write answers the five routes exactly as one that
+        # cannot -- so nothing else in this job would notice.
+        run: |
+          docker compose exec -T surface python - <<'WRITE'
+          import os
+          import psycopg
+          from evidence_first_rag.api.serve import connection_parameters
+
+          parameters = connection_parameters(os.environ)
+          print("connected as:", parameters["user"])
+          statements = (
+              "INSERT INTO source_snapshot (project_code, revision_label, network_name,"
+              " snapshot_label, ingested_at) VALUES ('X', 'X', 'X', 'X', now())",
+              "UPDATE source_snapshot SET snapshot_label = 'X'",
+              "DELETE FROM source_snapshot",
+              "CREATE TABLE sample_written_by_the_surface (id integer)",
+          )
+          for statement in statements:
+              with psycopg.connect(**parameters) as connection:
+                  try:
+                      with connection.cursor() as cursor:
+                          cursor.execute(statement)
+                  except psycopg.Error as refused:
+                      print("ok: refused", statement.split()[0], "--", type(refused).__name__)
+                      continue
+                  raise SystemExit(
+                      "FAILED: the surface's own connection performed: " + statement
+                  )
+          WRITE
 
       - name: Stack logs
         if: failure()

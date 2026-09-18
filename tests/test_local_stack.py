@@ -197,16 +197,33 @@ class TheServicesStartInTheRightOrder(unittest.TestCase):
             with self.subTest(variable=variable):
                 self.assertNotIn(variable, environment)
 
-    def test_both_ports_are_bound_to_loopback(self):
-        """A database with a documented password, or a surface over it, on
-        `0.0.0.0` is on whatever network the machine is on."""
-        for service in ("database", "surface"):
-            with self.subTest(service=service):
-                for mapping in self.services[service]["ports"]:
-                    self.assertTrue(
-                        str(mapping).startswith("127.0.0.1:"),
-                        f"{service} publishes {mapping} beyond loopback",
-                    )
+    def test_the_surface_is_the_only_published_port_and_it_is_loopback(self):
+        """Two rules in one assertion, because they are the same rule.
+
+        Nothing outside the stack needs the database: the containers that reach
+        it share the compose network. Publishing it would put a database whose
+        password is written in this file onto the host for no use this slice
+        has. And the one port that *is* published is the surface's, on
+        loopback: `0.0.0.0` would put it on whatever network the machine is
+        on."""
+        self.assertNotIn("ports", self.services["database"])
+        self.assertNotIn("ports", self.services["provisioning"])
+        for mapping in self.services["surface"]["ports"]:
+            self.assertTrue(
+                str(mapping).startswith("127.0.0.1:"),
+                f"the surface publishes {mapping} beyond loopback",
+            )
+
+    def test_the_surface_declares_a_healthcheck(self):
+        """`docker compose up --wait` waits for a service to be healthy where a
+        healthcheck exists and merely running where none does. Without one on
+        the surface, the command returns while uvicorn is still binding its
+        port, and whatever runs next meets a closed one."""
+        healthcheck = self.services["surface"]["healthcheck"]
+        # The route Section 4.5 makes the one that opens no connection, so the
+        # probe reports the process serving rather than the database being up.
+        self.assertIn("/v1/health", " ".join(str(part) for part in healthcheck["test"]))
+        self.assertGreaterEqual(int(str(healthcheck["retries"])), 5)
 
     def test_the_surface_runs_the_factory_entry_point(self):
         """`--factory`, because `serve.build` reads the environment when it is

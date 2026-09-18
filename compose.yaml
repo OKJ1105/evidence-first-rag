@@ -41,10 +41,12 @@ services:
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_superuser_not_a_secret}
-    # Loopback only. The stack is for a person on this machine, and binding
-    # 0.0.0.0 would put a database with a known password on the network.
-    ports:
-      - "127.0.0.1:${MVP_DATABASE_PORT:-5432}:5432"
+    # **No published port.** Nothing outside this stack needs to reach the
+    # database: the two containers that do reach it are on the compose network,
+    # and the surface is the interface a person uses. Publishing it would put a
+    # database whose password is written in this file on the host, for no use
+    # this slice has. `docker compose exec database psql` still reaches it when
+    # you want to look.
     healthcheck:
       # `--username` because the default is the invoking OS user, which inside
       # this image is not a role; without it the probe fails on a healthy
@@ -96,6 +98,28 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "127.0.0.1:${MVP_SURFACE_PORT:-8000}:8000"
+    healthcheck:
+      # **Without this, `docker compose up --wait` means less than it looks.**
+      # `--wait` waits for a service to be *healthy* where a healthcheck
+      # exists and for it to be *running* where none does, so a caller that
+      # started the stack and immediately reached `/v1/health` could arrive
+      # while uvicorn was still importing FastAPI and binding its port --
+      # a connection refused against a stack that was in fact fine.
+      #
+      # `/v1/health` is the right probe because Section 4.5 makes it the one
+      # route that opens no connection: it answers as soon as the process is
+      # serving, and says nothing about the database, which
+      # `service_completed_successfully` on provisioning already settled.
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health')\""
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      # The first probe runs after the image's install, which is done by now,
+      # but a cold start on a slow runner still needs a moment before a failed
+      # probe should count against the retries.
+      start_period: 5s
     # `--factory`, because the entry point reads the environment when it is
     # called rather than when it is imported. `--host 0.0.0.0` is the container's
     # own interface, which the port mapping above still confines to loopback on
