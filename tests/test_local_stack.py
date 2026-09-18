@@ -149,13 +149,40 @@ class TheAdapterCredentialIsOptional(unittest.TestCase):
 
 
 class TheImageCarriesWhatTheContractNeeds(unittest.TestCase):
-    def test_it_installs_the_api_extra_and_not_the_adapter_one(self):
-        """The adapter extra in the image would make a model library a
-        dependency of a stack that answers four of five routes without one."""
+    def test_it_installs_both_the_api_and_the_adapter_extras(self):
+        """`/v1/ask` must be reachable when a credential is supplied.
+
+        This assertion was the other way round until B3 on #192. The reasoning
+        for that was: Section 4.7 makes the adapter optional, so an image always
+        carrying the model library would make it a dependency. It confused the
+        credential with the library. `serve.proposer` returns `None` when
+        `ANTHROPIC_API_KEY` is unset, *before* importing anything --
+        `tests/test_api_serve.py::TheAdapterIsOptional` pins that -- so the
+        optionality lives there and an installed-but-unused library changes no
+        response.
+
+        What the missing extra actually did: `adapter/client.py` imports
+        `anthropic` at module scope, so `serve.proposer`'s `except ImportError`
+        fired on every start and this stack refused `/v1/ask` with
+        `adapter_unavailable` even with a credential set -- contradicting the
+        README and `compose.yaml`, and leaving the page's "ask in your own
+        words" panel dead in the stack built to demonstrate it. The owner's
+        disposition on #192 is to install the extra and keep that prose true.
+        """
         dockerfile = DOCKERFILE.read_text(encoding="utf-8")
-        self.assertIn('".[api]"', dockerfile)
-        self.assertNotIn("[adapter]", dockerfile)
-        self.assertNotIn("[api,adapter]", dockerfile)
+        self.assertIn('".[api,adapter]"', dockerfile)
+
+    def test_the_adapter_is_importable_in_the_installed_set(self):
+        """The extra above is only worth asserting because of what it carries.
+
+        `serve.proposer` reaches the adapter through
+        `evidence_first_rag.adapter.client`, whose module-level `import
+        anthropic` is the thing the extra satisfies. Asserting the extra string
+        alone would survive someone renaming the extra to one that declares a
+        different package; this names the distribution the extra must provide.
+        """
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn("anthropic", pyproject.split("adapter = ", 1)[1].split("\n", 1)[0])
 
     def test_it_carries_psql_for_the_provisioning_path(self):
         """`db/provision.py` applies the committed SQL with `psql`. Without the

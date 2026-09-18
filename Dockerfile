@@ -22,13 +22,27 @@ RUN apt-get update \
 WORKDIR /app
 
 # The dependency list first, so a change to the source does not re-resolve the
-# dependencies. `.[api]` is the extra that opts into serving `api-v0.1` over
-# HTTP; the adapter extra is deliberately absent -- Section 4.7 makes the
-# adapter optional, and an image that always carried it would make a model
-# library a dependency of a stack that answers four of five routes without one.
+# dependencies.
+#
+# `.[api]` opts into serving `api-v0.1` over HTTP. **`.[adapter]` is here too,
+# and the earlier reasoning for leaving it out was wrong.** That reasoning --
+# that Section 4.7 makes the adapter optional, so an image carrying the model
+# library would make it a dependency -- confused two things. What Section 4.7
+# makes optional is the *credential*, and `serve.proposer` is what honours it:
+# with no `ANTHROPIC_API_KEY` it returns `None` before it imports anything, so
+# `/v1/ask` refuses `adapter_unavailable` and the other four routes answer. The
+# installed library is inert in that state.
+#
+# Leaving the extra out did not make the adapter optional; it made it
+# *unavailable*. `adapter/client.py` imports `anthropic` at module scope, so
+# `serve.proposer`'s `except ImportError` fired on every start, and this stack
+# refused `/v1/ask` even with a credential supplied -- which contradicted the
+# README and compose.yaml, and left `ui/index.html`'s "ask in your own words"
+# panel dead in the stack that exists to demonstrate it. Recorded as B3 on #192
+# and dispositioned by the repository owner on that pull request.
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install --no-cache-dir --quiet -e ".[api]"
+RUN python -m pip install --no-cache-dir --quiet -e ".[api,adapter]"
 
 # The SQL, the fixtures and the page. Copied rather than mounted so that what
 # the stack serves is what the image was built from, which is the property a

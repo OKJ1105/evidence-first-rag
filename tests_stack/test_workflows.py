@@ -312,7 +312,14 @@ class TheSurfaceProperties(StackCase):
 
     def test_wf_010_no_adapter_configured_refuses_and_calls_nothing(self):
         """Section 4.7 makes the credential optional, and the stack starts
-        without one: every route above answered, and this one refuses."""
+        without one: every route above answered, and this one refuses.
+
+        Until B3 on #192 this was green for the wrong reason -- the image
+        carried no `anthropic`, so `serve.proposer` failed at the import and
+        would have refused with a credential too. It passed either way, which
+        is the #101 shape. The image now installs the adapter extra, so the
+        refusal here is the *absent credential*, which is the obligation.
+        """
         status, document, _ = call("/v1/ask", {"request_text": "SAMPLE_TEXT"})
         self.assertEqual(status, 503)
         self.assertEqual(set(document), {"refusal", "detail"})
