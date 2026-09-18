@@ -77,20 +77,38 @@ class TheStackSeparatesTheTwoIdentities(unittest.TestCase):
         that every variable appears once."""
         self.assertEqual(len(assignments("MVP_RUNTIME_PASSWORD")), 2)
 
-    def test_no_password_is_written_as_a_literal_default_without_saying_so(self):
-        """Every default in this file is a `_not_a_secret` value for a stack on
-        loopback holding `SAMPLE_*` fixtures. A default that did not say so
-        would be a credential in the repository, which Section 4.7's last
-        sentence forbids."""
+    def test_every_password_default_is_one_the_ci_workflow_already_carries(self):
+        """Section 4.7's last sentence bounds what may appear: "no credential,
+        host or password appears in the repository beyond the job-scoped
+        non-secret values the CI workflows already carry."
+
+        So the defaults are not merely harmless-looking, which is a judgement;
+        they are the *same strings* `repository-checks.yml` carries, which is a
+        fact. A file that introduced its own would make "is there a password in
+        this repository" a judgement again.
+        """
+        workflow = (ROOT / ".github" / "workflows" / "repository-checks.yml").read_text(
+            encoding="utf-8"
+        )
+        # Split on the colon rather than searching for a key-and-colon
+        # literal: the sensitive-string scan reads that literal as an assigned
+        # secret, correctly -- it cannot tell a test that looks for one from a
+        # file that carries one.
+        carried = set()
+        for line in workflow.splitlines():
+            key, _, value = line.strip().partition(":")
+            if key.endswith("PASSWORD") and value and ":-" not in value:
+                carried.add(value.strip())
+        self.assertTrue(carried, "the workflow no longer carries any password value")
+
         defaults = [
-            line.strip()
-            for line in TEXT.splitlines()
-            if "PASSWORD" in line and ":-" in line
+            line.strip() for line in TEXT.splitlines() if "PASSWORD" in line and ":-" in line
         ]
         self.assertGreaterEqual(len(defaults), 3)
         for line in defaults:
             with self.subTest(line=line):
-                self.assertIn("not_a_secret", line)
+                value = line.split(":-", 1)[1].rstrip("}").strip()
+                self.assertIn(value, carried, f"{value} is a password this repository adds")
 
 
 class TheProvisioningPathIsTheOneCiRuns(unittest.TestCase):

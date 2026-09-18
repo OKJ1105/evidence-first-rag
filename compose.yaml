@@ -26,13 +26,22 @@
 # read-only. Section 4.7 states the first half ("the surface process never
 # holds the provisioning credentials") and the schema enforces the second.
 #
-# **On the passwords below.** They are defaults for a stack that listens on
-# this machine's loopback and holds `SAMPLE_*` fixtures, and they are the same
-# kind of value the CI workflows already carry with the same reasoning. Nothing
-# here is a secret, and nothing here is reused anywhere else: set the three
-# variables in the environment to override them. A deployment does not use this
-# file -- Milestone 5 decides that, and decision D requires it to reuse this
-# provisioning path rather than this file.
+# **On the passwords below, and why they are the CI workflow's own strings.**
+# Section 4.7's last sentence: "No credential, host or password appears in the
+# repository beyond the job-scoped non-secret values the CI workflows already
+# carry." Three new `local_*` defaults would have been three values beyond
+# them, however harmless -- so the defaults here **are** the values
+# `.github/workflows/repository-checks.yml` carries, and this file adds none.
+#
+# That is compliance with the sentence rather than a security improvement:
+# either set is a dummy for an ephemeral instance on loopback holding `SAMPLE_*`
+# fixtures, and neither is a secret. The bound exists so that "is there a
+# password in this repository" has one answer rather than a judgement, and a
+# file that adds its own would make it a judgement again.
+#
+# Set the three variables in your environment to override them. A deployment
+# does not use this file -- Milestone 5 decides that, and decision D requires it
+# to reuse this provisioning path rather than this file.
 
 name: evidence-first-rag
 
@@ -40,7 +49,7 @@ services:
   database:
     image: postgres:17
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_superuser_not_a_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ci_superuser_not_a_secret}
     # **No published port.** Nothing outside this stack needs to reach the
     # database: the two containers that do reach it are on the compose network,
     # and the surface is the interface a person uses. Publishing it would put a
@@ -65,9 +74,9 @@ services:
       PGHOST: database
       PGPORT: 5432
       PGUSER: postgres
-      PGPASSWORD: ${POSTGRES_PASSWORD:-local_superuser_not_a_secret}
-      MVP_PROVISIONING_PASSWORD: ${MVP_PROVISIONING_PASSWORD:-local_provisioning_not_a_secret}
-      MVP_RUNTIME_PASSWORD: ${MVP_RUNTIME_PASSWORD:-local_runtime_not_a_secret}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-ci_superuser_not_a_secret}
+      MVP_PROVISIONING_PASSWORD: ${MVP_PROVISIONING_PASSWORD:-ci_provisioning_not_a_secret}
+      MVP_RUNTIME_PASSWORD: ${MVP_RUNTIME_PASSWORD:-ci_runtime_not_a_secret}
     # `--recreate` so a second `docker compose up` on a kept volume starts from
     # empty rather than failing on rows that are already there. Section 3.4
     # puts reproducibility in re-provisioning rather than in migration history,
@@ -90,7 +99,7 @@ services:
       # any kind** -- not the superuser's, not the provisioning role's. This
       # absence is the deployment half of Section 4.7's sentence, and
       # `tests/test_local_stack.py` asserts it against this file.
-      MVP_RUNTIME_PASSWORD: ${MVP_RUNTIME_PASSWORD:-local_runtime_not_a_secret}
+      MVP_RUNTIME_PASSWORD: ${MVP_RUNTIME_PASSWORD:-ci_runtime_not_a_secret}
       # Optional, and absent by default: Section 4.7 makes the adapter
       # credential optional, and with none `/v1/ask` refuses
       # `adapter_unavailable` while the other four routes answer. Export it in
