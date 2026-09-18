@@ -37,9 +37,13 @@ check the contract requires.
 
 import dataclasses
 import json
+import mimetypes
+
+import pathlib
 
 import fastapi
 import fastapi.exceptions
+import fastapi.staticfiles
 import pydantic
 import starlette.exceptions
 import starlette.responses
@@ -420,7 +424,136 @@ def create_app(services: Services) -> fastapi.FastAPI:
     )
     _install_refusal_handlers(app)
     _install_routes(app, services)
+    _install_presentation(app)
     return app
+
+
+# Section 4.6's page, and Section 3.2's reason it is not fixed by the contract.
+PRESENTATION = pathlib.Path(__file__).resolve().parents[3] / "ui"
+
+
+def _install_presentation(app: fastapi.FastAPI) -> None:
+    """Serve the Section 4.6 page, from outside `/v1`.
+
+    Section 4.5 bounds `unknown_route` to the `/v1` namespace "and nothing
+    else", and says why in as many words: without that bound, Section 4.6 would
+    oblige a UI a person opens while Section 4.5 turned `GET /` into a 404. So
+    this mount is what that sentence was written to permit.
+
+    **It adds no route under `/v1`**, which Section 4.1 fixes exhaustively, and
+    Section 9 puts that bound on this slice explicitly. Mounted last, after the
+    five routes are registered, so a path under `/v1` reaches one of them or the
+    Section 4.5 handler and never this.
+
+    Absent — a checkout that installed the package without the tree beside it —
+    the surface still serves the API. The page is a client of it, not a part of
+    it, and a missing page is not a reason for `/v1/query` to stop answering.
+    """
+    if not PRESENTATION.is_dir():  # pragma: no cover - a package without the tree
+        return
+
+    # A pin, not a fix -- and the difference is worth stating, because the
+    # finding that prompted it (N10 on #187) reasoned from a premise that does
+    # not hold here.
+    #
+    # `StaticFiles` takes a file's media type from `mimetypes.guess_type`, and
+    # a module script served as anything but JavaScript is refused by the
+    # browser: `GET /` would return the whole page and render nothing, while
+    # the suite stayed green, because a status and a byte comparison are
+    # identical under either type. The claim was that `.mjs` resolves here only
+    # from the system's `/etc/mime.types` and would fall back to `text/plain`
+    # in a slim image. **It does not**: `.mjs` is in CPython's own built-in
+    # table on the version this repository pins, so `mimetypes.init(files=[])`
+    # -- the system table removed -- still answers `text/javascript`.
+    #
+    # The line stays because what it costs is one call and what it removes is
+    # a dependency on an interpreter's built-in table for something a person
+    # sees. The test below asserts the served type, which is the part that has
+    # force either way.
+    mimetypes.add_type("text/javascript", ".mjs")
+
+    # The Section 4.1 paths, **read off the routes already registered** rather
+    # than listed again here. A second list is a second place for the five to
+    # be wrong, and this one would only be consulted on the failure path, where
+    # nobody would notice it had drifted.
+    registered = {
+        route.path
+        for route in app.routes
+        if getattr(route, "path", "").startswith(NAMESPACE + "/")
+    }
+
+    class _NothingElseUnderTheNamespace:
+        """Every `/v1` request the five routes do not answer, **before** the mount.
+
+        Without this, mounting at `/` makes the static files the catch-all for
+        the whole tree, and `POST /v1/nowhere` is answered by them: they serve
+        GET and HEAD, so it would leave as `method_not_allowed` where Section
+        4.5 fixes `unknown_route` — "the path is under `/v1` and is none of
+        Section 4.1's". A caller debugging a typo would be told its method was
+        the problem.
+
+        Catching everything also swallows the 405 the router would have raised
+        for a **known** path with the wrong method, so the two are told apart
+        here by the same set the five routes registered. Both refusals stay the
+        ones Section 4.5 names.
+
+        Registered here rather than beside the five, because order decides it:
+        the router tries routes in registration order, so this comes after them
+        and before the mount.
+
+        **It matches every method, and is an ASGI endpoint in order to.** A
+        route registered for a list of methods makes `TRACE /v1/nowhere` a
+        partial match — the path matches, the method does not — which Starlette
+        answers with 405, so a path Section 4.5 calls `unknown_route` would be
+        reported as a method problem, for exactly the methods nobody thought to
+        list. `starlette.routing.Route` leaves the method set as "any" only for
+        an endpoint it treats as ASGI, and a plain function is not one, so this
+        is a class with `__call__`. It reads the path and raises: no body is
+        read, nothing blocks, and being the one thing under `/v1` that runs on
+        the event loop rather than the threadpool costs nothing.
+        """
+
+        def __init__(self, registered: frozenset[str]) -> None:
+            self._registered = registered
+
+        async def __call__(self, scope, receive, send):
+            kind = "method_not_allowed" if scope["path"] in self._registered else "unknown_route"
+            raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])
+
+    nothing_else = _NothingElseUnderTheNamespace(frozenset(registered))
+
+    app.router.add_route(
+        "/v1/{rest:path}",
+        nothing_else,
+        include_in_schema=False,
+        name="nothing_else_under_the_namespace",
+    )
+
+    # **The bare path, separately, because the pattern above cannot reach it.**
+    # `/v1/{rest:path}` compiles to `^/v1/(?P<rest>.*)$`, which wants the
+    # slash, so `/v1` matches no registered route and falls through to the
+    # mount -- where `StaticFiles` raises 405 on any method but GET and HEAD
+    # before it looks for a file, and `POST /v1` would leave as
+    # `method_not_allowed`. Section 4.5 fixes `unknown_route` there: `/v1` is
+    # under the namespace and is none of Section 4.1's five. The same endpoint
+    # answers it, and `/v1` is not in `registered`, so it already yields the
+    # right one.
+    #
+    # Registered for the exact path rather than by widening the pattern to
+    # `/v1{rest:path}`: that form would also match `/v1x/query`, pulling a path
+    # the contract says nothing about into this rule.
+    app.router.add_route(
+        NAMESPACE,
+        nothing_else,
+        include_in_schema=False,
+        name="the_bare_namespace",
+    )
+
+    app.mount(
+        "/",
+        fastapi.staticfiles.StaticFiles(directory=PRESENTATION, html=True),
+        name="presentation",
+    )
 
 
 def _install_refusal_handlers(app: fastapi.FastAPI) -> None:

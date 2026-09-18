@@ -114,7 +114,7 @@ jobs:
         # The glob is quoted deliberately: node's test runner expands it
         # itself, so the same form works in CI and in the checks manifest,
         # which spawns commands without a shell.
-        run: node --test "scripts/agent/*.test.mjs"
+        run: node --test "scripts/agent/*.test.mjs" "ui/*.test.mjs"
 
   # #101. `repository-checks` above installs nothing, so every test whose
   # module needs `anthropic` or `psycopg` skips there: the adapter and

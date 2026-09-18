@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<!--
+  api-v0.1 Section 4.6. A client of Section 4.1 and nothing more.
+
+  This file decides nothing. Every question about what appears is answered by
+  `view.mjs`, whose functions are pure and are asserted in `view.test.mjs`
+  under `node --test`. What is left here is: send a request, hand the body to
+  `viewFor`, and write the returned description into the page.
+
+  Kept deliberately small for that reason. A view model asserted in isolation
+  says nothing about the layer that applies it, so the layer is short enough
+  to read in one sitting, and the pull request carries a browser-driven run of
+  the real page against the real surface.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evidence-First RAG</title>
+<style>
+  :root {
+    --ink: #17202a; --muted: #5b6b7c; --line: #d7dee6; --bg: #fbfcfd;
+    --panel: #ffffff; --accent: #1f4e79; --warn: #8a5a00; --warn-bg: #fff8e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6edf3; --muted: #9bacbd; --line: #2b3844; --bg: #10151b;
+      --panel: #161d25; --accent: #7cb3e8; --warn: #e0b054; --warn-bg: #2a2114;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 64px; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input, select, textarea, button {
+    font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%;
+  }
+  button { background: var(--accent); color: #fff; border-color: transparent; cursor: pointer; width: auto; padding: 8px 16px; }
+  button[disabled] { opacity: .45; cursor: not-allowed; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 14px; }
+  .offered { color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn); border-radius: 6px; padding: 6px 8px; font-size: 12px; margin-top: 4px; }
+  .status { display: inline-block; font-weight: 600; font-family: ui-monospace, monospace; }
+  pre.answer { white-space: pre-wrap; font: inherit; margin: 8px 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  details { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  .candidate { border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+  .candidate h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 500; }
+  .refusal { border-color: var(--warn); background: var(--warn-bg); }
+  code { font-family: ui-monospace, monospace; font-size: 12.5px; word-break: break-all; }
+  .note { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Evidence-First RAG</h1>
+  <p class="sub">
+    Every answer arrives with the scope it was resolved in, the SQL template
+    that produced it, the parameters that were bound, and what it does not
+    establish. Nothing on this page is written by a model.
+  </p>
+
+  <section>
+    <h2>Ask</h2>
+    <label for="ask">A question, in your own words</label>
+    <textarea id="ask" rows="2" placeholder="SAMPLE_… identifiers only; this database holds synthetic fixtures"></textarea>
+    <p class="note">Sent to <code>POST /v1/ask</code>. A model proposes a route; the runtime revalidates it and answers, or refuses.</p>
+    <p style="margin-top:12px"><button id="ask-send">Ask</button></p>
+  </section>
+
+  <section id="discover-panel" hidden>
+    <h2>Find the entity</h2>
+    <p class="note">The request named no canonical reference, so nothing was looked up. Search the approved registry, then choose.</p>
+    <div id="discover-fields" class="grid"></div>
+    <p style="margin-top:12px"><button id="discover-send">Search</button></p>
+  </section>
+
+  <section id="select-panel" hidden>
+    <h2>Choose one</h2>
+    <p class="note">Nothing is chosen for you. Pick a candidate and the route to ask it about.</p>
+    <div id="select-controls" class="grid"></div>
+    <p style="margin-top:12px"><button id="select-send" disabled>Get the fact</button></p>
+  </section>
+
+  <div id="out"></div>
+</main>
+
+<script type="module">
+import { chooseRank, discoveryForm, maySend, selectionForm, unreachedView, viewFor } from "./view.mjs";
+
+const SCOPE_DIMENSIONS = ["project_code", "revision_label", "network_name", "snapshot_label"];
+const out = document.getElementById("out");
+const state = { requestText: "", proposal: null, candidates: [], selection: null, discovery: null };
+
+const el = (tag, text, className) => {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  if (className) node.className = className;
+  return node;
+};
+
+/** Obligation 4: no rank stays chosen once the list that named it is gone. */
+function clearSelection() {
+  document.getElementById("select-panel").hidden = true;
+  document.getElementById("select-send").disabled = true;
+  state.selection = null;
+  state.candidates = [];
+  state.candidateSetId = null;
+  // The arguments a selection would be sent with belong to the set that is
+  // going away; keeping them would leave half of a superseded selection.
+  state.discoveryArguments = null;
+}
+
+async function send(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { body: await response.json(), status: response.status };
+}
+
+/** One `{key, value}` list as a two-column table. Values are stringified, never parsed. */
+function fieldTable(fields) {
+  const table = el("table");
+  for (const field of fields) {
+    const row = el("tr");
+    row.append(el("th", field.key));
+    const cell = el("td");
+    cell.append(el("code", field.value === null ? "null" : JSON.stringify(field.value)));
+    row.append(cell);
+    table.append(row);
+  }
+  return table;
+}
+
+function evidenceBlock(sections) {
+  const details = el("details");
+  details.append(el("summary", "Evidence — scope, template, bound parameters, trace, limitations"));
+  for (const section of sections) {
+    details.append(el("h3", section.key));
+    if (section.items.length === 0) details.append(el("p", "none", "note"));
+    for (const item of section.items) details.append(fieldTable(item));
+  }
+  return details;
+}
+
+/** Write a view model into the page. This function chooses nothing. */
+function render(model) {
+  out.replaceChildren();
+  const panel = el("section");
+
+  if (model.kind === "unreached") {
+    // Neither a result nor a Section 4.5 refusal, and labelled as neither: the
+    // request never reached the surface, so nothing answered it.
+    panel.className = "refusal";
+    panel.append(el("h2", "The request did not reach the surface"));
+    panel.append(el("p", model.detail, "status"));
+    if (model.cause) panel.append(el("p", model.cause, "note"));
+    out.append(panel);
+    return;
+  }
+
+  if (model.kind === "refusal") {
+    // Obligation 5: a refusal is not a result, and is not shown as one.
+    panel.className = "refusal";
+    // Kind-neutral, because Section 4.5 covers two things: a request that
+    // reached no route (`malformed_request`, `unknown_route`,
+    // `method_not_allowed`) and a fault outside the seven statuses
+    // (`adapter_unavailable`, `database_unavailable`, `runtime_fault`). A
+    // heading naming only the first tells a reader `/v1/query` was never
+    // reached when a database was down, which is false. The kind is printed
+    // below, verbatim, and it is the thing that says which happened.
+    panel.append(el("h2", "The request was refused; no result was produced (Section 4.5)"));
+    panel.append(el("p", model.refusal, "status"));
+    panel.append(el("p", model.detail));
+    out.append(panel);
+    return;
+  }
+
+  panel.append(el("h2", "Result"));
+  panel.append(el("p", model.status, "status"));
+
+  // Obligation 2: the answer is `rendered`, verbatim, or there is none.
+  if (model.answer.kind === "prose") {
+    const pre = el("pre", model.answer.text);
+    pre.className = "answer";
+    panel.append(pre);
+  }
+
+  if (model.rows.length > 0) {
+    panel.append(el("h3", "Rows"));
+    for (const row of model.rows) panel.append(fieldTable(row));
+  }
+
+  if (model.resolved) {
+    panel.append(el("h3", "Resolved"));
+    panel.append(fieldTable(model.resolved));
+  }
+
+  // Obligation 6: labelled as the adapter's output, never as a bound parameter.
+  if (model.proposal) {
+    const details = el("details");
+    details.append(el("summary", model.proposal.label));
+    const fields = model.proposal.arguments.map((argument) => ({
+      key: argument.name + (argument.verbatim ? " (in your request)" : " (not in your request)"),
+      value: argument.value,
+    }));
+    details.append(fieldTable([{ key: "route", value: model.proposal.route }, ...fields]));
+    panel.append(details);
+  }
+
+  panel.append(evidenceBlock(model.evidence));
+  out.append(panel);
+
+  // Obligation 3: rank order, every field, nothing pre-selected.
+  if (model.candidates.length > 0) {
+    state.candidates = model.candidates;
+    const list = el("section");
+    list.append(el("h2", "Candidates"));
+    // Obligation 3: the list is shown under the `limitations` entry that says
+    // no reference was resolved, and that entry is the result's own words.
+    // "None is chosen" is the page describing itself, which is a fixed label
+    // (obligation 2) rather than a claim about the candidates; the sentence
+    // that used to follow it -- that none was more likely than another -- was
+    // the page stating something the response does not say, and which the
+    // `match_tier` ordering contradicts.
+    list.append(el("p", "None is chosen.", "note"));
+    if (model.candidatesNotice) {
+      list.append(el("p", model.candidatesNotice.detail));
+    }
+    for (const candidate of model.candidates) {
+      const block = el("div", null, "candidate");
+      block.append(el("h3", `rank ${candidate.rank}`));
+      block.append(fieldTable(candidate.fields));
+      list.append(block);
+    }
+    out.append(list);
+    showSelection(model.selection ?? selectionForm({ candidates: model.candidates }));
+  }
+}
+
+function showSelection(form) {
+  state.selection = form;
+  const controls = document.getElementById("select-controls");
+  controls.replaceChildren();
+
+  const rank = el("select");
+  rank.append(new Option("— choose a candidate —", ""));
+  for (const value of form.ranks) rank.append(new Option(`rank ${value}`, String(value)));
+
+  const route = el("select");
+  // Obligation 4: the routes offered are the ones the chosen candidate's kind
+  // permits, and never a default. Before a rank is chosen there is no such
+  // candidate, so the list is the prompt alone. `view.mjs` decides which
+  // routes those are; this rewrites the options it returned.
+  const fillRoutes = () => {
+    route.replaceChildren(new Option("— choose a route —", ""));
+    for (const value of state.selection.targetRoutes) route.append(new Option(value, value));
+  };
+  // Obligation 4: nothing is sent until both come from an act.
+  const sync = () => {
+    document.getElementById("select-send").disabled = !maySend(state.selection);
+  };
+
+  rank.addEventListener("change", () => {
+    state.selection = chooseRank(state.selection, rank.value === "" ? null : Number(rank.value));
+    fillRoutes();
+    sync();
+  });
+  route.addEventListener("change", () => {
+    state.selection = {
+      ...state.selection,
+      chosenTargetRoute: route.value === "" ? null : route.value,
+    };
+    sync();
+  });
+
+  fillRoutes();
+  sync();
+
+  const left = el("div");
+  left.append(el("label", "Candidate"), rank);
+  const right = el("div");
+  right.append(el("label", "Ask it about"), route);
+  controls.append(left, right);
+  document.getElementById("select-panel").hidden = false;
+}
+
+function showDiscovery() {
+  const form = discoveryForm({
+    requestText: state.requestText,
+    proposal: state.proposal,
+    scopeDimensions: SCOPE_DIMENSIONS,
+    entityKind: null,
+  });
+  state.discovery = form;
+  const fields = document.getElementById("discover-fields");
+  fields.replaceChildren();
+
+  for (const field of form.fields) {
+    const wrap = el("div");
+    wrap.append(el("label", field.source ? `${field.name} — ${field.source}` : field.name));
+    let input;
+    if (field.name === "entity_kind") {
+      input = el("select");
+      input.append(new Option("— choose —", ""), new Option("message", "message"), new Option("signal", "signal"));
+    } else {
+      input = el("input");
+      input.value = field.value;
+    }
+    input.dataset.name = field.name;
+    fields.append(wrap);
+    wrap.append(input);
+    // Obligation 4: an unverified value is displayed, labelled, and is not the
+    // field's value. A person can copy it in; the page will not do it for them.
+    if (field.offered) {
+      wrap.append(el("div", `${field.offered.label}: ${field.offered.value}`, "offered"));
+    }
+  }
+  document.getElementById("discover-panel").hidden = false;
+}
+
+/**
+ * Every click handler, with the one case a `fetch` can fail in.
+ *
+ * Without this, a rejected `fetch` leaves the previous request's result and
+ * evidence on screen with nothing saying the new request was never answered,
+ * and a true result is read as the answer to a different question. The screen
+ * is cleared first, so what a person sees after a failure is the failure.
+ */
+function wire(id, handler) {
+  document.getElementById(id).addEventListener("click", async () => {
+    try {
+      await handler();
+    } catch (cause) {
+      document.getElementById("discover-panel").hidden = true;
+      clearSelection();
+      render(unreachedView(cause));
+    }
+  });
+}
+
+wire("ask-send", async () => {
+  state.requestText = document.getElementById("ask").value;
+  document.getElementById("discover-panel").hidden = true;
+  // The invariant, on the third of the three paths that end a candidate list.
+  // Hiding the panel alone left the chosen rank, the digest and the arguments
+  // in `state` and the send button enabled: unreachable today only because a
+  // `hidden` section is `display: none`, which is a CSS property standing in
+  // for a rule about what a person chose.
+  clearSelection();
+  const { body } = await send("/v1/ask", { request_text: state.requestText });
+  const model = viewFor(body, { requestText: state.requestText });
+  state.proposal = model.kind === "result" ? model.proposal : null;
+  render(model);
+  // Obligation 5: the page offers the next step; it does not take it.
+  if (model.kind === "result" && model.status === "needs_entity_discovery") showDiscovery();
+});
+
+wire("discover-send", async () => {
+  const args = {};
+  for (const input of document.querySelectorAll("#discover-fields [data-name]")) {
+    if (input.value !== "") args[input.dataset.name] = input.value;
+  }
+  // Obligation 4 names "one listed rank": a rank chosen against the previous
+  // candidate set is not one this screen lists once a new set arrives, so the
+  // panel goes away before the request rather than only when the new response
+  // happens to carry candidates.
+  clearSelection();
+  const { body } = await send("/v1/discover", { arguments: args });
+  state.discoveryArguments = args;
+  // Section 4.1: the caller cites the set it was given. Read off the response
+  // rather than scraped from the page, so what is echoed back is what arrived.
+  state.candidateSetId = body?.result?.evidence_bundle?.candidate_set_id ?? null;
+  render(viewFor(body, { requestText: state.requestText }));
+});
+
+wire("select-send", async () => {
+  if (!maySend(state.selection)) return;
+  const { body } = await send("/v1/select", {
+    arguments: {
+      ...state.discoveryArguments,
+      candidate_set_id: state.candidateSetId,
+      // Section 4.1: the decimal text of the rank, not the number.
+      selected_rank: String(state.selection.chosenRank),
+      target_route: state.selection.chosenTargetRoute,
+    },
+  });
+  // The candidate list this selection was made against is gone from the screen
+  // once the result replaces it, so the panel that names its ranks goes too.
+  clearSelection();
+  render(viewFor(body, { requestText: state.requestText }));
+});
+</script>
+</body>
+</html>

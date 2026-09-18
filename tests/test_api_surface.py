@@ -24,6 +24,7 @@ asserted here and nowhere else.
 
 import contextlib
 import dataclasses
+import asyncio
 import inspect
 import pathlib
 import threading
@@ -50,6 +51,7 @@ from .runtime_support import CHASSIS, FakeDatabase, candidate_row, mapping_row, 
 
 try:
     import fastapi  # noqa: F401
+    import starlette.exceptions
     from fastapi.testclient import TestClient
 
     from evidence_first_rag.api.app import (
@@ -57,6 +59,7 @@ try:
         NAMESPACE,
         CONTRACT_VERSION,
         CONTRACTS,
+        PRESENTATION,
         REFUSALS,
         AdapterUnavailable,
         Services,
@@ -311,6 +314,24 @@ class SurfaceCase(unittest.TestCase):
         self.assertEqual(document["refusal"], kind)
         self.assertIsInstance(document["detail"], str)
         self.assertNotIn("result", document)
+
+    def assert_carries_neither(self, response):
+        """A response outside `/v1` carries none of this contract's vocabulary.
+
+        Asserted on the **parsed body**, not on the text. A page that explains
+        what a refusal is contains the word, and a JavaScript module that builds
+        one contains it too -- neither is a client reading a `refusal` off a
+        response. What the obligation forbids is a body a client could parse as
+        one, so that is what is checked.
+        """
+        self.assertNotEqual(response.headers.get("content-type", ""), "application/json")
+        try:
+            body = json.loads(response.text)
+        except ValueError:
+            return
+        if isinstance(body, dict):
+            self.assertNotIn("refusal", body)
+            self.assertNotIn("result", body)
 
     def assert_carries(self, document, result):
         """Section 4.2: `result` is the whole of what the runtime returned, and
@@ -921,17 +942,20 @@ class TheRefusals(SurfaceCase):
         )
 
     def test_unknown_route_governs_the_v1_namespace_and_nothing_else(self):
-        """Without this, Section 4.6 would oblige a UI a person opens while
-        Section 4.5 turned `GET /` into a 404, and the demo Charter Section 9's
-        fourth deliverable exists for could not be served at all."""
+        """Section 4.5's bound, and what it was written to permit.
+
+        **The obligation is that no response outside `/v1` carries this
+        contract's vocabulary — not that every such path is a 404.** An earlier
+        version of this test asserted the code, which was true while nothing
+        was served there and became false the moment Section 4.6's page was:
+        `GET /` is now the page, which is the whole reason the sentence bounding
+        `unknown_route` to `/v1` exists. What must not change is that a client
+        cannot read a `result` or a `refusal` off any of these.
+        """
         client, _ = surface(fact_database())
-        for path in ("/", "/ui", "/static/app.js"):
+        for path in ("/", "/view.mjs", "/static/app.js", "/docs"):
             with self.subTest(path=path):
-                response = client.get(path)
-                self.assertEqual(response.status_code, 404)
-                # Neither a result nor a refusal: this contract says nothing
-                # about the path, so the body claims nothing either.
-                self.assertNotEqual(response.headers["content-type"], "application/json")
+                self.assert_carries_neither(client.get(path))
 
     def test_a_trailing_slash_under_v1_is_unknown_route_and_not_a_redirect(self):
         """Section 4.5 fixes a 200 result and six refusal codes; a 307 is
@@ -961,10 +985,28 @@ class TheRefusals(SurfaceCase):
             ("DELETE", "/static/app.js"), ("GET", "/v1x/query"),
         ):
             with self.subTest(method=method, path=path):
-                response = client.request(method, path)
-                self.assertNotEqual(response.headers.get("content-type"), "application/json")
-                self.assertNotIn("refusal", response.text)
-                self.assertNotIn("result", response.text)
+                self.assert_carries_neither(client.request(method, path))
+
+    def test_an_unknown_v1_path_is_unknown_route_whatever_the_method(self):
+        """Section 4.5 decides these two by the **path**, and the catch-all is
+        registered for every method so that it can. Registered for a list of
+        methods instead, a `TRACE /v1/nowhere` is a partial match -- path yes,
+        method no -- which Starlette answers with 405, and an unknown path
+        would be reported as a method problem for the methods nobody listed.
+
+        **The bare `/v1` is in the list because a pattern cannot reach it.**
+        `/v1/{rest:path}` wants the slash, so `/v1` matched no route and fell
+        through to the static mount, which raises 405 for any method but GET
+        and HEAD before it looks for a file -- `POST /v1` left as
+        `method_not_allowed` where Section 4.5 fixes `unknown_route`. `GET /v1`
+        happened to come back right, for the unrelated reason that no file of
+        that name exists, which is why exercising one path and one method
+        would not have seen it."""
+        client, _ = surface(fact_database())
+        for path in ("/v1/nowhere", "/v1"):
+            for method in ("TRACE", "PROPFIND", "GET", "POST", "PUT", "DELETE", "PATCH"):
+                with self.subTest(path=path, method=method):
+                    self.assert_refusal(client.request(method, path), "unknown_route")
 
     def test_the_method_not_allowed_detail_carries_nothing_read_off_the_request(self):
         """Every refusal detail in this module is a fixed sentence. This one
@@ -1016,6 +1058,60 @@ class TheRefusals(SurfaceCase):
                     failures,
                 )
                 self.assertEqual(failures, [])
+
+
+# --------------------------------------------------------------------------
+# Section 4.6: the page a person opens is actually served.
+# --------------------------------------------------------------------------
+
+
+class ThePageIsServed(SurfaceCase):
+    """The positive half of the mount, which no `/v1` assertion can make.
+
+    `test_unknown_route_governs_the_v1_namespace_and_nothing_else` asserts that
+    no path outside `/v1` carries this contract's vocabulary — and **a surface
+    serving nothing at all satisfies it**. `_install_presentation` returns early
+    when the tree is not beside the package, and the plain-text 404 `_http` then
+    writes for `/` carries neither a `result` nor a `refusal`, so every other
+    assertion in this file about a path outside `/v1` would still pass with the
+    page gone. That is the shape of failure #101 and #182 are cited for: a
+    negative assertion holds whether or not the thing runs.
+
+    What it would cost is the one thing this slice exists to produce. The early
+    return is deliberate — a checkout without the tree beside it still serves
+    the API — so nothing about it should raise; the assertion has to be that in
+    *this* tree, where the page is committed beside the package, a person
+    opening the surface is given it.
+    """
+
+    def test_the_page_is_what_get_slash_returns(self):
+        client, _ = surface(fact_database())
+        response = client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        # The committed file itself, rather than a marker that a placeholder
+        # could also carry: what is asserted is that `GET /` **is** `ui/`'s
+        # page, not that it resembles one.
+        self.assertEqual(response.content, (PRESENTATION / "index.html").read_bytes())
+        # And that that page is the Section 4.6 surface: the panel a person
+        # chooses a candidate on, and the module that decides what they see.
+        self.assertIn('id="select-panel"', response.text)
+        self.assertIn("./view.mjs", response.text)
+
+    def test_the_module_the_page_imports_is_served_beside_it(self):
+        """A page whose module 404s is a blank screen, and `GET /` alone cannot
+        tell the two apart: the import fails in the browser, not on the wire."""
+        client, _ = surface(fact_database())
+        response = client.get("/view.mjs")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, (PRESENTATION / "view.mjs").read_bytes())
+        self.assertIn(b"export function viewFor", response.content)
+        # The same blank screen by a second route: a browser refuses a module
+        # script that is not served as JavaScript. The status and the bytes
+        # above are identical whatever the type, so the type is asserted rather
+        # than assumed -- `_install_presentation` registers it explicitly, and
+        # this is what makes that registration a fact rather than a comment.
+        self.assertIn("javascript", response.headers.get("content-type", ""))
 
 
 def _patterns(patterns):
@@ -1448,13 +1544,86 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
         registered = [
             route for route in app.routes if getattr(route, "path", "").startswith(NAMESPACE)
         ]
-        self.assertEqual(len(registered), 5)
+        # The exact set, with the Section 4.6 catch-all named -- in both of its
+        # registrations, since the pattern cannot match the bare `/v1`. A subset
+        # assertion would have let a later slice register a sixth path under
+        # `/v1`, and this is the only place in the suite where Section 4.1's
+        # "fixes the namespace exhaustively" is a test rather than prose.
+        self.assertEqual(
+            {route.path for route in registered},
+            {
+                "/v1/query",
+                "/v1/ask",
+                "/v1/discover",
+                "/v1/select",
+                "/v1/health",
+                "/v1/{rest:path}",
+                "/v1",
+            },
+        )
+        # The rule is about every handler that answers a request under the
+        # namespace: an exemption is a place for blocking work to reappear, so
+        # the one exemption -- one endpoint, registered at two paths -- is
+        # asserted below rather than assumed.
         for route in registered:
+            if route.path in ("/v1/{rest:path}", NAMESPACE):
+                continue
             with self.subTest(path=route.path):
                 self.assertFalse(
                     inspect.iscoroutinefunction(route.endpoint),
                     f"{route.path} is async and would run blocking work on the event loop",
                 )
+
+    def test_the_catch_all_runs_on_the_event_loop_and_does_nothing_there(self):
+        """The one exemption above, asserted rather than assumed.
+
+        The Section 4.6 catch-all is an ASGI endpoint — which is what lets it
+        match every method — so it runs on the event loop, and
+        `iscoroutinefunction` over `route.endpoint` would say nothing about it
+        either way: the endpoint is an instance, not a function. What makes
+        that safe is its body, so that is what is pinned here: it reads the
+        path off the scope and raises, opening no connection and reading no
+        request body."""
+        app = create_app(Services(runtime=None, discovery=None, selection=None))
+        catch_alls = [
+            route
+            for route in app.routes
+            if getattr(route, "path", "") in ("/v1/{rest:path}", NAMESPACE)
+        ]
+        # Two registrations, **one endpoint**: the pattern cannot match the bare
+        # `/v1`, and a second instance would be a second place for the rule to
+        # be wrong.
+        self.assertEqual(len(catch_alls), 2)
+        (catch_all, bare) = sorted(catch_alls, key=lambda route: route.path, reverse=True)
+        self.assertIs(bare.endpoint, catch_all.endpoint)
+        # "Any method", which is the whole reason it is an ASGI endpoint.
+        self.assertIsNone(catch_all.methods)
+        self.assertIsNone(bare.methods)
+
+        # The behaviour, not the source text. An earlier version of this test
+        # compared `inspect.getsource(...)` against two exact lines, which a
+        # reformat would have failed while changing nothing a caller can see --
+        # and which did not actually pin the property it was defending.
+        #
+        # That property is that the endpoint touches neither channel: reading
+        # the request body or writing a response is what would make running on
+        # the event loop rather than the threadpool cost something. So it is
+        # called directly, with a `receive` and a `send` that fail if awaited.
+        async def must_not_be_used(*_args, **_kwargs):  # pragma: no cover - the point
+            raise AssertionError("the catch-all touched the ASGI channels")
+
+        async def refusal_for(path):
+            scope = {"type": "http", "method": "PROPFIND", "path": path, "headers": []}
+            with self.assertRaises(starlette.exceptions.HTTPException) as raised:
+                await catch_all.endpoint(scope, must_not_be_used, must_not_be_used)
+            return raised.exception.status_code
+
+        # A known path with a method it does not take, and two paths Section
+        # 4.1 does not name -- including the bare namespace, which is the one
+        # the pattern cannot reach.
+        self.assertEqual(asyncio.run(refusal_for("/v1/query")), REFUSALS["method_not_allowed"])
+        self.assertEqual(asyncio.run(refusal_for("/v1/nowhere")), REFUSALS["unknown_route"])
+        self.assertEqual(asyncio.run(refusal_for(NAMESPACE)), REFUSALS["unknown_route"])
 
     def test_a_slow_request_does_not_delay_the_health_probe(self):
         """The behavioural half, and the one the Section 4.7 stack cares about.
