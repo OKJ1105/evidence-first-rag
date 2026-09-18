@@ -1,0 +1,143 @@
+# `api-v0.1` Section 4.7: one command starts the stack.
+#
+#     docker compose up
+#
+# Three services, and the order between them is the contract's:
+#
+#   database      PostgreSQL 17, the version `mvp-v0.1` Section 3.4 pins.
+#   provisioning  applies the committed SQL and loads the fixtures, as the
+#                 provisioning identity, then exits.
+#   surface       serves `api-v0.1` as the runtime identity, once the
+#                 provisioning container has exited successfully.
+#
+# **The provisioning path is `evidence_first_rag.db.provision`, unchanged.**
+# That is the same module `database-checks` runs in CI, applying the same
+# `sql/cluster` and `sql/database` files in the same lexical order with the
+# same abort, and loading the same fixtures in one transaction. Decision D on
+# #169 is why this matters more than tidiness: Charter Section 9's Milestone 5
+# gate forbids "a second schema, fixture meaning, SQL-template behavior, or
+# fallback runtime", so a stack that provisioned its own way would be that
+# second path, arriving quietly. There is no SQL in this file for the same
+# reason.
+#
+# **The two identities are separated by process.** The provisioning container
+# holds `MVP_PROVISIONING_PASSWORD` and the superuser's; the surface container
+# holds neither, and `mvp-v0.1` Section 4.3's grants make its connection
+# read-only. Section 4.7 states the first half ("the surface process never
+# holds the provisioning credentials") and the schema enforces the second.
+#
+# **On the passwords below, and why they are the CI workflow's own strings.**
+# Section 4.7's last sentence: "No credential, host or password appears in the
+# repository beyond the job-scoped non-secret values the CI workflows already
+# carry." Three new `local_*` defaults would have been three values beyond
+# them, however harmless -- so the defaults here **are** the values
+# `.github/workflows/repository-checks.yml` carries, and this file adds none.
+#
+# That is compliance with the sentence rather than a security improvement:
+# either set is a dummy for an ephemeral instance on loopback holding `SAMPLE_*`
+# fixtures, and neither is a secret. The bound exists so that "is there a
+# password in this repository" has one answer rather than a judgement, and a
+# file that adds its own would make it a judgement again.
+#
+# Set the three variables in your environment to override them. A deployment
+# does not use this file -- Milestone 5 decides that, and decision D requires it
+# to reuse this provisioning path rather than this file.
+
+name: evidence-first-rag
+
+services:
+  database:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ci_superuser_not_a_secret}
+    # **No published port.** Nothing outside this stack needs to reach the
+    # database: the two containers that do reach it are on the compose network,
+    # and the surface is the interface a person uses. Publishing it would put a
+    # database whose password is written in this file on the host, for no use
+    # this slice has. `docker compose exec database psql` still reaches it when
+    # you want to look.
+    healthcheck:
+      # `--username` because the default is the invoking OS user, which inside
+      # this image is not a role; without it the probe fails on a healthy
+      # database and the stack never starts.
+      test: ["CMD-SHELL", "pg_isready --username=postgres --dbname=postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  provisioning:
+    build: .
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      PGHOST: database
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:-ci_superuser_not_a_secret}
+      MVP_PROVISIONING_PASSWORD: ${MVP_PROVISIONING_PASSWORD:-ci_provisioning_not_a_secret}
+      MVP_RUNTIME_PASSWORD: ${MVP_RUNTIME_PASSWORD:-ci_runtime_not_a_secret}
+    # `--recreate` so a second `docker compose up` on a kept volume starts from
+    # empty rather than failing on rows that are already there. Section 3.4
+    # puts reproducibility in re-provisioning rather than in migration history,
+    # which is what makes rebuilding the supported path rather than a shortcut.
+    command: ["python", "-m", "evidence_first_rag.db.provision", "--recreate"]
+    restart: "no"
+
+  surface:
+    build: .
+    depends_on:
+      provisioning:
+        # Not `service_started`: the surface would answer requests against a
+        # half-loaded database, and every fact route would report `not_found`
+        # for data that is on its way in.
+        condition: service_completed_successfully
+    environment:
+      PGHOST: database
+      PGPORT: 5432
+      # The runtime identity's password, and **no provisioning credential of
+      # any kind** -- not the superuser's, not the provisioning role's. This
+      # absence is the deployment half of Section 4.7's sentence, and
+      # `tests/test_local_stack.py` asserts it against this file.
+      MVP_RUNTIME_PASSWORD: ${MVP_RUNTIME_PASSWORD:-ci_runtime_not_a_secret}
+      # Optional, and absent by default: Section 4.7 makes the adapter
+      # credential optional, and with none `/v1/ask` refuses
+      # `adapter_unavailable` while the other four routes answer. Export it in
+      # your own environment to enable `/v1/ask`; it is never written here.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "127.0.0.1:${MVP_SURFACE_PORT:-8000}:8000"
+    healthcheck:
+      # **Without this, `docker compose up --wait` means less than it looks.**
+      # `--wait` waits for a service to be *healthy* where a healthcheck
+      # exists and for it to be *running* where none does, so a caller that
+      # started the stack and immediately reached `/v1/health` could arrive
+      # while uvicorn was still importing FastAPI and binding its port --
+      # a connection refused against a stack that was in fact fine.
+      #
+      # `/v1/health` is the right probe because Section 4.5 makes it the one
+      # route that opens no connection: it answers as soon as the process is
+      # serving, and says nothing about the database, which
+      # `service_completed_successfully` on provisioning already settled.
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health')\""
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      # The first probe runs after the image's install, which is done by now,
+      # but a cold start on a slow runner still needs a moment before a failed
+      # probe should count against the retries.
+      start_period: 5s
+    # `--factory`, because the entry point reads the environment when it is
+    # called rather than when it is imported. `--host 0.0.0.0` is the container's
+    # own interface, which the port mapping above still confines to loopback on
+    # the host.
+    command:
+      - "uvicorn"
+      - "--factory"
+      - "evidence_first_rag.api.serve:build"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"

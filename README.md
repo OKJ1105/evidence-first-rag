@@ -81,6 +81,44 @@ The expected results the runner compares against are built from `fixtures/` by `
 
 See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, architecture boundaries, success criterion, roadmap, and release conditions.
 
+## Running it
+
+You need a container runtime that provides `docker compose` — Docker Desktop,
+Colima, Podman with the compose plugin — and nothing else. No Python
+environment, no PostgreSQL, no model credential.
+
+```
+docker compose up
+```
+
+That is the whole of it. The stack starts PostgreSQL 17, provisions it with the
+committed SQL and fixtures, and serves the API and the page at
+<http://127.0.0.1:8000>. Only that port is published; the database is reachable
+from the stack's own containers and not from your machine.
+
+After changing anything under `src/`, `ui/`, `sql/` or `fixtures/`, start it
+with `docker compose up --build`: the image is built from those directories
+rather than mounting them, so without `--build` a second `up` serves the image
+it built the first time. Open that address, type a question in your own words,
+choose among the candidates it offers, and read the fact it returns with its
+scope, its template, its bound parameters and its limitations beside it.
+
+`api-v0.1` Section 4.7 is why this is one command rather than a list of steps,
+and why the stack provisions through the same path CI uses rather than one of
+its own: Charter Section 9's Milestone 5 gate forbids a second schema or
+fixture meaning, so the way this starts locally is the way a deployment has to
+start.
+
+**No model credential is needed.** Four of the five routes answer without one,
+and `/v1/ask` — the one that asks a model to propose a route — refuses with
+`adapter_unavailable` until `ANTHROPIC_API_KEY` is in your environment. That is
+the contract's own arrangement, not a degraded mode: the facts come from
+registered SQL templates, and the model only ever proposes which one to run.
+
+The passwords in `compose.yaml` are defaults for a stack on your own loopback
+holding `SAMPLE_*` fixtures. Set `POSTGRES_PASSWORD`,
+`MVP_PROVISIONING_PASSWORD` and `MVP_RUNTIME_PASSWORD` to override them.
+
 ## Intended flow
 
 1. Interpret a bounded user request.
