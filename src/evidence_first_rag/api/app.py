@@ -499,11 +499,33 @@ def _install_presentation(app: fastapi.FastAPI) -> None:
             kind = "method_not_allowed" if scope["path"] in self._registered else "unknown_route"
             raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])
 
+    nothing_else = _NothingElseUnderTheNamespace(frozenset(registered))
+
     app.router.add_route(
         "/v1/{rest:path}",
-        _NothingElseUnderTheNamespace(frozenset(registered)),
+        nothing_else,
         include_in_schema=False,
         name="nothing_else_under_the_namespace",
+    )
+
+    # **The bare path, separately, because the pattern above cannot reach it.**
+    # `/v1/{rest:path}` compiles to `^/v1/(?P<rest>.*)$`, which wants the
+    # slash, so `/v1` matches no registered route and falls through to the
+    # mount -- where `StaticFiles` raises 405 on any method but GET and HEAD
+    # before it looks for a file, and `POST /v1` would leave as
+    # `method_not_allowed`. Section 4.5 fixes `unknown_route` there: `/v1` is
+    # under the namespace and is none of Section 4.1's five. The same endpoint
+    # answers it, and `/v1` is not in `registered`, so it already yields the
+    # right one.
+    #
+    # Registered for the exact path rather than by widening the pattern to
+    # `/v1{rest:path}`: that form would also match `/v1x/query`, pulling a path
+    # the contract says nothing about into this rule.
+    app.router.add_route(
+        NAMESPACE,
+        nothing_else,
+        include_in_schema=False,
+        name="the_bare_namespace",
     )
 
     app.mount(

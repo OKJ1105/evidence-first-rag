@@ -990,11 +990,21 @@ class TheRefusals(SurfaceCase):
         registered for every method so that it can. Registered for a list of
         methods instead, a `TRACE /v1/nowhere` is a partial match -- path yes,
         method no -- which Starlette answers with 405, and an unknown path
-        would be reported as a method problem for the methods nobody listed."""
+        would be reported as a method problem for the methods nobody listed.
+
+        **The bare `/v1` is in the list because a pattern cannot reach it.**
+        `/v1/{rest:path}` wants the slash, so `/v1` matched no route and fell
+        through to the static mount, which raises 405 for any method but GET
+        and HEAD before it looks for a file -- `POST /v1` left as
+        `method_not_allowed` where Section 4.5 fixes `unknown_route`. `GET /v1`
+        happened to come back right, for the unrelated reason that no file of
+        that name exists, which is why exercising one path and one method
+        would not have seen it."""
         client, _ = surface(fact_database())
-        for method in ("TRACE", "PROPFIND", "GET", "POST"):
-            with self.subTest(method=method):
-                self.assert_refusal(client.request(method, "/v1/nowhere"), "unknown_route")
+        for path in ("/v1/nowhere", "/v1"):
+            for method in ("TRACE", "PROPFIND", "GET", "POST", "PUT", "DELETE", "PATCH"):
+                with self.subTest(path=path, method=method):
+                    self.assert_refusal(client.request(method, path), "unknown_route")
 
     def test_the_method_not_allowed_detail_carries_nothing_read_off_the_request(self):
         """Every refusal detail in this module is a fixed sentence. This one
@@ -1526,7 +1536,8 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
         registered = [
             route for route in app.routes if getattr(route, "path", "").startswith(NAMESPACE)
         ]
-        # The exact set, with the Section 4.6 catch-all named. A subset
+        # The exact set, with the Section 4.6 catch-all named -- in both of its
+        # registrations, since the pattern cannot match the bare `/v1`. A subset
         # assertion would have let a later slice register a sixth path under
         # `/v1`, and this is the only place in the suite where Section 4.1's
         # "fixes the namespace exhaustively" is a test rather than prose.
@@ -1539,13 +1550,15 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
                 "/v1/select",
                 "/v1/health",
                 "/v1/{rest:path}",
+                "/v1",
             },
         )
         # The rule is about every handler that answers a request under the
         # namespace: an exemption is a place for blocking work to reappear, so
-        # the one exemption is asserted below rather than assumed.
+        # the one exemption -- one endpoint, registered at two paths -- is
+        # asserted below rather than assumed.
         for route in registered:
-            if route.path == "/v1/{rest:path}":
+            if route.path in ("/v1/{rest:path}", NAMESPACE):
                 continue
             with self.subTest(path=route.path):
                 self.assertFalse(
@@ -1564,11 +1577,20 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
         path off the scope and raises, opening no connection and reading no
         request body."""
         app = create_app(Services(runtime=None, discovery=None, selection=None))
-        (catch_all,) = [
-            route for route in app.routes if getattr(route, "path", "") == "/v1/{rest:path}"
+        catch_alls = [
+            route
+            for route in app.routes
+            if getattr(route, "path", "") in ("/v1/{rest:path}", NAMESPACE)
         ]
+        # Two registrations, **one endpoint**: the pattern cannot match the bare
+        # `/v1`, and a second instance would be a second place for the rule to
+        # be wrong.
+        self.assertEqual(len(catch_alls), 2)
+        (catch_all, bare) = sorted(catch_alls, key=lambda route: route.path, reverse=True)
+        self.assertIs(bare.endpoint, catch_all.endpoint)
         # "Any method", which is the whole reason it is an ASGI endpoint.
         self.assertIsNone(catch_all.methods)
+        self.assertIsNone(bare.methods)
         source = inspect.getsource(type(catch_all.endpoint).__call__)
         body = [line.strip() for line in source.splitlines()[1:] if line.strip()]
         self.assertEqual(
