@@ -116,6 +116,9 @@ function clearSelection() {
   state.selection = null;
   state.candidates = [];
   state.candidateSetId = null;
+  // The arguments a selection would be sent with belong to the set that is
+  // going away; keeping them would leave half of a superseded selection.
+  state.discoveryArguments = null;
 }
 
 async function send(path, body) {
@@ -171,7 +174,14 @@ function render(model) {
   if (model.kind === "refusal") {
     // Obligation 5: a refusal is not a result, and is not shown as one.
     panel.className = "refusal";
-    panel.append(el("h2", "The request was refused before it reached a route"));
+    // Kind-neutral, because Section 4.5 covers two things: a request that
+    // reached no route (`malformed_request`, `unknown_route`,
+    // `method_not_allowed`) and a fault outside the seven statuses
+    // (`adapter_unavailable`, `database_unavailable`, `runtime_fault`). A
+    // heading naming only the first tells a reader `/v1/query` was never
+    // reached when a database was down, which is false. The kind is printed
+    // below, verbatim, and it is the thing that says which happened.
+    panel.append(el("h2", "The request was refused; no result was produced (Section 4.5)"));
     panel.append(el("p", model.refusal, "status"));
     panel.append(el("p", model.detail));
     out.append(panel);
@@ -334,7 +344,12 @@ function wire(id, handler) {
 wire("ask-send", async () => {
   state.requestText = document.getElementById("ask").value;
   document.getElementById("discover-panel").hidden = true;
-  document.getElementById("select-panel").hidden = true;
+  // The invariant, on the third of the three paths that end a candidate list.
+  // Hiding the panel alone left the chosen rank, the digest and the arguments
+  // in `state` and the send button enabled: unreachable today only because a
+  // `hidden` section is `display: none`, which is a CSS property standing in
+  // for a rule about what a person chose.
+  clearSelection();
   const { body } = await send("/v1/ask", { request_text: state.requestText });
   const model = viewFor(body, { requestText: state.requestText });
   state.proposal = model.kind === "result" ? model.proposal : null;

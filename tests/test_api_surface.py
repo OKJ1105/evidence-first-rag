@@ -24,6 +24,7 @@ asserted here and nowhere else.
 
 import contextlib
 import dataclasses
+import asyncio
 import inspect
 import pathlib
 import threading
@@ -50,6 +51,7 @@ from .runtime_support import CHASSIS, FakeDatabase, candidate_row, mapping_row, 
 
 try:
     import fastapi  # noqa: F401
+    import starlette.exceptions
     from fastapi.testclient import TestClient
 
     from evidence_first_rag.api.app import (
@@ -1104,6 +1106,12 @@ class ThePageIsServed(SurfaceCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, (PRESENTATION / "view.mjs").read_bytes())
         self.assertIn(b"export function viewFor", response.content)
+        # The same blank screen by a second route: a browser refuses a module
+        # script that is not served as JavaScript. The status and the bytes
+        # above are identical whatever the type, so the type is asserted rather
+        # than assumed -- `_install_presentation` registers it explicitly, and
+        # this is what makes that registration a fact rather than a comment.
+        self.assertIn("javascript", response.headers.get("content-type", ""))
 
 
 def _patterns(patterns):
@@ -1591,16 +1599,31 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
         # "Any method", which is the whole reason it is an ASGI endpoint.
         self.assertIsNone(catch_all.methods)
         self.assertIsNone(bare.methods)
-        source = inspect.getsource(type(catch_all.endpoint).__call__)
-        body = [line.strip() for line in source.splitlines()[1:] if line.strip()]
-        self.assertEqual(
-            body,
-            [
-                'kind = "method_not_allowed" if scope["path"] in self._registered'
-                ' else "unknown_route"',
-                "raise starlette.exceptions.HTTPException(status_code=REFUSALS[kind])",
-            ],
-        )
+
+        # The behaviour, not the source text. An earlier version of this test
+        # compared `inspect.getsource(...)` against two exact lines, which a
+        # reformat would have failed while changing nothing a caller can see --
+        # and which did not actually pin the property it was defending.
+        #
+        # That property is that the endpoint touches neither channel: reading
+        # the request body or writing a response is what would make running on
+        # the event loop rather than the threadpool cost something. So it is
+        # called directly, with a `receive` and a `send` that fail if awaited.
+        async def must_not_be_used(*_args, **_kwargs):  # pragma: no cover - the point
+            raise AssertionError("the catch-all touched the ASGI channels")
+
+        async def refusal_for(path):
+            scope = {"type": "http", "method": "PROPFIND", "path": path, "headers": []}
+            with self.assertRaises(starlette.exceptions.HTTPException) as raised:
+                await catch_all.endpoint(scope, must_not_be_used, must_not_be_used)
+            return raised.exception.status_code
+
+        # A known path with a method it does not take, and two paths Section
+        # 4.1 does not name -- including the bare namespace, which is the one
+        # the pattern cannot reach.
+        self.assertEqual(asyncio.run(refusal_for("/v1/query")), REFUSALS["method_not_allowed"])
+        self.assertEqual(asyncio.run(refusal_for("/v1/nowhere")), REFUSALS["unknown_route"])
+        self.assertEqual(asyncio.run(refusal_for(NAMESPACE)), REFUSALS["unknown_route"])
 
     def test_a_slow_request_does_not_delay_the_health_probe(self):
         """The behavioural half, and the one the Section 4.7 stack cares about.

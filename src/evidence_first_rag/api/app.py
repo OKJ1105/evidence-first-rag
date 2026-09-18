@@ -37,6 +37,7 @@ check the contract requires.
 
 import dataclasses
 import json
+import mimetypes
 
 import pathlib
 
@@ -450,6 +451,26 @@ def _install_presentation(app: fastapi.FastAPI) -> None:
     """
     if not PRESENTATION.is_dir():  # pragma: no cover - a package without the tree
         return
+
+    # A pin, not a fix -- and the difference is worth stating, because the
+    # finding that prompted it (N10 on #187) reasoned from a premise that does
+    # not hold here.
+    #
+    # `StaticFiles` takes a file's media type from `mimetypes.guess_type`, and
+    # a module script served as anything but JavaScript is refused by the
+    # browser: `GET /` would return the whole page and render nothing, while
+    # the suite stayed green, because a status and a byte comparison are
+    # identical under either type. The claim was that `.mjs` resolves here only
+    # from the system's `/etc/mime.types` and would fall back to `text/plain`
+    # in a slim image. **It does not**: `.mjs` is in CPython's own built-in
+    # table on the version this repository pins, so `mimetypes.init(files=[])`
+    # -- the system table removed -- still answers `text/javascript`.
+    #
+    # The line stays because what it costs is one call and what it removes is
+    # a dependency on an interpreter's built-in table for something a person
+    # sees. The test below asserts the served type, which is the part that has
+    # force either way.
+    mimetypes.add_type("text/javascript", ".mjs")
 
     # The Section 4.1 paths, **read off the routes already registered** rather
     # than listed again here. A second list is a second place for the five to
