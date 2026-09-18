@@ -223,3 +223,150 @@ jobs:
         # comparison, the no-partial-load rule, and the negative cases that
         # prove the invariant check fails on a schema missing a constraint.
         run: python -m unittest discover --start-directory tests_database --top-level-directory .
+
+  # `api-v0.1` Section 4.7. The one obligation of this repository that cannot
+  # be checked by reading files: whether one command actually starts a working
+  # stack. `tests/test_local_stack.py` asserts what `compose.yaml` says, which
+  # is a weaker thing and says so in its own docstring -- a compose file can be
+  # exactly right and the stack still not start.
+  #
+  # Added by a recorded owner decision on #191, which fixes that it runs on
+  # every pull request: a stack that silently stops starting is discovered when
+  # someone tries to use it, which is too late. The approval covers this job
+  # and nothing else under `.github/`.
+  local-stack:
+    name: local-stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `--wait` returns when every service is healthy or, for the one-shot
+      # provisioning container, has exited successfully -- which is the
+      # dependency order compose.yaml declares, waited on rather than slept
+      # through. A failure here is the stack not starting, which is the thing
+      # this job exists to catch.
+      - name: Start the stack with the one command
+        run: docker compose up --detach --wait
+
+      - name: Drive the stack through the surface
+        # Python from the runner, standard library only: the point is to reach
+        # the stack the way a person would, over HTTP, without installing this
+        # repository's package beside it. A caller that imported the package
+        # would be testing the code again rather than the stack.
+        run: |
+          python3 - <<'PROBE'
+          import json, urllib.error, urllib.request
+
+          BASE = "http://127.0.0.1:8000"
+          POWERTRAIN = {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_BASE",
+          }
+
+          def call(path, body=None):
+              """One request. Returns (status, parsed body)."""
+              request = urllib.request.Request(
+                  BASE + path,
+                  data=None if body is None else json.dumps(body).encode(),
+                  headers={} if body is None else {"content-type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      return response.status, json.loads(response.read())
+              except urllib.error.HTTPError as refused:
+                  return refused.code, json.loads(refused.read())
+
+          def expect(condition, message):
+              if not condition:
+                  raise SystemExit("FAILED: " + message)
+              print("ok:", message)
+
+          # Section 4.5: health reports the three contracts this surface serves,
+          # and whether an adapter is configured. Neither is wrapped in the
+          # Section 4.2 envelope -- health is not a result.
+          status, health = call("/v1/health")
+          expect(status == 200, "GET /v1/health is 200")
+          expect(
+              set(health["contracts"]) == {"api-v0.1", "mvp-v0.1", "entity-discovery-v0.1"},
+              f"health names the three contracts: {health['contracts']}",
+          )
+          expect(
+              health["adapter_configured"] is False,
+              "health reports no adapter, which is what this stack started without",
+          )
+
+          # WF-003, the path this milestone exists for, against the data the
+          # stack provisioned -- not a fixture this job carries.
+          status, first = call("/v1/query", {"route": "signal_facts", "arguments": dict(POWERTRAIN)})
+          expect(
+              first["result"]["status"] == "needs_entity_discovery",
+              f"a complete scope with no lookup key needs discovery: {first['result']['status']}",
+          )
+
+          discovery = POWERTRAIN | {"entity_kind": "signal", "term": "SAMPLE_SIG_GEAR_POSITION"}
+          status, second = call("/v1/discover", {"arguments": discovery})
+          expect(second["result"]["status"] == "candidates", "the term returns a candidate list")
+          candidates = second["result"]["candidates"]
+          expect(len(candidates) >= 2, f"more than one candidate: {len(candidates)}")
+          digest = second["result"]["evidence_bundle"]["candidate_set_id"]
+
+          status, third = call(
+              "/v1/select",
+              {
+                  "arguments": discovery
+                  | {
+                      "candidate_set_id": digest,
+                      "selected_rank": str(candidates[0]["rank"]),
+                      "target_route": "signal_facts",
+                  }
+              },
+          )
+          result = third["result"]
+          expect(result["status"] == "success", f"the selection answers: {result['status']}")
+          expect(bool(result["rows"]), "the answer carries rows")
+          expect(isinstance(third["rendered"], str), "the answer carries its rendered text")
+          # Charter Section 3.1, on the stack rather than in a unit test.
+          expect(result["evidence_bundle"]["selection"] is not None, "the evidence records the selection")
+          expect(bool(result["source_trace"]), "the evidence carries the source trace")
+          expect(bool(result["limitations"]), "the evidence carries what the answer does not establish")
+
+          # Section 4.7: with no adapter credential, `/v1/ask` refuses and
+          # every other route works -- which the four calls above just showed.
+          status, refused = call("/v1/ask", {"request_text": "SAMPLE_TEXT"})
+          expect(status == 503, f"/v1/ask without a credential is 503: {status}")
+          expect(
+              refused["refusal"] == "adapter_unavailable",
+              f"and refuses by name: {refused.get('refusal')}",
+          )
+
+          # Section 4.6: the page is there to open.
+          with urllib.request.urlopen(BASE + "/") as page:
+              text = page.read().decode()
+          expect(page.status == 200, "GET / is the page")
+          expect('id="discover-panel"' in text, "the page carries its discovery panel")
+          PROBE
+
+      - name: The surface process holds no provisioning credential
+        # `tests/test_local_stack.py` asserts this against the file. Here it is
+        # read off the running process, which is what Section 4.7's sentence is
+        # about, and which no response from the surface would ever reveal.
+        run: |
+          set -o pipefail
+          environment="$(docker compose exec -T surface env)"
+          for name in MVP_PROVISIONING_PASSWORD PGPASSWORD PGUSER; do
+            if grep -q "^${name}=" <<<"$environment"; then
+              echo "FAILED: the surface process carries ${name}"
+              exit 1
+            fi
+            echo "ok: the surface process does not carry ${name}"
+          done
+
+      - name: Stack logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes

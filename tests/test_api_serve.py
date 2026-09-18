@@ -11,9 +11,8 @@ identities -- is not this module's to satisfy and is asserted in
 `tests/test_local_stack.py` against the compose file.
 """
 
-import io
+import ast
 import pathlib
-import tokenize
 import unittest
 
 # The module is read from disk unconditionally and imported conditionally.
@@ -48,19 +47,35 @@ SERVE_SOURCE = SERVE_PATH.read_text(encoding="utf-8")
 
 
 def code_only(source: str) -> str:
-    """`source` with every comment and string literal removed.
+    """`source` with its comments and docstrings removed, and nothing else.
 
-    The prohibition below is about what the module **reads**, not about what it
-    says. Checked against the raw text it would fail on the docstring that
-    explains the rule, which would push the explanation out of the file to
-    satisfy a test -- the wrong direction.
+    The prohibition below is about what the module **reads**, not what it says.
+    Checked against the raw text it fails on the docstring that explains the
+    rule, which would push the explanation out of the file to satisfy a test.
+
+    **Docstrings, not every string.** An earlier version of this dropped every
+    string literal, which removed `environment["MVP_PROVISIONING_PASSWORD"]`
+    along with the prose -- so the assertion below passed over a module that
+    read exactly what it may not. A mutation adding that read survived it, and
+    that is how it was found. Only the first statement of a module, class or
+    function is dropped, and only where it is a bare string: that is what a
+    docstring is, and no other statement matches it.
+
+    `ast.unparse` rather than a second pass over tokens, because it drops
+    comments by construction -- they are not in the tree.
     """
-    kept = []
-    for token in tokenize.generate_tokens(io.StringIO(source).readline):
-        if token.type in (tokenize.COMMENT, tokenize.STRING):
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(body, list) or not body:
             continue
-        kept.append(token.string)
-    return " ".join(kept)
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        first = body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+            if isinstance(first.value.value, str):
+                del body[0]
+    return ast.unparse(tree)
 
 
 SERVE_CODE = code_only(SERVE_SOURCE)
