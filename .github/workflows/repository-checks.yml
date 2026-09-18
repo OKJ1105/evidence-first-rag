@@ -279,46 +279,69 @@ jobs:
         # The other half of Section 4.7's separation, and the half the step
         # above cannot reach. Not carrying the provisioning password is what
         # the stack hands the process; being unable to write is what the
-        # database grants it, and `mvp-v0.1` Section 4.10 requires that refusal
-        # to come from PostgreSQL privileges rather than from an application
-        # guard.
+        # database grants it.
         #
         # Run **inside the surface container with its own environment**, so the
         # credential under test is the one the surface actually serves with. A
         # check from the runner would need the database published and would be
         # testing a connection nothing uses.
         #
+        # **`default_transaction_read_only` is turned off first, and that is
+        # the whole point of this step.** `sql/cluster/000_roles.sql` sets it
+        # on for `mvp_runtime`, so a write attempted without turning it off is
+        # refused by the transaction mode whatever the grants say -- and the
+        # assertion would pass over a role that had been given INSERT. Section
+        # 4.10 requires the refusal to originate from PostgreSQL privileges
+        # "not from an application guard", so the exception must be
+        # `InsufficientPrivilege` specifically and no other.
+        #
         # `tests_database/test_roles.py` covers the grants against a service
-        # container; this covers the deployment. Swap `RUNTIME_ROLE` for the
-        # provisioning identity and every response stays identical -- a
-        # connection that can write answers the five routes exactly as one that
-        # cannot -- so nothing else in this job would notice.
+        # container; this covers the deployment. Point `serve.RUNTIME_ROLE` at
+        # a writing identity and every response stays identical -- a connection
+        # that can write answers the five routes exactly as one that cannot --
+        # so nothing else in this job would notice.
         run: |
           docker compose exec -T surface python - <<'WRITE'
           import os
           import psycopg
-          from evidence_first_rag.api.serve import connection_parameters
+          from evidence_first_rag.api import serve
 
-          parameters = connection_parameters(os.environ)
-          print("connected as:", parameters["user"])
-          statements = (
-              "INSERT INTO source_snapshot (project_code, revision_label, network_name,"
-              " snapshot_label, ingested_at) VALUES ('X', 'X', 'X', 'X', now())",
-              "UPDATE source_snapshot SET snapshot_label = 'X'",
-              "DELETE FROM source_snapshot",
-              "CREATE TABLE sample_written_by_the_surface (id integer)",
-          )
-          for statement in statements:
+          # The four shapes `tests_database/test_roles.py` uses, schema
+          # qualified as it qualifies them.
+          WRITES = {
+              "INSERT": "INSERT INTO mvp.source_snapshot"
+                        " (project_code, revision_label, network_name, snapshot_label, ingested_at)"
+                        " VALUES ('X', 'X', 'X', 'X', now())",
+              "UPDATE": "UPDATE mvp.source_snapshot SET project_code = 'X'",
+              "DELETE": "DELETE FROM mvp.source_snapshot",
+              "CREATE TABLE": "CREATE TABLE mvp.intruder (id integer)",
+          }
+
+          parameters = serve.connection_parameters(os.environ)
+          print("the surface connects as:", parameters["user"])
+
+          # A read first, so a connection that failed outright cannot be read
+          # as four successful refusals.
+          with psycopg.connect(**parameters) as connection, connection.cursor() as cursor:
+              cursor.execute("SELECT count(*) FROM mvp.source_snapshot")
+              print("ok: the surface's connection reads", cursor.fetchone()[0], "snapshots")
+
+          for name, statement in WRITES.items():
               with psycopg.connect(**parameters) as connection:
-                  try:
-                      with connection.cursor() as cursor:
+                  connection.autocommit = True
+                  with connection.cursor() as cursor:
+                      cursor.execute("SET default_transaction_read_only = off")
+                      try:
                           cursor.execute(statement)
-                  except psycopg.Error as refused:
-                      print("ok: refused", statement.split()[0], "--", type(refused).__name__)
-                      continue
-                  raise SystemExit(
-                      "FAILED: the surface's own connection performed: " + statement
-                  )
+                      except psycopg.errors.InsufficientPrivilege:
+                          print("ok: refused by privilege, not by transaction mode:", name)
+                      except psycopg.Error as wrong_refusal:
+                          raise SystemExit(
+                              f"FAILED: {name} was refused by {type(wrong_refusal).__name__},"
+                              " which Section 4.10 does not accept as the grants being right"
+                          )
+                      else:
+                          raise SystemExit("FAILED: the surface's connection performed " + name)
           WRITE
 
       - name: Stack logs
