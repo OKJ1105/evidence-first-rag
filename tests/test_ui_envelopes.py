@@ -22,7 +22,14 @@ import re
 import unittest
 
 from .discovery_support import BASE, MESSAGE, SIGNAL, database, discovery_row
-from .runtime_support import CHASSIS, FakeDatabase, candidate_row, message_row, signal_row
+from .runtime_support import (
+    CHASSIS,
+    REVISED,
+    FakeDatabase,
+    candidate_row,
+    message_row,
+    signal_row,
+)
 
 try:
     from fastapi.testclient import TestClient
@@ -44,6 +51,18 @@ PROVENANCE = ("fixtures/registry/approved_entity.jsonl",)
 FACT_MESSAGE = BASE | {"message_key": "SAMPLE_MSG_ENGINE_STATUS"}
 FACT_SIGNAL = FACT_MESSAGE | {"signal_key": "SAMPLE_SIG_ENGINE_SPEED"}
 SELECT_TERM = SIGNAL | {"term": "SAMPLE_SIG_GEAR_POSITION"}
+
+# The two `ambiguous` shapes, which differ by contract and which a screen has to
+# read both of. Each names three of the four scope dimensions, so the fourth is
+# what `TPL_SNAPSHOT_CANDIDATES_V1` answers with more than one row.
+#
+# `snapshot_label` is the one left open because `BASE` and `REVISED` differ in
+# that dimension and no other: the view model computes which dimension
+# distinguishes the scopes, and a pair differing in two would not show that the
+# computation found the right one.
+OPEN_SNAPSHOT = {name: value for name, value in FACT_MESSAGE.items() if name != "snapshot_label"}
+OPEN_SNAPSHOT_TERM = {name: value for name, value in MESSAGE.items() if name != "snapshot_label"}
+TWO_SNAPSHOTS = (candidate_row(BASE), candidate_row(REVISED))
 
 # The text `/v1/ask` cases are evaluated against: its four scope values appear
 # in it and its message key does not, which is what makes one proposal's
@@ -184,6 +203,25 @@ def _envelopes():
                 "target_route": "signal_facts",
             }
         },
+    ).text
+
+    # Obligation 5 over `ambiguous`, in **both** shapes, because the two
+    # contracts carry the scopes in different places and a screen that read one
+    # of them would print the bare status word for the other.
+    #
+    # `mvp-v0.1` has no top-level `candidate_scopes`: the scopes are the rows of
+    # `TPL_SNAPSHOT_CANDIDATES_V1`, and `source_trace.contributing_scopes`
+    # repeats them (`WF-002`).
+    client = _client(_database({}, candidates=TWO_SNAPSHOTS))
+    built["fact_ambiguous"] = client.post(
+        "/v1/query", json={"route": "message_facts", "arguments": OPEN_SNAPSHOT}
+    ).text
+
+    # `entity-discovery-v0.1` carries them in a top-level `candidate_scopes` and
+    # executes no discovery template (`WF-020`).
+    client = _client(_database({}, candidates=TWO_SNAPSHOTS))
+    built["discovery_ambiguous"] = client.post(
+        "/v1/discover", json={"arguments": OPEN_SNAPSHOT_TERM}
     ).text
 
     # Section 4.5: a refusal, which obligation 5 forbids showing as a result.

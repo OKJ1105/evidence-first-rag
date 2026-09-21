@@ -59,6 +59,15 @@
   .refusal { border-color: var(--warn); background: var(--warn-bg); }
   code { font-family: ui-monospace, monospace; font-size: 12.5px; word-break: break-all; }
   .note { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+  .sentence { margin: 0 0 10px; }
+  .headline { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+  .headline b { color: var(--ink); font-weight: 600; font-family: ui-monospace, monospace; }
+  .limitation { border-left: 3px solid var(--warn); background: var(--warn-bg); padding: 8px 10px; margin: 8px 0 0; font-size: 13px; }
+  .scope { border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+  tr.differs th, tr.differs td { background: var(--warn-bg); }
+  tr.differs th::after { content: " — differs"; color: var(--warn); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chips button { background: transparent; color: var(--accent); border: 1px solid var(--line); font-size: 12.5px; padding: 6px 10px; text-align: left; }
 </style>
 </head>
 <body>
@@ -75,6 +84,13 @@
     <label for="ask">A question, in your own words</label>
     <textarea id="ask" rows="2" placeholder="SAMPLE_… identifiers only; this database holds synthetic fixtures"></textarea>
     <p class="note">Sent to <code>POST /v1/ask</code>. A model proposes a route; the runtime revalidates it and answers, or refuses.</p>
+    <!--
+      #195 item 4. Fixed strings from `view.mjs`, filled into the field above on
+      a click; the person presses Ask. None is labelled with what it returns,
+      because the page cannot know that before a response exists.
+    -->
+    <p class="note" style="margin-top:14px">This database holds synthetic <code>SAMPLE_*</code> fixtures only. To start from one of these, click it:</p>
+    <div id="examples" class="chips"></div>
     <p style="margin-top:12px"><button id="ask-send">Ask</button></p>
   </section>
 
@@ -96,9 +112,16 @@
 </main>
 
 <script type="module">
-import { chooseRank, discoveryForm, maySend, selectionForm, unreachedView, viewFor } from "./view.mjs";
-
-const SCOPE_DIMENSIONS = ["project_code", "revision_label", "network_name", "snapshot_label"];
+import {
+  EXAMPLE_REQUESTS,
+  SCOPE_DIMENSIONS,
+  chooseRank,
+  discoveryForm,
+  maySend,
+  selectionForm,
+  unreachedView,
+  viewFor,
+} from "./view.mjs";
 const out = document.getElementById("out");
 const state = { requestText: "", proposal: null, candidates: [], selection: null, discovery: null };
 
@@ -130,11 +153,17 @@ async function send(path, body) {
   return { body: await response.json(), status: response.status };
 }
 
-/** One `{key, value}` list as a two-column table. Values are stringified, never parsed. */
+/**
+ * One `{key, value}` list as a two-column table. Values are stringified, never parsed.
+ *
+ * A field carrying `differs` is marked. Which field that is, is `view.mjs`'s to
+ * decide (`scopeChoicesOf`); this only draws the mark.
+ */
 function fieldTable(fields) {
   const table = el("table");
   for (const field of fields) {
     const row = el("tr");
+    if (field.differs) row.className = "differs";
     row.append(el("th", field.key));
     const cell = el("td");
     cell.append(el("code", field.value === null ? "null" : JSON.stringify(field.value)));
@@ -142,6 +171,12 @@ function fieldTable(fields) {
     table.append(row);
   }
   return table;
+}
+
+/** The discovery form input for one dimension, or null when that form is not shown. */
+function discoveryInput(name) {
+  if (document.getElementById("discover-panel").hidden) return null;
+  return document.querySelector(`#discover-fields [data-name="${name}"]`);
 }
 
 function evidenceBlock(sections) {
@@ -191,6 +226,39 @@ function render(model) {
   panel.append(el("h2", "Result"));
   panel.append(el("p", model.status, "status"));
 
+  // #195 item 2: what that status means, as the fixed sentence `view.mjs`
+  // holds, and what the request was bound with. Both are null for `success`
+  // and `resolved`, where `rendered` below is the answer.
+  if (model.statusNotice) {
+    panel.append(el("p", model.statusNotice.sentence, "sentence"));
+    if (model.statusNotice.searched.length > 0) {
+      panel.append(el("h3", "Searched with"));
+      panel.append(fieldTable(model.statusNotice.searched));
+    }
+  }
+
+  // #195 item 3: the evidence that is not behind the disclosure. The
+  // disclosure below still carries all of it; this is a second view.
+  if (model.headline) {
+    if (model.headline.facts.length > 0) {
+      const line = el("div", null, "headline");
+      for (const fact of model.headline.facts) {
+        const item = el("span", `${fact.key}: `);
+        item.append(el("b", fact.value === null ? "null" : JSON.stringify(fact.value)));
+        line.append(item);
+      }
+      panel.append(line);
+    }
+    // Obligation 1 names every entry's kind and detail. Outside the
+    // disclosure: a limitation is the result saying what it does not
+    // establish, which is what a confident-looking answer hides best.
+    for (const entry of model.headline.limitations) {
+      const box = el("div", null, "limitation");
+      for (const field of entry) box.append(el("div", `${field.key}: ${field.value}`));
+      panel.append(box);
+    }
+  }
+
   // Obligation 2: the answer is `rendered`, verbatim, or there is none.
   if (model.answer.kind === "prose") {
     const pre = el("pre", model.answer.text);
@@ -198,7 +266,12 @@ function render(model) {
     panel.append(pre);
   }
 
-  if (model.rows.length > 0) {
+  // #195 item 1. On `ambiguous` the rows *are* the scopes, so the scope list
+  // below is drawn instead of this block rather than beside it -- same rows,
+  // same order, every field, with the dimension that differs marked. Nothing is
+  // omitted, which is why suppressing the plain table here is not obligation
+  // 1's "may not omit".
+  if (model.rows.length > 0 && model.scopeChoices === null) {
     panel.append(el("h3", "Rows"));
     for (const row of model.rows) panel.append(fieldTable(row));
   }
@@ -222,6 +295,36 @@ function render(model) {
 
   panel.append(evidenceBlock(model.evidence));
   out.append(panel);
+
+  // #195 item 1: the scopes this request resolved to, each listed whole, with
+  // the dimension that tells them apart marked. None is chosen and none is
+  // preferred -- obligation 3's rule for candidates, and the same reason.
+  if (model.scopeChoices) {
+    const list = el("section");
+    list.append(el("h2", "The scopes this resolved to"));
+    list.append(el("p", "None is chosen. Nothing was looked up in any of them.", "note"));
+    for (const scope of model.scopeChoices.scopes) {
+      const block = el("div", null, "scope");
+      block.append(fieldTable(scope.fields));
+      // The act the owner's reading on #195 permits: it writes the dimensions
+      // that differ into the discovery form, visible and editable, and sends
+      // nothing. Offered only where that form is on screen to write into --
+      // a `/v1/query` ambiguity has no such form, and a button that did
+      // nothing would be worse than none.
+      const targets = scope.fill.filter((entry) => discoveryInput(entry.name) !== null);
+      if (targets.length > 0) {
+        const use = el("button", `Use ${targets.map((entry) => `${entry.name} = ${entry.value}`).join(", ")}`);
+        use.addEventListener("click", () => {
+          for (const entry of targets) discoveryInput(entry.name).value = entry.value;
+          document.getElementById("discover-panel").scrollIntoView({ block: "nearest" });
+        });
+        block.append(use);
+        block.append(el("p", "Fills the search above. You press Search.", "note"));
+      }
+      list.append(block);
+    }
+    out.append(list);
+  }
 
   // Obligation 3: rank order, every field, nothing pre-selected.
   if (model.candidates.length > 0) {
@@ -349,6 +452,16 @@ function wire(id, handler) {
       render(unreachedView(cause));
     }
   });
+}
+
+// #195 item 4. Fixed strings from `view.mjs`; a click fills the field and
+// stops there. Nothing is sent, and no chip says what it will return.
+for (const request of EXAMPLE_REQUESTS) {
+  const chip = el("button", request);
+  chip.addEventListener("click", () => {
+    document.getElementById("ask").value = request;
+  });
+  document.getElementById("examples").append(chip);
 }
 
 wire("ask-send", async () => {

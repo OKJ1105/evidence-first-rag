@@ -17,7 +17,9 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  EXAMPLE_REQUESTS,
   FACT_ROUTES,
+  SCOPE_DIMENSIONS as EXPORTED_SCOPE_DIMENSIONS,
   answerOf,
   candidatesOf,
   chooseRank,
@@ -25,7 +27,10 @@ import {
   evidenceOf,
   maySend,
   proposalOf,
+  headlineOf,
+  scopeChoicesOf,
   selectionForm,
+  statusNotice,
   targetRoutesFor,
   view,
   unreachedView,
@@ -481,5 +486,227 @@ describe("obligation 7 — it adds no value the response does not contain", () =
       assert.equal(field.value, row[key]);
       assert.equal(typeof field.value, typeof row[key]);
     }
+  });
+});
+
+/** Every status word the two vocabularies use, as the fixture carries them. */
+function statusesInFixture() {
+  return Object.values(envelopes)
+    .filter((envelope) => "result" in envelope)
+    .map((envelope) => envelope.result.status);
+}
+
+describe("#195 item 1 — an `ambiguous` result lists the scopes it resolved to", () => {
+  it("reads both shapes, because the two contracts carry the scopes elsewhere", () => {
+    // `mvp-v0.1` has no top-level `candidate_scopes`; the scopes are the rows
+    // of `TPL_SNAPSHOT_CANDIDATES_V1` (`WF-002`). `entity-discovery-v0.1` has
+    // the key and no rows (`WF-020`). A reader of one shape alone prints the
+    // bare status word for the other, which is the defect #195 is about.
+    const fromRows = envelopes.fact_ambiguous.result;
+    const fromKey = envelopes.discovery_ambiguous.result;
+    assert.equal("candidate_scopes" in fromRows, false);
+    assert.equal("rows" in fromKey, false);
+    for (const result of [fromRows, fromKey]) {
+      const choices = scopeChoicesOf(result);
+      assert.ok(choices, "an ambiguous result lists no scopes");
+      assert.equal(choices.scopes.length, 2);
+    }
+  });
+
+  it("marks the dimension that differs, and no dimension that does not", () => {
+    // Computed, never assumed: the open dimension is whichever one the request
+    // left out, and on this registry a term can be ambiguous across
+    // `revision_label` too.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      const choices = scopeChoicesOf(envelopes[name].result);
+      assert.deepEqual(choices.differing, ["snapshot_label"], name);
+      for (const scope of choices.scopes) {
+        for (const field of scope.fields) {
+          assert.equal(field.differs, field.key === "snapshot_label", `${name} ${field.key}`);
+        }
+      }
+    }
+  });
+
+  it("lists every dimension of every scope, not only the differing one", () => {
+    // Obligation 1. A list showing only what differs would tell a reader the
+    // scopes are two snapshots and never say of which project or revision.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      for (const scope of scopeChoicesOf(envelopes[name].result).scopes) {
+        assert.deepEqual(
+          scope.fields.map((field) => field.key).sort(),
+          [...SCOPE_DIMENSIONS].sort(),
+          name,
+        );
+      }
+    }
+  });
+
+  it("keeps the order the response carried", () => {
+    // Obligation 7 forbids reordering. Asserted against the response's own
+    // list rather than an expected order written here.
+    const result = envelopes.discovery_ambiguous.result;
+    const choices = scopeChoicesOf(result);
+    assert.deepEqual(
+      choices.scopes.map((scope) => scope.fields.find((f) => f.key === "snapshot_label").value),
+      result.candidate_scopes.map((scope) => scope.snapshot_label),
+    );
+  });
+
+  it("offers to fill only the dimensions that differ", () => {
+    // The owner's reading on #195: a person's act may fill a value the runtime
+    // returned. Filling a dimension that does not differ would rewrite what
+    // they typed; filling a `null` would put the word null in a field.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      for (const scope of scopeChoicesOf(envelopes[name].result).scopes) {
+        assert.deepEqual(scope.fill.map((entry) => entry.name), ["snapshot_label"], name);
+        for (const entry of scope.fill) assert.equal(typeof entry.value, "string");
+      }
+    }
+  });
+
+  it("lists nothing for a status that is not `ambiguous`", () => {
+    // Without the guard, `fact_success`'s rows become a scope chooser on an
+    // answered request -- a screen inviting a choice about a result that
+    // already resolved.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || envelope.result.status === "ambiguous") continue;
+      assert.equal(scopeChoicesOf(envelope.result), null, name);
+    }
+  });
+});
+
+describe("#195 item 2 — a status carries the fixed sentence that says what it means", () => {
+  it("gives every negative status a sentence, and none to the three that have one", () => {
+    // `success` and `resolved` carry `rendered`, which obligation 2 makes the
+    // answer verbatim. `candidates` carries the `no_reference_resolved`
+    // limitation, which obligation 3 makes the sentence the list is shown
+    // under. All three already have their text, and it is the response's.
+    const answered = new Set(["success", "resolved", "candidates"]);
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope.result);
+      if (answered.has(envelope.result.status)) {
+        assert.equal(notice, null, name);
+      } else {
+        assert.ok(notice, `${name} (${envelope.result.status}) has no sentence`);
+        assert.equal(notice.status, envelope.result.status);
+        assert.ok(notice.sentence.length > 0);
+      }
+    }
+  });
+
+  it("states nothing the response carries — the sentence interpolates no value", () => {
+    // The hazard obligation 7 names. A sentence that named the term or the
+    // scope would read as a claim about them, and the one sentence that must
+    // never gain a clause is `not_found`: a match elsewhere is exactly what a
+    // `not_found` response does not establish.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope.result);
+      if (notice === null) continue;
+      for (const value of scalars(envelope.result)) {
+        if (typeof value !== "string" || value.length < 3) continue;
+        assert.equal(notice.sentence.includes(value), false, `${name}: ${value}`);
+      }
+    }
+  });
+
+  it("carries the bound parameters beside the sentence, unchanged", () => {
+    // Duplication on purpose: for a negative result the first question is what
+    // was searched for, and obligation 4 puts the person's whole request text
+    // in the discovery `term`.
+    const result = envelopes.discovery_not_found.result;
+    const notice = statusNotice(result);
+    assert.deepEqual(
+      Object.fromEntries(notice.searched.map((field) => [field.key, field.value])),
+      result.evidence_bundle.bound_parameters,
+    );
+  });
+});
+
+describe("#195 item 3 — some evidence is outside the disclosure", () => {
+  it("puts every limitations entry outside, whole", () => {
+    // `selection_two_limitations` carries two, and a screen showing one tells
+    // a reader the other did not happen.
+    const result = envelopes.selection_two_limitations.result;
+    const headline = headlineOf(result);
+    assert.equal(headline.limitations.length, result.limitations.length);
+    assert.ok(headline.limitations.length > 1);
+    for (const [index, entry] of headline.limitations.entries()) {
+      assert.deepEqual(
+        Object.fromEntries(entry.map((field) => [field.key, field.value])),
+        result.limitations[index],
+      );
+    }
+  });
+
+  it("puts the row count and the resolved scope outside, where the bundle has them", () => {
+    const result = envelopes.fact_success.result;
+    const facts = Object.fromEntries(headlineOf(result).facts.map((f) => [f.key, f.value]));
+    assert.equal(facts.row_count, result.evidence_bundle.row_count);
+    assert.deepEqual(facts.resolved_scope, result.evidence_bundle.resolved_scope);
+  });
+
+  it("omits nothing: the disclosure still carries every value the headline shows", () => {
+    // Obligation 1 forbids omitting, and this is the assertion that makes the
+    // headline a second view rather than a place a value could live alone.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const headline = headlineOf(envelope.result);
+      const inside = [];
+      for (const section of evidenceOf(envelope.result)) {
+        for (const item of section.items) for (const field of item) scalars(field.value, inside);
+      }
+      for (const fact of headline.facts) {
+        for (const value of scalars(fact.value)) {
+          assert.ok(inside.includes(value), `${name}: ${fact.key} is only outside`);
+        }
+      }
+    }
+  });
+});
+
+describe("#195 item 4 — the example requests claim nothing", () => {
+  it("names no identifier that is not a SAMPLE_ one", () => {
+    // Charter Section 11: this repository carries synthetic identifiers only,
+    // and the page is served to whoever opens it.
+    for (const request of EXAMPLE_REQUESTS) {
+      for (const token of request.split(/[^A-Za-z0-9_]+/)) {
+        // An identifier, as this repository writes them: it carries an
+        // underscore, or it is all upper case. A capital that merely begins an
+        // English sentence is neither, and flagging it would make this test
+        // about prose rather than about identifiers.
+        const isIdentifier =
+          token.includes("_") || (token.length > 1 && token === token.toUpperCase());
+        if (!isIdentifier) continue;
+        assert.ok(token.startsWith("SAMPLE_"), `${request} names ${token}`);
+      }
+    }
+  });
+
+  it("says nothing about what it returns", () => {
+    // The page cannot know before a response exists: the same string reaches a
+    // different status as the registry changes, so a label promising one would
+    // be a fact no response has produced (obligations 2 and 7).
+    const statuses = new Set(statusesInFixture());
+    assert.ok(statuses.size > 1);
+    for (const request of EXAMPLE_REQUESTS) {
+      for (const status of statuses) {
+        assert.equal(request.includes(status), false, `${request} names ${status}`);
+      }
+    }
+  });
+
+  it("is a list of non-empty strings, and the page holds no other scope list", () => {
+    assert.ok(EXAMPLE_REQUESTS.length > 0);
+    for (const request of EXAMPLE_REQUESTS) {
+      assert.equal(typeof request, "string");
+      assert.ok(request.trim().length > 0);
+    }
+    // The exported dimensions are what `ui/index.html` now imports instead of
+    // keeping its own copy; this is the independent statement of what a scope
+    // is that keeps the exported one honest.
+    assert.deepEqual([...EXPORTED_SCOPE_DIMENSIONS].sort(), [...SCOPE_DIMENSIONS].sort());
   });
 });
