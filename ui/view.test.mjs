@@ -553,16 +553,29 @@ describe("#195 item 1 — an `ambiguous` result lists the scopes it resolved to"
     );
   });
 
-  it("offers to fill only the dimensions that differ", () => {
+  it("offers to fill the dimensions this request left unbound", () => {
     // The owner's reading on #195: a person's act may fill a value the runtime
-    // returned. Filling a dimension that does not differ would rewrite what
-    // they typed; filling a `null` would put the word null in a field.
-    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
-      for (const scope of scopeChoicesOf(envelopes[name].result).scopes) {
+    // returned. The unbound ones, not the differing ones -- a single-scope
+    // `ambiguous` has nothing differing and is still ambiguous, and offering
+    // nothing there would leave that screen with no act at all (B2 on #196).
+    // Filling a bound dimension would rewrite what the person typed.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous", "fact_ambiguous_one_scope"]) {
+      const result = envelopes[name].result;
+      const choices = scopeChoicesOf(result);
+      assert.deepEqual(choices.unbound, ["snapshot_label"], name);
+      for (const scope of choices.scopes) {
         assert.deepEqual(scope.fill.map((entry) => entry.name), ["snapshot_label"], name);
         for (const entry of scope.fill) assert.equal(typeof entry.value, "string");
       }
     }
+  });
+
+  it("lists the one scope of a single-scope `ambiguous`, with nothing marked", () => {
+    // `mvp-v0.1` Section 5: "One matching candidate is still `ambiguous`."
+    const choices = scopeChoicesOf(envelopes.fact_ambiguous_one_scope.result);
+    assert.equal(choices.scopes.length, 1);
+    assert.deepEqual(choices.differing, []);
+    for (const field of choices.scopes[0].fields) assert.equal(field.differs, false);
   });
 
   it("lists nothing for a status that is not `ambiguous`", () => {
@@ -576,34 +589,84 @@ describe("#195 item 1 — an `ambiguous` result lists the scopes it resolved to"
   });
 });
 
-describe("#195 item 2 — a status carries the fixed sentence that says what it means", () => {
-  it("gives every negative status a sentence, and none to the three that have one", () => {
-    // `success` and `resolved` carry `rendered`, which obligation 2 makes the
-    // answer verbatim. `candidates` carries the `no_reference_resolved`
-    // limitation, which obligation 3 makes the sentence the list is shown
-    // under. All three already have their text, and it is the response's.
-    const answered = new Set(["success", "resolved", "candidates"]);
+describe("#195 item 2 — a sentence only where the runtime wrote none", () => {
+  it("writes nothing where `rendered` carries the answer", () => {
+    // Obligation 2. The first version of this slice printed a sentence of the
+    // page's own directly above the runtime's Section 4.8 render, and the two
+    // disagreed (B1 on #196). Every `mvp-v0.1` result carries a render.
     for (const [name, envelope] of Object.entries(envelopes)) {
       if (!("result" in envelope)) continue;
-      const notice = statusNotice(envelope.result);
-      if (answered.has(envelope.result.status)) {
+      if (typeof envelope.rendered !== "string") continue;
+      assert.equal(statusNotice(envelope), null, name);
+    }
+  });
+
+  it("writes one for every status that arrives with no prose at all", () => {
+    // The screen the owner met: `/v1/discover` returns `rendered: null`, so
+    // without this the page shows a status word and nothing else.
+    const carriesItsOwnText = new Set(["candidates", "resolved"]);
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || typeof envelope.rendered === "string") continue;
+      const notice = statusNotice(envelope);
+      if (carriesItsOwnText.has(envelope.result.status)) {
         assert.equal(notice, null, name);
       } else {
         assert.ok(notice, `${name} (${envelope.result.status}) has no sentence`);
         assert.equal(notice.status, envelope.result.status);
-        assert.ok(notice.sentence.length > 0);
       }
     }
   });
 
-  it("states nothing the response carries — the sentence interpolates no value", () => {
-    // The hazard obligation 7 names. A sentence that named the term or the
-    // scope would read as a claim about them, and the one sentence that must
-    // never gain a clause is `not_found`: a match elsewhere is exactly what a
-    // `not_found` response does not establish.
+  it("names no source the contract that produced the result does not implicate", () => {
+    // B1's mechanism, asserted rather than read. `not_found` on an
+    // `mvp-v0.1` fact route means no row matched the lookup key and no
+    // registry was consulted; the same word on `entity-discovery-v0.1` really
+    // is about the registry. A sentence naming one on a result of the other
+    // is a claim about provenance the response does not carry.
+    const OWNED = new Map([["entity-discovery-v0.1", ["registry", "term", "tier"]]]);
     for (const [name, envelope] of Object.entries(envelopes)) {
       if (!("result" in envelope)) continue;
-      const notice = statusNotice(envelope.result);
+      const notice = statusNotice(envelope);
+      if (notice === null) continue;
+      const contract = envelope.result.evidence_bundle.contract_identifier;
+      for (const [owner, words] of OWNED) {
+        if (owner === contract) continue;
+        for (const word of words) {
+          assert.equal(notice.sentence.includes(word), false, `${name}: ${word}`);
+        }
+      }
+    }
+  });
+
+  it("does not claim an `ambiguous` result lists more than one scope", () => {
+    // `mvp-v0.1` Section 5: "One matching candidate is still `ambiguous`."
+    // `FX-113` and `DX-011` register that shape (B2 on #196).
+    const one = envelopes.fact_ambiguous_one_scope.result;
+    assert.equal(one.status, "ambiguous");
+    assert.equal(scopeChoicesOf(one).scopes.length, 1);
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || envelope.result.status !== "ambiguous") continue;
+      const notice = statusNotice(envelope);
+      if (notice === null) continue;
+      for (const word of ["single", "more than one", "two", "several"]) {
+        assert.equal(notice.sentence.includes(word), false, `${name}: ${word}`);
+      }
+    }
+  });
+
+  it("asserts no cause for `coverage_gap`, which has two", () => {
+    // Section 5: coverage the scope "does not contain, or cannot be
+    // established to contain". Naming one states what the response does not.
+    const envelope = envelopes.fact_coverage_gap;
+    assert.equal(envelope.result.status, "coverage_gap");
+    const notice = statusNotice({ result: envelope.result });
+    assert.ok(notice.sentence.includes("or cannot be established"));
+  });
+
+  it("states nothing the response carries — the sentence interpolates no value", () => {
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope);
       if (notice === null) continue;
       for (const value of scalars(envelope.result)) {
         if (typeof value !== "string" || value.length < 3) continue;
@@ -613,15 +676,50 @@ describe("#195 item 2 — a status carries the fixed sentence that says what it 
   });
 
   it("carries the bound parameters beside the sentence, unchanged", () => {
-    // Duplication on purpose: for a negative result the first question is what
-    // was searched for, and obligation 4 puts the person's whole request text
-    // in the discovery `term`.
-    const result = envelopes.discovery_not_found.result;
-    const notice = statusNotice(result);
+    const envelope = envelopes.discovery_not_found;
+    const notice = statusNotice(envelope);
     assert.deepEqual(
       Object.fromEntries(notice.searched.map((field) => [field.key, field.value])),
-      result.evidence_bundle.bound_parameters,
+      envelope.result.evidence_bundle.bound_parameters,
     );
+  });
+
+  it("offers to clear `snapshot_label` on a `not_found` that bound one", () => {
+    // #195 item 2's other half, absent from the first version (B3 on #196).
+    const envelope = envelopes.discovery_not_found;
+    const bound = envelope.result.evidence_bundle.bound_parameters;
+    assert.equal(typeof bound.snapshot_label, "string");
+    assert.deepEqual(statusNotice(envelope).widen, [
+      { name: "snapshot_label", value: bound.snapshot_label },
+    ]);
+  });
+
+  it("offers a widening exactly where a non-empty `snapshot_label` was bound", () => {
+    // Stated over the bound value rather than the status, because the status
+    // is not the rule: `ambiguous` and `coverage_gap` bind `snapshot_label` as
+    // null -- it is the dimension the request left open -- and
+    // `invalid_request` and `unsupported` are refused before anything binds.
+    // Asserted in both directions, so neither dropping the offer nor offering
+    // it where nothing was bound survives.
+    let offered = 0;
+    let withheld = 0;
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope);
+      if (notice === null) continue;
+      const bound = envelope.result.evidence_bundle.bound_parameters.snapshot_label;
+      const expected = typeof bound === "string" && bound !== "";
+      assert.equal(notice.widen.length === 1, expected, name);
+      if (expected) {
+        assert.deepEqual(notice.widen, [{ name: "snapshot_label", value: bound }], name);
+        offered += 1;
+      } else {
+        withheld += 1;
+      }
+    }
+    // The #101 guard: green either way if no envelope reached either side.
+    assert.ok(offered > 0, "no envelope offers a widening");
+    assert.ok(withheld > 0, "no envelope withholds one");
   });
 });
 

@@ -224,6 +224,34 @@ def _envelopes():
         "/v1/discover", json={"arguments": OPEN_SNAPSHOT_TERM}
     ).text
 
+    # `mvp-v0.1` Section 5: "One matching candidate is still `ambiguous`."
+    # Without this case every `ambiguous` envelope carries two scopes, and a
+    # screen saying "this does not resolve to a single snapshot" while listing
+    # exactly one passes every other assertion in the set (`FX-113`, `DX-011`).
+    client = _client(_database({}, candidates=(candidate_row(BASE),)))
+    built["fact_ambiguous_one_scope"] = client.post(
+        "/v1/query", json={"route": "message_facts", "arguments": OPEN_SNAPSHOT}
+    ).text
+
+    # Section 5 again: zero matching candidates is `coverage_gap`, not
+    # `ambiguous`. No envelope reached this status before, so the sentence the
+    # page shows for it was asserted by nothing.
+    client = _client(_database({}, candidates=()))
+    built["fact_coverage_gap"] = client.post(
+        "/v1/query", json={"route": "message_facts", "arguments": OPEN_SNAPSHOT}
+    ).text
+
+    # `entity-discovery-v0.1` Section 5 `unsupported`: an `entity_kind`
+    # outside `message` and `signal` (`DX-014`). The only negative discovery
+    # outcome that is **not** `not_found` and still binds a `snapshot_label`,
+    # which is what makes the assertion "no widening is offered on any other
+    # status" run at all. Without it that test is green whether or not the
+    # rule holds -- the failure shape #101 and #182 are about.
+    client = _client(_database({}))
+    built["discovery_unsupported"] = client.post(
+        "/v1/discover", json={"arguments": MESSAGE | {"entity_kind": "SAMPLE_KIND_OTHER"}}
+    ).text
+
     # Section 4.5: a refusal, which obligation 5 forbids showing as a result.
     client = _client(_database({}))
     built["refusal"] = client.post("/v1/query", json={"route": "x", "arguments": {}, "y": "z"}).text

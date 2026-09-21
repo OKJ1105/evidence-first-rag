@@ -358,17 +358,29 @@ export function scopeChoicesOf(result) {
     return values.size > 1;
   });
 
+  // The dimensions the request did not bind. `mvp-v0.1` Section 4.2 answers an
+  // unbound one with the candidate snapshots, which is why this result exists.
+  const bound = result?.evidence_bundle?.bound_parameters ?? {};
+  const unbound = SCOPE_DIMENSIONS.filter(
+    (name) => typeof bound?.[name] !== "string" || bound[name] === "",
+  );
+
   return {
     differing,
+    unbound,
     scopes: listed.map((scope) => ({
       fields: entries(scope).map((field) => ({ ...field, differs: differing.includes(field.key) })),
       // What a person's act on this row writes into the discovery form: the
-      // dimensions that differ, and only those. The rest are what they already
-      // typed, and rewriting those would be the page editing a field nobody
-      // asked it to touch. A non-string or empty value fills nothing -- the
-      // owner's reading on #195 permits filling a value the runtime returned,
-      // and `null` is not one.
-      fill: differing
+      // dimensions **this request left unbound**, which is why the scope did
+      // not resolve. Not the differing ones, which was the first version and
+      // which offers nothing at all on a single-scope `ambiguous` -- there
+      // nothing differs and `mvp-v0.1` Section 5 still calls it ambiguous
+      // (B2 on #196). The bound dimensions are what the person already typed,
+      // and rewriting those would be the page editing a field nobody asked it
+      // to touch. A non-string or empty value fills nothing: the owner's
+      // reading on #195 permits filling a value the runtime returned, and
+      // `null` is not one.
+      fill: unbound
         .filter((name) => typeof scope?.[name] === "string" && scope[name] !== "")
         .map((name) => ({ name, value: scope[name] })),
     })),
@@ -376,54 +388,118 @@ export function scopeChoicesOf(result) {
 }
 
 /**
- * What a status means, as a fixed sentence (#195 item 2).
+ * What a status means, where the runtime wrote nothing (#195 item 2, as B1
+ * and B2 on #196 corrected it).
  *
- * Obligation 5 renders a negative status "as itself" and Charter Section 3.4
- * makes it a result rather than an error. The page printed the status word
- * alone, which reads as an error and says nothing a person can act on.
+ * **The page writes a sentence only where `rendered` is null.** That is
+ * obligation 2 -- "the answer text is `rendered`, verbatim" -- and the first
+ * version of this function broke it: it printed a sentence of the page's own
+ * directly above the runtime's, for every `mvp-v0.1` result. Those two
+ * accounts then disagreed. The committed envelopes make the split exact:
+ * every `mvp-v0.1` result carries a Section 4.8 render, and every
+ * `entity-discovery-v0.1` result carries `rendered: null`. So the screen the
+ * owner met -- a bare `ambiguous` from `/v1/discover` -- was the only place a
+ * sentence was missing, and it is the only place one is added.
  *
- * These are **fixed labels**, which obligation 2 admits beside "a field name, a
- * heading, 'no reference was resolved'". Each says what this contract means by
- * that status; none states anything about the data. In particular `not_found`
- * does **not** say a match exists in some other scope: a `not_found` response
- * does not carry that, and obligation 7 forbids the page adding what the
- * response does not contain.
+ * What is left is therefore `entity-discovery-v0.1`'s vocabulary alone, and
+ * each sentence is that contract's Section 5 condition for its status and
+ * nothing more:
  *
- * **Three statuses are deliberately absent from the map.** `success` and
- * `resolved` carry `rendered`, which obligation 2 makes the answer verbatim;
- * a sentence of the page's own beside it would be prose stating a fact. And
- * `candidates` already has a sentence this contract supplies -- obligation 3
- * shows the list "under the `limitations` entry that says no reference was
- * resolved", which `candidatesNotice` returns from the result's own words. A
- * second sentence written here would sit beside that one, saying the same
- * thing in the page's voice, which is the substitution obligation 3 exists to
- * prevent. The test below found this; it was not reasoned out first.
+ * - `not_found` there really is about the registry -- "no approved entity
+ *   matches the term at any tier" -- which is what made the same word wrong
+ *   on an `mvp-v0.1` fact route, where `not_found` means no row matched the
+ *   lookup key and no registry was consulted at all.
+ * - `ambiguous` says the scope is under-specified and **not** that it names
+ *   more than one snapshot. `mvp-v0.1` Section 5: "One matching candidate is
+ *   still `ambiguous`", so a sentence claiming two would be false on
+ *   `FX-113` and `DX-011`.
+ * - `coverage_gap` asserts **no cause**. Section 5 makes it coverage that is
+ *   absent *or cannot be established*, and naming one of the two states a
+ *   thing the response does not.
+ *
+ * `candidates` and `resolved` are absent for the same reason as before: the
+ * first carries the `no_reference_resolved` limitation obligation 3 shows the
+ * list under, and the second carries its tier and matched text.
  */
-const STATUS_SENTENCE = new Map([
-  ["needs_entity_discovery", "The request named no canonical entity reference, so nothing was looked up."],
-  ["ambiguous", "The scope named does not resolve to a single snapshot. The ones it does resolve to are listed below; nothing was looked up in any of them."],
-  ["not_found", "Nothing in the approved registry matched this request within the scope it was searched in."],
-  ["coverage_gap", "The request named a scope outside the loaded source snapshot, so nothing was looked up there."],
-  ["unsupported", "No approved contract can express this request, so nothing was looked up."],
-  ["invalid_request", "The request did not satisfy the contract it named, so nothing was looked up."],
+const SENTENCE = new Map([
+  [
+    "not_found",
+    "The scope resolved to one snapshot within approved coverage, and no approved entity in it matched this term at any tier.",
+  ],
+  [
+    "ambiguous",
+    "The source scope is missing or under-specified, so no discovery template ran. The candidate scopes are listed below.",
+  ],
+  [
+    "coverage_gap",
+    "The approved data scope does not contain, or cannot be established to contain, the coverage this request needs.",
+  ],
+  [
+    "invalid_request",
+    "The request did not satisfy this contract's validation. No fact template ran.",
+  ],
+  [
+    "unsupported",
+    "This contract cannot represent the request at the producing layer, which the trace records.",
+  ],
 ]);
 
 /**
- * The sentence for this result's status, and what the request was bound with.
+ * The one scope dimension a person may clear to search more broadly.
  *
- * `searched` is the result's own `bound_parameters`, surfaced beside the
- * sentence rather than left inside the disclosure with the rest of the bundle.
- * That is deliberate duplication: for a negative result the first question is
- * what was actually searched for, and obligation 4's rule that the discovery
- * `term` carries the person's **whole request text** makes the answer
- * surprising the first time it is seen. Nothing is added here -- it is the
- * bundle's own mapping, shown twice.
+ * Only this one. The other three are what make a scope resolve at all, and
+ * `mvp-v0.1` Section 4.2 refuses a request that omits them; clearing
+ * `snapshot_label` reaches `ambiguous` or `coverage_gap`, which are results
+ * with their evidence and a listed choice.
  */
-export function statusNotice(result) {
+const WIDENABLE = "snapshot_label";
+
+/**
+ * The sentence for this envelope's status, what the request was bound with,
+ * and the one field a person may clear to search again.
+ *
+ * `searched` is the result's own `bound_parameters`, beside the sentence
+ * rather than inside the disclosure with the rest of the bundle. Deliberate
+ * duplication: for a negative result the first question is what was actually
+ * searched for, and obligation 4 puts the person's **whole request text** in
+ * the discovery `term`, which is surprising the first time it is seen.
+ *
+ * `widen` is #195 item 2's other half, which the first version of this slice
+ * left out (B3 on #196). It names `snapshot_label` when this request bound
+ * one, and **says nothing about what clearing it would find** -- a
+ * `not_found` response does not establish that anything exists in another
+ * snapshot, and obligation 7 forbids the page adding what the response does
+ * not contain. It is an act the person may take, not a suggestion that it
+ * will succeed.
+ */
+export function statusNotice(envelope) {
+  // Obligation 2. Where the runtime wrote the answer, that is the answer.
+  if (typeof envelope?.rendered === "string") return null;
+  const result = envelope?.result ?? null;
   const status = result?.status ?? null;
-  const sentence = STATUS_SENTENCE.get(status);
+  const sentence = SENTENCE.get(status);
   if (sentence === undefined) return null;
-  return { status, sentence, searched: entries(result?.evidence_bundle?.bound_parameters) };
+  const bound = result?.evidence_bundle?.bound_parameters ?? null;
+  // The rule is the bound value, not the status. A status test was here and is
+  // gone: `not_found` is the only negative outcome that binds a
+  // `snapshot_label` at all -- binding happens after the scope resolves, and
+  // `ambiguous` and `coverage_gap` bind it as null by definition because it is
+  // the dimension the request left open, while `invalid_request` and
+  // `unsupported` are refused before any binding. So the status test was a
+  // branch no response could take either way, and a mutation removing it
+  // changed no output (M19, which survived and is why this is written down).
+  // An untested branch is worse than a rule stated once.
+  const widenable =
+    bound !== null &&
+    typeof bound === "object" &&
+    typeof bound[WIDENABLE] === "string" &&
+    bound[WIDENABLE] !== "";
+  return {
+    status,
+    sentence,
+    searched: entries(bound),
+    widen: widenable ? [{ name: WIDENABLE, value: bound[WIDENABLE] }] : [],
+  };
 }
 
 /**
@@ -506,7 +582,7 @@ export function view(envelope, { requestText = "" } = {}) {
     proposal,
     contract: envelope?.contract ?? null,
     candidatesNotice: candidatesNotice(result),
-    statusNotice: statusNotice(result),
+    statusNotice: statusNotice(envelope),
     headline: headlineOf(result),
     scopeChoices: scopeChoicesOf(result),
     selection: candidates.length > 0 ? selectionForm({ candidates }) : null,

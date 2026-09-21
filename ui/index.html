@@ -235,6 +235,23 @@ function render(model) {
       panel.append(el("h3", "Searched with"));
       panel.append(fieldTable(model.statusNotice.searched));
     }
+    // #195 item 2's other half, added for B3 on #196. It clears one field and
+    // sends nothing, and says nothing about what a wider search would find --
+    // the response does not establish that.
+    for (const field of model.statusNotice.widen) {
+      const input = discoveryInput(field.name);
+      if (input === null) continue;
+      const wider = el("button", `Clear ${field.name} and search again`);
+      wider.addEventListener("click", () => {
+        input.value = "";
+        document.getElementById("discover-panel").scrollIntoView({ block: "nearest" });
+      });
+      const line = el("p");
+      line.style.marginTop = "10px";
+      line.append(wider);
+      panel.append(line);
+      panel.append(el("p", `Clears ${field.name} in the search above. You press Search.`, "note"));
+    }
   }
 
   // #195 item 3: the evidence that is not behind the disclosure. The
