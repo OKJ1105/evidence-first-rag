@@ -362,13 +362,25 @@ export function scopeChoicesOf(result) {
     differing,
     scopes: listed.map((scope) => ({
       fields: entries(scope).map((field) => ({ ...field, differs: differing.includes(field.key) })),
-      // What a person's act on this row writes into the discovery form: the
-      // dimensions that differ, and only those. The rest are what they already
-      // typed, and rewriting those would be the page editing a field nobody
-      // asked it to touch. A non-string or empty value fills nothing -- the
-      // owner's reading on #195 permits filling a value the runtime returned,
-      // and `null` is not one.
-      fill: differing
+      // What a person's act on this row writes into the discovery form.
+      //
+      // With more than one scope listed it is the dimensions that differ, and
+      // only those. The rest are what the person already typed, and rewriting
+      // those would be the page editing a field nobody asked it to touch.
+      //
+      // With **exactly one** scope listed it is the scope's own dimensions.
+      // `mvp-v0.1` `FX-113` and `entity-discovery-v0.1` `DX-011` register that
+      // shape -- a scope the request left open that exactly one snapshot
+      // matches is still `ambiguous`, because Section 4.2 forbids the runtime
+      // to default a dimension it did not receive -- and there no dimension
+      // differs, so the rule above would leave the row with nothing to offer
+      // in the one case where every value on it is unambiguous. Every value on
+      // a single listed scope is one the runtime returned, which is the
+      // condition the owner's reading on #195 turns on.
+      //
+      // A non-string or empty value fills nothing either way: that reading
+      // permits filling a value the runtime returned, and `null` is not one.
+      fill: (listed.length > 1 ? differing : SCOPE_DIMENSIONS)
         .filter((name) => typeof scope?.[name] === "string" && scope[name] !== "")
         .map((name) => ({ name, value: scope[name] })),
     })),
@@ -383,11 +395,28 @@ export function scopeChoicesOf(result) {
  * alone, which reads as an error and says nothing a person can act on.
  *
  * These are **fixed labels**, which obligation 2 admits beside "a field name, a
- * heading, 'no reference was resolved'". Each says what this contract means by
- * that status; none states anything about the data. In particular `not_found`
- * does **not** say a match exists in some other scope: a `not_found` response
- * does not carry that, and obligation 7 forbids the page adding what the
- * response does not contain.
+ * heading, 'no reference was resolved'". Each says what the contract that
+ * produced the result means by that status, and nothing else; none states
+ * anything about the data. In particular `not_found` does **not** say a match
+ * exists in some other scope: a `not_found` response does not carry that, and
+ * obligation 7 forbids the page adding what the response does not contain.
+ *
+ * **One status means a different thing in each vocabulary, so the map is keyed
+ * by the contract first.** `mvp-v0.1` Section 5 defines `not_found` as a
+ * resolved, covered snapshot in which no row matched the **lookup key**;
+ * `entity-discovery-v0.1` Section 5 defines it as one in which no approved
+ * entity matched the **term** at any tier. A single sentence covering both has
+ * to name a source for one of them that the other never consulted -- and
+ * naming the registry on a fact route is exactly the inference the committed
+ * `not_in_registry` limitation warns against ("Absence from the approved
+ * registry is not absence from the data"). `STATUS_SENTENCE` is the fallback
+ * for a contract identifier this page does not recognise, and it names no
+ * source at all.
+ *
+ * **`coverage_gap` asserts no cause.** Both Section 5s define it as coverage
+ * the approved data scope does not contain *or cannot be established to
+ * contain*, and a sentence naming the first branch states something the
+ * response does not carry.
  *
  * **Three statuses are deliberately absent from the map.** `success` and
  * `resolved` carry `rendered`, which obligation 2 makes the answer verbatim;
@@ -401,12 +430,40 @@ export function scopeChoicesOf(result) {
  */
 const STATUS_SENTENCE = new Map([
   ["needs_entity_discovery", "The request named no canonical entity reference, so nothing was looked up."],
-  ["ambiguous", "The scope named does not resolve to a single snapshot. The ones it does resolve to are listed below; nothing was looked up in any of them."],
-  ["not_found", "Nothing in the approved registry matched this request within the scope it was searched in."],
-  ["coverage_gap", "The request named a scope outside the loaded source snapshot, so nothing was looked up there."],
+  ["ambiguous", "The request did not name one source scope, so nothing was looked up."],
+  ["not_found", "The scope resolved to a single snapshot within approved coverage, and nothing in it matched what was looked up."],
+  ["coverage_gap", "The coverage this request needs is absent from the approved data scope, or could not be established there, so nothing was looked up."],
   ["unsupported", "No approved contract can express this request, so nothing was looked up."],
   ["invalid_request", "The request did not satisfy the contract it named, so nothing was looked up."],
 ]);
+
+/**
+ * Where the two vocabularies differ, keyed by the contract that produced the
+ * result. A contract absent here falls back to `STATUS_SENTENCE`.
+ */
+const CONTRACT_STATUS_SENTENCE = new Map([
+  [
+    "mvp-v0.1",
+    new Map([
+      ["not_found", "The scope resolved to a single snapshot within approved coverage, and no row in it matched the lookup key."],
+    ]),
+  ],
+  [
+    "entity-discovery-v0.1",
+    new Map([
+      ["not_found", "The scope resolved to a single snapshot within approved coverage, and no entry in the approved registry matched the term at any tier."],
+    ]),
+  ],
+]);
+
+/**
+ * The clause `ambiguous` gains **only when there is something below to read**.
+ *
+ * A sentence pointing at a list the page did not draw is a false statement
+ * about the page, and `scopeChoicesOf` returns null for an `ambiguous` result
+ * that carries neither `candidate_scopes` nor `rows`.
+ */
+const SCOPES_BELOW = "The scopes it could name are listed below.";
 
 /**
  * The sentence for this result's status, and what the request was bound with.
@@ -421,9 +478,43 @@ const STATUS_SENTENCE = new Map([
  */
 export function statusNotice(result) {
   const status = result?.status ?? null;
-  const sentence = STATUS_SENTENCE.get(status);
-  if (sentence === undefined) return null;
-  return { status, sentence, searched: entries(result?.evidence_bundle?.bound_parameters) };
+  const contract = result?.evidence_bundle?.contract_identifier ?? null;
+  const base = CONTRACT_STATUS_SENTENCE.get(contract)?.get(status) ?? STATUS_SENTENCE.get(status);
+  if (base === undefined) return null;
+  const listsScopes = status === "ambiguous" && scopeChoicesOf(result) !== null;
+  return {
+    status,
+    sentence: listsScopes ? `${base} ${SCOPES_BELOW}` : base,
+    searched: entries(result?.evidence_bundle?.bound_parameters),
+  };
+}
+
+/**
+ * The one next action a `not_found` carries (#195 item 2).
+ *
+ * Item 2 registers two things and the sentence above is only the first of
+ * them: a `not_found` screen also offers "one affordance -- clear
+ * `snapshot_label` and search again". This is that affordance as a value, so
+ * `ui/index.html` draws it and decides nothing about when it exists.
+ *
+ * **It is an offer to widen the search, and never a claim that widening will
+ * find anything.** A `not_found` response establishes nothing about any scope
+ * other than the one it resolved, so the returned value names the field to
+ * clear and the value being cleared -- both of which the response carries --
+ * and says nothing about what another snapshot holds. Obligation 5's "does not
+ * retry, rephrase, or discover on the person's behalf" is why it clears a
+ * field and stops: the person presses Search.
+ *
+ * `null` where the bound parameters name no snapshot, because there is then no
+ * scope value to drop and a button that changed nothing would be an offer of a
+ * next step that is not one.
+ */
+export function wideningOf(result) {
+  if (result?.status !== "not_found") return null;
+  const bound = result?.evidence_bundle?.bound_parameters;
+  const value = bound === null || typeof bound !== "object" ? undefined : bound.snapshot_label;
+  if (typeof value !== "string" || value === "") return null;
+  return { clear: ["snapshot_label"], value };
 }
 
 /**
@@ -507,6 +598,7 @@ export function view(envelope, { requestText = "" } = {}) {
     contract: envelope?.contract ?? null,
     candidatesNotice: candidatesNotice(result),
     statusNotice: statusNotice(result),
+    widening: wideningOf(result),
     headline: headlineOf(result),
     scopeChoices: scopeChoicesOf(result),
     selection: candidates.length > 0 ? selectionForm({ candidates }) : null,

@@ -35,6 +35,7 @@ import {
   view,
   unreachedView,
   viewFor,
+  wideningOf,
 } from "./view.mjs";
 
 // Outside `ui/`, because everything in here is served to a browser and a test
@@ -489,6 +490,26 @@ describe("obligation 7 — it adds no value the response does not contain", () =
   });
 });
 
+/**
+ * The single-scope `ambiguous` shape, derived from the committed two-scope one.
+ *
+ * `mvp-v0.1` `FX-113` and `entity-discovery-v0.1` `DX-011` register it: a scope
+ * dimension the request left open is `ambiguous` even where exactly one
+ * snapshot matches, because Section 4.2 forbids the runtime to default a
+ * dimension it did not receive. No committed envelope reaches that outcome and
+ * this slice may not add one — #195's scope fence is `ui/` only, and
+ * `tests/ui_envelopes.json` is built by `tests/test_ui_envelopes.py` from the
+ * real surface. Truncating the real list is the nearest honest substitute: it
+ * is a shape the surface produced, one row shorter, rather than a second copy
+ * of the wire format written here.
+ */
+function oneScopeAmbiguous(name) {
+  const result = envelopes[name].result;
+  return "candidate_scopes" in result
+    ? { ...result, candidate_scopes: result.candidate_scopes.slice(0, 1) }
+    : { ...result, rows: result.rows.slice(0, 1) };
+}
+
 /** Every status word the two vocabularies use, as the fixture carries them. */
 function statusesInFixture() {
   return Object.values(envelopes)
@@ -565,6 +586,41 @@ describe("#195 item 1 — an `ambiguous` result lists the scopes it resolved to"
     }
   });
 
+  it("lists the one scope an `FX-113` / `DX-011` ambiguity resolves to", () => {
+    // The case the two-scope fixtures cannot reach. A list of one has no
+    // dimension with more than one value, so nothing differs and nothing is
+    // badged — and the row is still listed, because the scope is still the
+    // one thing the person has to name.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      const choices = scopeChoicesOf(oneScopeAmbiguous(name));
+      assert.ok(choices, `${name}: a single-scope ambiguity lists nothing at all`);
+      assert.equal(choices.scopes.length, 1, name);
+      assert.deepEqual(choices.differing, [], name);
+      for (const field of choices.scopes[0].fields) {
+        assert.equal(field.differs, false, `${name} ${field.key}`);
+      }
+    }
+  });
+
+  it("offers a single listed scope's own dimensions to fill", () => {
+    // Filling only what differs would leave this row with nothing to offer —
+    // the affordance disappearing in the one case where every value on it is
+    // unambiguous and runtime-returned, which is the condition the owner's
+    // reading on #195 turns on.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      const scope = scopeChoicesOf(oneScopeAmbiguous(name)).scopes[0];
+      assert.deepEqual(
+        scope.fill.map((entry) => entry.name).sort(),
+        [...SCOPE_DIMENSIONS].sort(),
+        name,
+      );
+      // Each filled value is the row's own, never a value from elsewhere.
+      for (const entry of scope.fill) {
+        assert.equal(entry.value, scope.fields.find((f) => f.key === entry.name).value, name);
+      }
+    }
+  });
+
   it("lists nothing for a status that is not `ambiguous`", () => {
     // Without the guard, `fact_success`'s rows become a scope chooser on an
     // answered request -- a screen inviting a choice about a result that
@@ -612,6 +668,88 @@ describe("#195 item 2 — a status carries the fixed sentence that says what it 
     }
   });
 
+  it("names no source the result's own contract does not implicate", () => {
+    // A sentence that said "the approved registry" for a `mvp-v0.1` fact route
+    // would name something that route never consulted, and would invite the
+    // inference the committed `not_in_registry` limitation exists to refuse:
+    // "Absence from the approved registry is not absence from the data."
+    // Obligation 7 makes that a value the response does not contain.
+    const SOURCE_WORDS = new Map([
+      ["registry", "entity-discovery-v0.1"],
+      ["lookup key", "mvp-v0.1"],
+    ]);
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope.result);
+      if (notice === null) continue;
+      const contract = envelope.result.evidence_bundle.contract_identifier;
+      for (const [word, owner] of SOURCE_WORDS) {
+        if (!notice.sentence.includes(word)) continue;
+        assert.equal(contract, owner, `${name}: the sentence names the ${word}; ${contract} produced it`);
+      }
+    }
+  });
+
+  it("gives the two `not_found` meanings their own sentence", () => {
+    // `mvp-v0.1` Section 5: a resolved, covered snapshot in which no row
+    // matched the lookup key. `entity-discovery-v0.1` Section 5: one in which
+    // no approved entity matched the term at any tier. One sentence covering
+    // both is wrong for one of them.
+    const fact = statusNotice(envelopes.fact_not_found.result);
+    const discovery = statusNotice(envelopes.discovery_not_found.result);
+    assert.notEqual(fact.sentence, discovery.sentence);
+    assert.ok(fact.sentence.includes("lookup key"), fact.sentence);
+    assert.equal(fact.sentence.includes("registry"), false, fact.sentence);
+    assert.ok(discovery.sentence.includes("registry"), discovery.sentence);
+    // And the page does not contradict the runtime's own prose for the same
+    // result: `fact_not_found` carries `rendered`, printed on the same screen.
+    assert.match(envelopes.fact_not_found.rendered, /lookup key/);
+  });
+
+  it("asserts no cause for `coverage_gap`", () => {
+    // Both Section 5s define it as coverage the approved data scope does not
+    // contain **or cannot be established to contain**, so a sentence naming
+    // the first branch states what the response does not carry. No committed
+    // envelope reaches the status and this slice may not add one (#195's scope
+    // fence), so the map's own input is supplied here instead.
+    for (const contract of ["mvp-v0.1", "entity-discovery-v0.1"]) {
+      const notice = statusNotice({
+        status: "coverage_gap",
+        evidence_bundle: { contract_identifier: contract, bound_parameters: {} },
+      });
+      assert.ok(notice, `${contract}: coverage_gap has no sentence`);
+      assert.match(notice.sentence, /could not be established/);
+      assert.equal(notice.sentence.includes("outside"), false, notice.sentence);
+    }
+  });
+
+  it("claims no count and no dimension for `ambiguous`", () => {
+    // `FX-113` lists exactly one scope. A sentence saying the scope "does not
+    // resolve to a single snapshot" above a list of one states the opposite of
+    // what the screen shows, which is the Milestone 4 `G2` item.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      for (const result of [envelopes[name].result, oneScopeAmbiguous(name)]) {
+        const sentence = statusNotice(result).sentence;
+        for (const word of ["single", "two", "both", "one of", "the ones"]) {
+          assert.equal(sentence.includes(word), false, `${name}: "${word}" in ${sentence}`);
+        }
+        for (const dimension of SCOPE_DIMENSIONS) {
+          assert.equal(sentence.includes(dimension), false, `${name}: ${dimension}`);
+        }
+      }
+    }
+  });
+
+  it("points below only where there is a list below", () => {
+    // `scopeChoicesOf` returns null for an `ambiguous` result carrying neither
+    // `candidate_scopes` nor `rows`, and a sentence pointing at a list the page
+    // did not draw is a false statement about the page itself.
+    assert.match(statusNotice(envelopes.discovery_ambiguous.result).sentence, /listed below/);
+    const empty = { ...envelopes.discovery_ambiguous.result, candidate_scopes: [] };
+    assert.equal(scopeChoicesOf(empty), null);
+    assert.equal(statusNotice(empty).sentence.includes("listed below"), false);
+  });
+
   it("carries the bound parameters beside the sentence, unchanged", () => {
     // Duplication on purpose: for a negative result the first question is what
     // was searched for, and obligation 4 puts the person's whole request text
@@ -622,6 +760,58 @@ describe("#195 item 2 — a status carries the fixed sentence that says what it 
       Object.fromEntries(notice.searched.map((field) => [field.key, field.value])),
       result.evidence_bundle.bound_parameters,
     );
+  });
+});
+
+describe("#195 item 2 — a `not_found` offers the widening, and no dead end", () => {
+  it("names the snapshot field to clear, where the search was bound to one", () => {
+    // Item 2 registers two things: the sentence, and "one affordance — clear
+    // `snapshot_label` and search again". This is the second, as a value.
+    const widening = wideningOf(envelopes.discovery_not_found.result);
+    assert.ok(widening, "a not_found screen offers no next step at all");
+    assert.deepEqual(widening.clear, ["snapshot_label"]);
+    assert.equal(
+      widening.value,
+      envelopes.discovery_not_found.result.evidence_bundle.bound_parameters.snapshot_label,
+    );
+    // Both `not_found` vocabularies reach it, not only the discovery one.
+    assert.deepEqual(wideningOf(envelopes.fact_not_found.result).clear, ["snapshot_label"]);
+  });
+
+  it("offers nothing where the bound parameters name no snapshot", () => {
+    // There is then no scope value to drop, and a button that changed nothing
+    // would be an offer of a next step that is not one.
+    const result = envelopes.discovery_not_found.result;
+    const withBound = (bound) => ({
+      ...result,
+      evidence_bundle: { ...result.evidence_bundle, bound_parameters: bound },
+    });
+    const absent = { ...result.evidence_bundle.bound_parameters };
+    delete absent.snapshot_label;
+    assert.equal(wideningOf(withBound(absent)), null, "a widening with nothing to clear");
+    assert.equal(wideningOf(withBound({ ...absent, snapshot_label: null })), null, "null is not a value");
+    assert.equal(wideningOf(withBound({ ...absent, snapshot_label: "" })), null, "empty is not a value");
+  });
+
+  it("offers nothing on any status but `not_found`", () => {
+    // Obligation 5: it is what `not_found` means as a next step, not a control
+    // the page shows wherever a snapshot happens to be bound. An `ambiguous`
+    // has its scope rows and a `success` has an answer.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || envelope.result.status === "not_found") continue;
+      assert.equal(wideningOf(envelope.result), null, name);
+    }
+  });
+
+  it("says nothing about what another snapshot holds", () => {
+    // The sentence beside it may not gain a clause either: a match elsewhere
+    // is exactly what a `not_found` response does not establish.
+    const widening = wideningOf(envelopes.discovery_not_found.result);
+    assert.deepEqual(Object.keys(widening).sort(), ["clear", "value"]);
+    // And it reaches the page through the view model, not by the page
+    // deciding for itself when a next step exists.
+    assert.deepEqual(view(envelopes.discovery_not_found).widening, widening);
+    assert.equal(view(envelopes.fact_success).widening, null);
   });
 });
 

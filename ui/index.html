@@ -237,6 +237,28 @@ function render(model) {
     }
   }
 
+  // #195 item 2's other half: a `not_found` is a result with a next step, not
+  // a dead end. The step is to drop the snapshot the search was bound to and
+  // search again -- the page clears the field and stops there, because
+  // obligation 5 forbids it searching on the person's behalf. It says nothing
+  // about what another snapshot holds: a `not_found` response does not carry
+  // that. Offered only where the discovery form is on screen to clear, for the
+  // same reason as the scope rows below.
+  if (model.widening && model.widening.clear.every((name) => discoveryInput(name) !== null)) {
+    const widen = el(
+      "button",
+      `Clear ${model.widening.clear.join(", ")} (${model.widening.value}) in the search above`,
+    );
+    widen.addEventListener("click", () => {
+      for (const name of model.widening.clear) discoveryInput(name).value = "";
+      document.getElementById("discover-panel").scrollIntoView({ block: "nearest" });
+    });
+    const line = el("p");
+    line.append(widen);
+    panel.append(line);
+    panel.append(el("p", "Empties that field above. You press Search.", "note"));
+  }
+
   // #195 item 3: the evidence that is not behind the disclosure. The
   // disclosure below still carries all of it; this is a second view.
   if (model.headline) {
