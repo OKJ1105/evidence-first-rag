@@ -428,7 +428,7 @@ const SENTENCE = new Map([
   ],
   [
     "ambiguous",
-    "The source scope is missing or under-specified, so no discovery template ran. The candidate scopes are listed below.",
+    "The source scope is missing or under-specified, so no discovery template ran.",
   ],
   [
     "coverage_gap",
@@ -453,6 +453,18 @@ const SENTENCE = new Map([
  * with their evidence and a listed choice.
  */
 const WIDENABLE = "snapshot_label";
+
+/**
+ * The clause `ambiguous` gains **only when there is something below to read**.
+ *
+ * Adopted from the loop Writer's round-1 fix on #196, which found the defect
+ * this repairs: the sentence carried "the candidate scopes are listed below"
+ * unconditionally, and `scopeChoicesOf` returns `null` for an `ambiguous`
+ * result that lists none -- so the page pointed at a list that was not on the
+ * screen. A sentence naming a thing the reader cannot see is the same failure
+ * as one naming a value the response does not carry.
+ */
+const SCOPES_BELOW = "The candidate scopes are listed below.";
 
 /**
  * The sentence for this envelope's status, what the request was bound with,
@@ -494,9 +506,10 @@ export function statusNotice(envelope) {
     typeof bound === "object" &&
     typeof bound[WIDENABLE] === "string" &&
     bound[WIDENABLE] !== "";
+  const listsScopes = scopeChoicesOf(result) !== null;
   return {
     status,
-    sentence,
+    sentence: listsScopes ? `${sentence} ${SCOPES_BELOW}` : sentence,
     searched: entries(bound),
     widen: widenable ? [{ name: WIDENABLE, value: bound[WIDENABLE] }] : [],
   };

@@ -654,6 +654,23 @@ describe("#195 item 2 — a sentence only where the runtime wrote none", () => {
     }
   });
 
+  it("names a list below only when one is below", () => {
+    // The defect the loop Writer's round-1 fix found: the clause was
+    // unconditional, and `scopeChoicesOf` returns null for an `ambiguous`
+    // result that lists no scope -- so the sentence pointed at a list that
+    // was not on the screen. Asserted in both directions.
+    const listing = envelopes.discovery_ambiguous;
+    assert.ok(scopeChoicesOf(listing.result));
+    assert.ok(statusNotice(listing).sentence.includes("listed below"));
+
+    // The same envelope with its list removed, which is the one input no
+    // committed envelope carries. Derived from a real one rather than written,
+    // and used only to assert the guard, never as a wire shape.
+    const empty = { ...listing, result: { ...listing.result, candidate_scopes: [] } };
+    assert.equal(scopeChoicesOf(empty.result), null);
+    assert.equal(statusNotice(empty).sentence.includes("listed below"), false);
+  });
+
   it("asserts no cause for `coverage_gap`, which has two", () => {
     // Section 5: coverage the scope "does not contain, or cannot be
     // established to contain". Naming one states what the response does not.
