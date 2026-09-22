@@ -28,9 +28,23 @@ from evidence_first_rag.discovery import DiscoveryStatus
 from .discovery_support import discovery_row
 from .runtime_support import message_row, signal_row
 
+# Whether the `api` extra is installed at all, decided on `fastapi` alone.
+# The driver-free `repository-checks` job installs nothing, so this module has
+# to skip there; every other name below belongs to that same extra, so once
+# `fastapi` imports they are all expected to import too and are taken
+# unguarded. A missing `mcp` in an environment that has `fastapi` is then an
+# import error rather than a skip, which is the #101 rule: the job that
+# installs the extra cannot report these cases green without running them.
 try:
+    import fastapi  # noqa: F401
+
+    HAS_MCP = True
+except ImportError:  # pragma: no cover - exercised by the driver-free job
+    HAS_MCP = False
+
+if HAS_MCP:
     import anyio
-    import httpx2
+    import httpx
     import mcp.types as types
     from mcp import ClientSession
     from mcp.shared.exceptions import MCPError
@@ -70,10 +84,6 @@ try:
         fact_database,
         surface,
     )
-
-    HAS_MCP = True
-except ImportError:  # pragma: no cover - exercised by the driver-free job
-    HAS_MCP = False
 
 
 # Which tool a `/v1` path's fixture is issued through (Section 4.1's table).
@@ -648,8 +658,8 @@ class TheMountedTransport(SurfaceCase):
             from mcp.client.streamable_http import streamable_http_client
 
             async with app.router.lifespan_context(app):
-                transport = httpx2.ASGITransport(app=app)
-                async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as http:
+                transport = httpx.ASGITransport(app=app)
+                async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
                     async with streamable_http_client(f"http://testserver{PATH}", http_client=http) as streams:
                         async with ClientSession(streams[0], streams[1]) as session:
                             init = await session.initialize()
