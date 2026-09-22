@@ -78,7 +78,7 @@ It must not:
 - create a new route or contract at runtime;
 - judge conformance of its own output.
 
-An external model receives only the user request and the approved route, argument, and schema metadata required by the adapter contract. Database rows, fixture contents, and evidence bundles are not sent to an external model unless a separately reviewed ADR changes this boundary. [ADR-0004](adr/0004-mcp-surface-and-the-tool-result-boundary.md) changes it for the MCP surface: a tool result, evidence bundle included, is returned to the host model that called the tool, and the "no evidence, no answer" guarantee ends at that tool boundary.
+An external model receives only the user request and the approved route, argument, and schema metadata required by the adapter contract. Database rows, fixture contents, and evidence bundles are not sent to an external model unless a separately reviewed ADR changes this boundary. [ADR-0004](adr/0004-mcp-surface-and-the-tool-result-boundary.md) changes it for the MCP surface, while the approved data scope is the synthetic fixtures Section 11 requires: a tool result, evidence bundle included, is returned to the host model that called the tool; the "no evidence, no answer" guarantee ends at that tool boundary; and of the prohibitions above, "silently resolve ambiguous entities" binds this system's own models only — a selection relayed by a host is recorded as the caller's, never verified as a person's.
 
 ### 3.4 Fail closed
 
@@ -344,7 +344,7 @@ Every acceptance-gate item is either an automated assertion over registered inpu
 
 **Acceptance gate**
 
-- exported values are derived from the normalized runtime result;
+- exported values are derived from the normalized runtime result (closed with its deliverable by [ADR-0004](adr/0004-mcp-surface-and-the-tool-result-boundary.md); see the Milestone 4 acceptance record);
 - rendering does not add or alter facts;
 - representative workflows complete end to end with traceable failures.
 
