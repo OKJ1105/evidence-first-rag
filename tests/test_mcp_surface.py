@@ -28,15 +28,26 @@ from evidence_first_rag.discovery import DiscoveryStatus
 from .discovery_support import discovery_row
 from .runtime_support import message_row, signal_row
 
-# Whether the `api` extra is installed at all, decided on `fastapi` alone.
+# Whether the `api` extra is installed, decided on the two distributions that
+# name it: `fastapi`, and `mcp`, which joined the extra with this surface.
 # The driver-free `repository-checks` job installs nothing, so this module has
-# to skip there; every other name below belongs to that same extra, so once
-# `fastapi` imports they are all expected to import too and are taken
-# unguarded. A missing `mcp` in an environment that has `fastapi` is then an
-# import error rather than a skip, which is the #101 rule: the job that
-# installs the extra cannot report these cases green without running them.
+# to skip there. Every other name below is a *symbol inside* one of those two
+# distributions, and each is imported unguarded: an environment that has the
+# extra and cannot supply one of them has a renamed or moved SDK symbol, which
+# is an import error rather than a skip. That is the #101 rule — the job that
+# installs the extra cannot report these cases green without running them —
+# and it is what a wider guard would hide.
+#
+# **Both distributions are in the guard, not `fastapi` alone.** "`fastapi`
+# present, `mcp` absent" is the extra as it stood before this slice, so it is
+# reachable in any checkout that installed `.[api]` earlier; erroring there
+# reports a stale virtualenv as a defect in this module. A skip is the honest
+# answer, because the extra genuinely is not installed — and it costs nothing,
+# since the job that carries the acceptance evidence (`adapter-checks`)
+# installs the extra fresh and therefore always has both.
 try:
     import fastapi  # noqa: F401
+    import mcp  # noqa: F401
 
     HAS_MCP = True
 except ImportError:  # pragma: no cover - exercised by the driver-free job
@@ -90,6 +101,10 @@ if HAS_MCP:
 TOOL_FOR = {"/v1/query": "query_facts", "/v1/discover": "discover_entity", "/v1/select": "select_candidate"}
 
 CONTRACT = pathlib.Path(__file__).resolve().parents[1] / "docs" / "contracts" / "mcp-v0.1.md"
+
+# The loopback the Section 4.7 stack publishes, which Section 4.5's allowlist
+# admits. A client reaching the path at any other name is refused.
+LOOPBACK = "127.0.0.1:8000"
 
 
 # --------------------------------------------------------------------------
@@ -479,6 +494,24 @@ class TheRefusals(SurfaceCase):
         self.assert_refusal(outcome, "runtime_fault")
         self.assertNotIn("SAMPLE_UNEXPECTED_CONDITION", outcome.content[0].text)
 
+    def test_a_failure_building_the_envelope_is_a_refusal_and_not_a_crash(self):
+        """Section 4.3 admits no outcome outside its table, and building the
+        envelope is inside the surface. An entry point returning a shape
+        `as_json` does not know would otherwise leave as a bare protocol error
+        carrying neither a result nor a refusal -- the one response shape this
+        contract has no row for."""
+
+        class NotAResult:
+            fixture_provenance = ()
+
+            def execute(self, request):
+                return object()
+
+        _, services = surface(fact_database())
+        services = type(services)(runtime=NotAResult(), discovery=services.discovery, selection=services.selection)
+        outcome = tool_call(services, "query_facts", {"route": "message_facts", "arguments": FACT_MESSAGE})
+        self.assert_refusal(outcome, "runtime_fault")
+
     def test_the_same_fault_is_observed_identically_by_both_surfaces(self):
         """Section 4.5: one process, one `Services`. A fault injected into it
         is seen by `/v1` and by the tool as the same kind."""
@@ -647,28 +680,63 @@ class Determinism(SurfaceCase):
 class TheMountedTransport(SurfaceCase):
     """Streamable HTTP at `PATH`, in the `api-v0.1` app, over its lifespan."""
 
-    def test_the_path_answers_over_http_in_the_same_app_as_v1(self):
-        db = fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)})
-        client, services = surface(db)
-        app = client.app
-        body = {"route": "message_facts", "arguments": FACT_MESSAGE}
-        expected = envelope_of(client.post("/v1/query", json=body))
+    def over_http(self, app, host, call):
+        """`call(session)` against `PATH` on `app`, as a client reaching it at
+        `host` -- which is what the Section 4.5 allowlist is checked against."""
 
-        async def over_http():
+        async def run():
             from mcp.client.streamable_http import streamable_http_client
 
             async with app.router.lifespan_context(app):
                 transport = httpx.ASGITransport(app=app)
-                async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
-                    async with streamable_http_client(f"http://testserver{PATH}", http_client=http) as streams:
+                async with httpx.AsyncClient(transport=transport, base_url=f"http://{host}") as http:
+                    async with streamable_http_client(f"http://{host}{PATH}", http_client=http) as streams:
                         async with ClientSession(streams[0], streams[1]) as session:
-                            init = await session.initialize()
-                            outcome = await session.call_tool("query_facts", body)
-                            return init, outcome
+                            return await call(session)
 
-        init, outcome = anyio.run(over_http)
+        return anyio.run(run)
+
+    def test_the_path_answers_over_http_in_the_same_app_as_v1(self):
+        db = fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)})
+        client, services = surface(db)
+        body = {"route": "message_facts", "arguments": FACT_MESSAGE}
+        expected = envelope_of(client.post("/v1/query", json=body))
+
+        async def initialize_and_call(session):
+            init = await session.initialize()
+            return init, await session.call_tool("query_facts", body)
+
+        init, outcome = self.over_http(client.app, LOOPBACK, initialize_and_call)
         self.assertEqual(init.server_info.name, CONTRACT_IDENTIFIER)
         self.assertEqual(self.assert_result(outcome, result_type="fact"), expected)
+
+    def test_a_host_outside_the_allowlist_is_refused(self):
+        """Section 4.5: `Origin` and `Host` are validated, so a page a person
+        visits cannot POST to this path on their own loopback and read what the
+        tools return. Not among the things Section 9 defers to Milestone 5."""
+        client, _ = surface(fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)}))
+
+        async def initialize(session):
+            return await session.initialize()
+
+        with self.assertRaises(BaseException):
+            self.over_http(client.app, "evil.example", initialize)
+
+    def test_the_environment_widens_the_allowlist_and_nothing_else(self):
+        from evidence_first_rag.mcp.surface import LOOPBACK_HOSTS, transport_security
+
+        default = transport_security({})
+        self.assertTrue(default.enable_dns_rebinding_protection)
+        self.assertEqual(tuple(default.allowed_hosts), LOOPBACK_HOSTS)
+
+        widened = transport_security(
+            {"EFR_MCP_ALLOWED_HOSTS": "sample.example, sample2.example", "EFR_MCP_ALLOWED_ORIGINS": "https://sample.example"}
+        )
+        self.assertEqual(tuple(widened.allowed_hosts)[-2:], ("sample.example", "sample2.example"))
+        self.assertEqual(tuple(widened.allowed_origins)[-1], "https://sample.example")
+        # Widening never turns the protection off, and never drops loopback.
+        self.assertTrue(widened.enable_dns_rebinding_protection)
+        self.assertEqual(tuple(widened.allowed_hosts)[: len(LOOPBACK_HOSTS)], LOOPBACK_HOSTS)
 
     def test_the_entry_point_runs_off_the_event_loop(self):
         """Section 4.5: every entry-point call opens a connection and runs
@@ -695,6 +763,33 @@ class TheMountedTransport(SurfaceCase):
         services = type(services)(runtime=Observing(), discovery=services.discovery, selection=services.selection)
         tool_call(services, "query_facts", {"route": "message_facts", "arguments": FACT_MESSAGE})
         self.assertEqual(seen, ["worker thread"])
+
+    def test_a_broken_surface_module_is_not_swallowed(self):
+        """The `api-v0.1` guard is on the `mcp` **package**, not on this
+        repository's module over it. An SDK that is installed but incompatible
+        raises from that second import, and it propagates: a deployment that
+        quietly lost its tools looks exactly like one that never had them, and
+        nothing in CI would tell the two apart."""
+        import sys
+
+        from evidence_first_rag.api.app import _mcp
+
+        saved = sys.modules.get("evidence_first_rag.mcp.surface")
+        package = sys.modules["evidence_first_rag.mcp"]
+        attribute = getattr(package, "surface", None)
+        sys.modules["evidence_first_rag.mcp.surface"] = None
+        if attribute is not None:
+            delattr(package, "surface")
+        try:
+            with self.assertRaises(ImportError):
+                _mcp(surface(fact_database())[1])
+        finally:
+            if saved is not None:
+                sys.modules["evidence_first_rag.mcp.surface"] = saved
+            else:  # pragma: no cover - the module is imported by this file
+                del sys.modules["evidence_first_rag.mcp.surface"]
+            if attribute is not None:
+                setattr(package, "surface", attribute)
 
     def test_the_path_is_not_under_v1(self):
         self.assertFalse(PATH.startswith("/v1"))

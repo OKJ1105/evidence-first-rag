@@ -115,6 +115,16 @@ and `/v1/ask` — the one that asks a model to propose a route — refuses with
 the contract's own arrangement, not a degraded mode: the facts come from
 registered SQL templates, and the model only ever proposes which one to run.
 
+**The same stack serves the MCP tool surface at `/mcp`** — `mcp-v0.1`
+Section 4.5, Streamable HTTP, beside `/v1` in the same process over the same
+runtime. Three tools (`query_facts`, `discover_entity`, `select_candidate`)
+return the same envelope the corresponding `/v1` route returns, evidence
+included. A host that runs the loop — a client that takes a remote MCP server's
+URL, or an application calling the Messages API with `mcp_servers` set — is
+what makes the tools conversational; this repository owns no such loop, and
+[ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md) records
+where the "no evidence, no answer" guarantee ends because of it.
+
 The passwords in `compose.yaml` are defaults for a stack on your own loopback
 holding `SAMPLE_*` fixtures. Set `POSTGRES_PASSWORD`,
 `MVP_PROVISIONING_PASSWORD` and `MVP_RUNTIME_PASSWORD` to override them.

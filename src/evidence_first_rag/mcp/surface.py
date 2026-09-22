@@ -37,12 +37,14 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import os
 
 import anyio
 import mcp.types as types
 import pydantic
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.exceptions import MCPError
 
 from ..api.app import (
@@ -81,7 +83,7 @@ REFUSALS = ("malformed_request", "database_unavailable", "runtime_fault")
 # --------------------------------------------------------------------------
 
 # These are the instructions ADR-0004 items 2 and 4 pass to the host, and the
-# contract fixes them byte for byte so that `MC-020` can read them. They are
+# contract fixes them byte for byte so that `MC-025` can read them. They are
 # text the host reads and this surface cannot enforce (Section 3.3): an
 # obligation on the host, in the host's terms, and not a check.
 DESCRIPTIONS = {
@@ -176,7 +178,7 @@ _SCHEMAS = {
 
 _BODIES = {"query_facts": QueryBody, "discover_entity": DiscoverBody, "select_candidate": SelectBody}
 
-# In Section 4.1's order, which `MC-020` asserts `tools/list` returns.
+# In Section 4.1's order, which `MC-025` asserts `tools/list` returns.
 TOOLS = tuple(
     types.Tool(name=name, description=DESCRIPTIONS[name], input_schema=_SCHEMAS[name])
     for name in ("query_facts", "discover_entity", "select_candidate")
@@ -204,9 +206,15 @@ def tool_result(result) -> types.CallToolResult:
     on an `entity-discovery-v0.1` result the JSON alone, because that contract
     defines no renderer and this surface does not invent one.
 
-    The branch is on the result's type and not on the tool, because a
-    dispatched selection is an `mvp-v0.1` result reached through the selection
-    tool, and `MC-022` asserts the rule by contract identifier for that reason.
+    **The branch is the key set Section 4.2 names**, and a Python type is how
+    this module reads it: `as_json` dispatches on the same type, emitting
+    `rows` for one and `resolved`/`candidates`/`candidate_scopes` for the
+    other, so `isinstance(result, Result)` and "carries `rows`" are the same
+    question asked twice. Not the tool, because a dispatched selection is an
+    `mvp-v0.1` result reached through the selection tool; and not a contract
+    identifier inside the bundle, which Section 4.2 forbids branching on
+    because a discovery bundle carries two. `MC-022` asserts it by the key
+    set, over `MC-006` among others.
     """
     document = envelope(result)
     blocks = []
@@ -277,7 +285,13 @@ def call(services: Services, name: str, arguments) -> types.CallToolResult:
     except pydantic.ValidationError:
         return refusal("malformed_request", MALFORMED_DETAIL)
     try:
-        result = _dispatch(services, name, body)
+        # `tool_result` is **inside** the try, not after it. Building the
+        # envelope and serializing it can fail -- a result shape `as_json` does
+        # not know, a value `dumps` cannot write -- and Section 4.3 admits no
+        # outcome outside its table. Left outside, such a failure would leave
+        # the surface as a bare protocol error carrying neither a result nor a
+        # refusal, which is the one response shape this contract has no row for.
+        return tool_result(_dispatch(services, name, body))
     except ConnectionUnavailable:
         return refusal("database_unavailable", DATABASE_DETAIL)
     except Fault:
@@ -288,7 +302,6 @@ def call(services: Services, name: str, arguments) -> types.CallToolResult:
         # `runtime/connection.py` does not wrap, or a defect here, is still a
         # refusal with a fixed sentence and never a result.
         return refusal("runtime_fault", RUNTIME_FAULT_DETAIL)
-    return tool_result(result)
 
 
 def create_server(services: Services) -> Server:
@@ -347,7 +360,7 @@ class Mounted:
             yield
 
 
-def mount(services: Services) -> Mounted:
+def mount(services: Services, environment=None) -> Mounted:
     """Streamable HTTP, stateless, JSON responses (Section 4.5).
 
     Stateless because the surface holds nothing between calls: a
@@ -356,10 +369,54 @@ def mount(services: Services) -> Mounted:
     rather than an event stream because every tool call is one request and one
     result, and a stream would carry nothing a response does not.
 
-    No transport-security settings are passed: authentication, TLS and the
-    hosts a deployment answers for are Milestone 5's, for `/v1` and for this
-    path identically (Section 9).
+    **`Origin` and `Host` are validated, and that is not one of the things
+    Section 9 defers.** Section 9 defers authentication, authorization, rate
+    limiting, TLS and metrics to Milestone 5; DNS-rebinding protection is none
+    of those, and without it any web page a person visits could POST to this
+    path on their own loopback and read whatever the tools return. The SDK
+    turns the same protection on by default for a server it binds to
+    loopback; this manager is constructed directly, so it has to be passed,
+    and the allowlist is the loopback the Section 4.7 stack publishes.
+
+    `EFR_MCP_ALLOWED_HOSTS` and `EFR_MCP_ALLOWED_ORIGINS` widen it, as
+    comma-separated lists, because a deployment answers for a name this
+    module cannot know. Reading them is not deployment configuration this
+    contract fixes -- Section 9 leaves that to Milestone 5 -- it is the one
+    hook that keeps the safe default from being the reason a deployment turns
+    the protection off wholesale.
     """
     server = create_server(services)
-    manager = StreamableHTTPSessionManager(app=server, stateless=True, json_response=True)
+    manager = StreamableHTTPSessionManager(
+        app=server,
+        stateless=True,
+        json_response=True,
+        security_settings=transport_security(environment),
+    )
     return Mounted(server=server, manager=manager)
+
+
+# The loopback the `api-v0.1` Section 4.7 stack publishes, with the ports a
+# browser may leave off or vary.
+LOOPBACK_HOSTS = ("127.0.0.1:*", "localhost:*", "[::1]:*", "127.0.0.1", "localhost")
+LOOPBACK_ORIGINS = (
+    "http://127.0.0.1:*",
+    "http://localhost:*",
+    "http://[::1]:*",
+    "http://127.0.0.1",
+    "http://localhost",
+)
+
+
+def transport_security(environment=None) -> TransportSecuritySettings:
+    """Section 4.5's `Origin` and `Host` allowlist, loopback plus the
+    environment's additions."""
+    environment = os.environ if environment is None else environment
+
+    def extra(name):
+        return tuple(part.strip() for part in environment.get(name, "").split(",") if part.strip())
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=list(LOOPBACK_HOSTS + extra("EFR_MCP_ALLOWED_HOSTS")),
+        allowed_origins=list(LOOPBACK_ORIGINS + extra("EFR_MCP_ALLOWED_ORIGINS")),
+    )
