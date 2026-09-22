@@ -345,6 +345,122 @@
       "status": "ambiguous"
     }
   },
+  "discovery_coverage_gap": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_NONE"
+        },
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "",
+        "method_version": "",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "registry_built_at": "",
+        "registry_digest": "",
+        "resolved_scope": null,
+        "route": "entity_discovery",
+        "row_count": 0,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "template_version": "1"
+      },
+      "limitations": [
+        {
+          "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_POWERTRAIN, snapshot_label=SAMPLE_SNAP_NONE, so the coverage this request needs could not be established (Sections 4.3 and 5).",
+          "kind": "coverage_not_established"
+        }
+      ],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": null,
+        "resolved_scope": null
+      },
+      "status": "coverage_gap"
+    }
+  },
+  "discovery_invalid_request": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {},
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "",
+        "method_version": "",
+        "read_only_safeguards": {
+          "connection_opened": false,
+          "read_only_transaction": false,
+          "role_name": ""
+        },
+        "registry_built_at": "",
+        "registry_digest": "",
+        "resolved_scope": null,
+        "route": "entity_discovery",
+        "row_count": 0,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "",
+        "template_version": ""
+      },
+      "limitations": [],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": null,
+        "resolved_scope": null
+      },
+      "status": "invalid_request"
+    }
+  },
   "discovery_not_found": {
     "contract": {
       "identifier": "api-v0.1",

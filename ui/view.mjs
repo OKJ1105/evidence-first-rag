@@ -492,15 +492,25 @@ export function statusNotice(envelope) {
   const sentence = SENTENCE.get(status);
   if (sentence === undefined) return null;
   const bound = result?.evidence_bundle?.bound_parameters ?? null;
-  // The rule is the bound value, not the status. A status test was here and is
-  // gone: `not_found` is the only negative outcome that binds a
-  // `snapshot_label` at all -- binding happens after the scope resolves, and
-  // `ambiguous` and `coverage_gap` bind it as null by definition because it is
-  // the dimension the request left open, while `invalid_request` and
-  // `unsupported` are refused before any binding. So the status test was a
-  // branch no response could take either way, and a mutation removing it
-  // changed no output (M19, which survived and is why this is written down).
-  // An untested branch is worse than a rule stated once.
+  // The rule is the bound value, not the status, and the reason written here
+  // before was **false** -- N1 on #196 caught it and a run confirms it.
+  //
+  // It said `coverage_gap` binds `snapshot_label` as null by definition. It
+  // does not: a `/v1/discover` naming a snapshot no snapshot has returns
+  // `coverage_gap` with `bound_parameters.snapshot_label` set to the name the
+  // request gave, so the widening **is** offered there. That is intended --
+  // clearing a snapshot nothing matches and searching again is exactly the
+  // next act on that screen -- but it was reached by accident rather than
+  // decided, which is the failure this whole slice is about, committed in a
+  // comment. `discovery_coverage_gap` is now an envelope, so the case is a
+  // registered one rather than a claim.
+  //
+  // What is true, and why there is no status test: `ambiguous` binds it as
+  // null because it is the dimension the request left open, and
+  // `invalid_request` and `unsupported` are refused before anything binds. So
+  // a status test would still be a branch no response takes differently from
+  // the value test below (M19 survived it, which is how the branch was
+  // found), and an untested branch is worse than one rule stated once.
   const widenable =
     bound !== null &&
     typeof bound === "object" &&

@@ -252,6 +252,26 @@ def _envelopes():
         "/v1/discover", json={"arguments": MESSAGE | {"entity_kind": "SAMPLE_KIND_OTHER"}}
     ).text
 
+    # `entity-discovery-v0.1` Section 5 `coverage_gap`, which N1 on #196 showed
+    # this set could not reach. It matters for two separate reasons, and both
+    # were asserted by nothing before: the sentence the page shows for it is
+    # only ever shown for *this* vocabulary (an `mvp-v0.1` result carries a
+    # Section 4.8 render, so the page writes none), and it is the one negative
+    # outcome besides `not_found` that binds a **non-empty** `snapshot_label` --
+    # the request named a snapshot, and no snapshot has it.
+    client = _client(_database({}, candidates=()))
+    built["discovery_coverage_gap"] = client.post(
+        "/v1/discover", json={"arguments": MESSAGE | {"snapshot_label": "SAMPLE_SNAP_NONE"}}
+    ).text
+
+    # `entity-discovery-v0.1` Section 5 `invalid_request`: an empty term. The
+    # other sentence N1 found unexercised, and the other side of the widening
+    # rule -- refused before anything binds, so its `snapshot_label` is null.
+    client = _client(_database({}))
+    built["discovery_invalid_request"] = client.post(
+        "/v1/discover", json={"arguments": MESSAGE | {"term": ""}}
+    ).text
+
     # Section 4.5: a refusal, which obligation 5 forbids showing as a result.
     client = _client(_database({}))
     built["refusal"] = client.post("/v1/query", json={"route": "x", "arguments": {}, "y": "z"}).text

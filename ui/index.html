@@ -318,7 +318,12 @@ function render(model) {
   // preferred -- obligation 3's rule for candidates, and the same reason.
   if (model.scopeChoices) {
     const list = el("section");
-    list.append(el("h2", "The scopes this resolved to"));
+    // "Candidate scopes" and not "the scopes this resolved to": nothing
+    // resolved -- the headline directly above reads `resolved_scope: null` --
+    // and "candidate scopes" is the term `entity-discovery-v0.1` Section 5,
+    // `mvp-v0.1` Section 4.2 and `api-v0.1` Section 6 all use, and which the
+    // sentence above this list already names. N3 on #196.
+    list.append(el("h2", "Candidate scopes"));
     list.append(el("p", "None is chosen. Nothing was looked up in any of them.", "note"));
     for (const scope of model.scopeChoices.scopes) {
       const block = el("div", null, "scope");

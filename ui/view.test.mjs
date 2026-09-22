@@ -578,6 +578,36 @@ describe("#195 item 1 — an `ambiguous` result lists the scopes it resolved to"
     for (const field of choices.scopes[0].fields) assert.equal(field.differs, false);
   });
 
+  it("lists the same rows a result carries, so suppressing the rows table hides nothing", () => {
+    // `ui/index.html` draws the scope list **instead of** the rows table
+    // whenever `scopeChoices` is non-null. That is safe only while the listed
+    // scopes are those rows. `scopeChoicesOf` prefers `candidate_scopes` and
+    // falls back to `rows`, so a result carrying both would show its rows
+    // nowhere outside the disclosure -- and what forbids that combination is
+    // `src/evidence_first_rag/runtime/service.py`, a file this suite does not
+    // read. N2 on #196: stated here, over the envelopes, in both parts.
+    let withRows = 0;
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const result = envelope.result;
+      const carriesScopes = Array.isArray(result.candidate_scopes) && result.candidate_scopes.length > 0;
+      const carriesRows = Array.isArray(result.rows) && result.rows.length > 0;
+      assert.equal(carriesScopes && carriesRows, false, `${name} carries both`);
+      if (result.status !== "ambiguous" || !carriesRows) continue;
+      withRows += 1;
+      const listed = scopeChoicesOf(result).scopes;
+      assert.equal(listed.length, result.rows.length, name);
+      for (const [index, scope] of listed.entries()) {
+        assert.deepEqual(
+          Object.fromEntries(scope.fields.map((field) => [field.key, field.value])),
+          result.rows[index],
+          `${name} scope ${index}`,
+        );
+      }
+    }
+    assert.ok(withRows > 0, "no ambiguous envelope carries rows");
+  });
+
   it("lists nothing for a status that is not `ambiguous`", () => {
     // Without the guard, `fact_success`'s rows become a scope chooser on an
     // answered request -- a screen inviting a choice about a result that
@@ -674,10 +704,32 @@ describe("#195 item 2 — a sentence only where the runtime wrote none", () => {
   it("asserts no cause for `coverage_gap`, which has two", () => {
     // Section 5: coverage the scope "does not contain, or cannot be
     // established to contain". Naming one states what the response does not.
-    const envelope = envelopes.fact_coverage_gap;
+    //
+    // Asserted against `discovery_coverage_gap`, the envelope that really
+    // reaches this sentence. It was `fact_coverage_gap` with its `rendered`
+    // dropped -- an `mvp-v0.1` result, a vocabulary this sentence is never
+    // shown for, so the assertion ran on an input the surface never produces
+    // (N1 on #196).
+    const envelope = envelopes.discovery_coverage_gap;
     assert.equal(envelope.result.status, "coverage_gap");
-    const notice = statusNotice({ result: envelope.result });
-    assert.ok(notice.sentence.includes("or cannot be established"));
+    assert.equal(envelope.rendered, null);
+    assert.ok(statusNotice(envelope).sentence.includes("or cannot be established"));
+  });
+
+  it("shows every sentence it holds on some envelope the surface produced", () => {
+    // The #101 guard over the map itself. Two entries were reachable in a
+    // browser and unreachable in this suite, so their wording was asserted by
+    // nothing (N1 on #196). This fails when an entry is added without a case.
+    const shown = new Set();
+    for (const envelope of Object.values(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope);
+      if (notice !== null) shown.add(notice.status);
+    }
+    assert.deepEqual(
+      [...shown].sort(),
+      ["ambiguous", "coverage_gap", "invalid_request", "not_found", "unsupported"],
+    );
   });
 
   it("states nothing the response carries — the sentence interpolates no value", () => {
