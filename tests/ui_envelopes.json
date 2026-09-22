@@ -261,6 +261,206 @@
       "status": "candidates"
     }
   },
+  "discovery_ambiguous": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [
+        {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_REVISED"
+        }
+      ],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": null
+        },
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "",
+        "method_version": "",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "registry_built_at": "",
+        "registry_digest": "",
+        "resolved_scope": null,
+        "route": "entity_discovery",
+        "row_count": 2,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "template_version": "1"
+      },
+      "limitations": [],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_REVISED"
+          }
+        ],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": null,
+        "resolved_scope": null
+      },
+      "status": "ambiguous"
+    }
+  },
+  "discovery_coverage_gap": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_NONE"
+        },
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "",
+        "method_version": "",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "registry_built_at": "",
+        "registry_digest": "",
+        "resolved_scope": null,
+        "route": "entity_discovery",
+        "row_count": 0,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "template_version": "1"
+      },
+      "limitations": [
+        {
+          "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_POWERTRAIN, snapshot_label=SAMPLE_SNAP_NONE, so the coverage this request needs could not be established (Sections 4.3 and 5).",
+          "kind": "coverage_not_established"
+        }
+      ],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": null,
+        "resolved_scope": null
+      },
+      "status": "coverage_gap"
+    }
+  },
+  "discovery_invalid_request": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {},
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "",
+        "method_version": "",
+        "read_only_safeguards": {
+          "connection_opened": false,
+          "read_only_transaction": false,
+          "role_name": ""
+        },
+        "registry_built_at": "",
+        "registry_digest": "",
+        "resolved_scope": null,
+        "route": "entity_discovery",
+        "row_count": 0,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "",
+        "template_version": ""
+      },
+      "limitations": [],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": null,
+        "resolved_scope": null
+      },
+      "status": "invalid_request"
+    }
+  },
   "discovery_not_found": {
     "contract": {
       "identifier": "api-v0.1",
@@ -442,6 +642,236 @@
         }
       },
       "status": "resolved"
+    }
+  },
+  "discovery_unsupported": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": null,
+    "result": {
+      "candidate_scopes": [],
+      "candidates": [],
+      "evidence_bundle": {
+        "bound_parameters": {},
+        "candidate_count": 0,
+        "candidate_set_id": "",
+        "collation": "C",
+        "contract_identifier": "entity-discovery-v0.1",
+        "contract_version": "0.3.1",
+        "match_tier": null,
+        "matched_text": "",
+        "method_identifier": "",
+        "method_version": "",
+        "read_only_safeguards": {
+          "connection_opened": false,
+          "read_only_transaction": false,
+          "role_name": ""
+        },
+        "registry_built_at": "",
+        "registry_digest": "",
+        "resolved_scope": null,
+        "route": "entity_discovery",
+        "row_count": 0,
+        "runtime_contract_identifier": "mvp-v0.1",
+        "runtime_contract_version": "0.6.1",
+        "selected_rank": "",
+        "target_route": "",
+        "template_name": "",
+        "template_version": ""
+      },
+      "limitations": [],
+      "resolved": null,
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "parent_messages": [],
+        "producing_layer": "runtime",
+        "resolved_scope": null
+      },
+      "status": "unsupported"
+    }
+  },
+  "fact_ambiguous": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "Scope is missing or under-specified. These candidate snapshots match; the runtime does not choose between them.\nRoute: message_facts, Status: ambiguous.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_REVISED\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": null
+        },
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "resolved_scope": null,
+        "route": "message_facts",
+        "row_count": 2,
+        "selection": null,
+        "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "template_version": "1"
+      },
+      "limitations": [],
+      "rows": [
+        {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        },
+        {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_REVISED"
+        }
+      ],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_REVISED"
+          }
+        ],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "ambiguous"
+    }
+  },
+  "fact_ambiguous_one_scope": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "Scope is missing or under-specified. These candidate snapshots match; the runtime does not choose between them.\nRoute: message_facts, Status: ambiguous.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": null
+        },
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "resolved_scope": null,
+        "route": "message_facts",
+        "row_count": 1,
+        "selection": null,
+        "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "template_version": "1"
+      },
+      "limitations": [],
+      "rows": [
+        {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": "SAMPLE_SNAP_BASE"
+        }
+      ],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [
+          {
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "ambiguous"
+    }
+  },
+  "fact_coverage_gap": {
+    "contract": {
+      "identifier": "api-v0.1",
+      "version": "0.1.1"
+    },
+    "rendered": "The approved data scope does not contain, or could not be established to contain, the coverage this request needs.\nRoute: message_facts, Status: coverage_gap.\nLimitation (coverage_not_established): no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_POWERTRAIN, so the coverage this request needs could not be established (Sections 4.2 and 5).\n",
+    "result": {
+      "evidence_bundle": {
+        "bound_parameters": {
+          "network_name": "SAMPLE_NET_POWERTRAIN",
+          "project_code": "SAMPLE_PROJECT_ALPHA",
+          "revision_label": "SAMPLE_REV_A",
+          "snapshot_label": null
+        },
+        "collation": "C",
+        "contract_identifier": "mvp-v0.1",
+        "contract_version": "0.6.1",
+        "read_only_safeguards": {
+          "connection_opened": true,
+          "read_only_transaction": true,
+          "role_name": "SAMPLE_RUNTIME_ROLE"
+        },
+        "resolved_scope": null,
+        "route": "message_facts",
+        "row_count": 0,
+        "selection": null,
+        "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "template_version": "1"
+      },
+      "limitations": [
+        {
+          "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_POWERTRAIN, so the coverage this request needs could not be established (Sections 4.2 and 5).",
+          "kind": "coverage_not_established"
+        }
+      ],
+      "rows": [],
+      "source_trace": {
+        "alias_provenance": [],
+        "contributing_scopes": [],
+        "entity_approval_reference": "",
+        "fixture_provenance": [
+          "fixtures/registry/approved_entity.jsonl"
+        ],
+        "mapping_provenance": [],
+        "producing_layer": null
+      },
+      "status": "coverage_gap"
     }
   },
   "fact_not_found": {

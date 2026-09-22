@@ -306,6 +306,283 @@ export function candidatesNotice(result) {
 }
 
 /**
+ * The four dimensions of a source scope, in `mvp-v0.1` Section 3.6's order.
+ *
+ * Written here rather than read off a response because the **order** is what
+ * this constant supplies, and no response carries one: a JSON object's keys are
+ * a set. The names are still checked against what arrives -- every reader below
+ * uses `in` or a type test, so a dimension named here and absent from a
+ * response is skipped rather than printed as `undefined`.
+ *
+ * `ui/index.html` imports it instead of keeping its own copy, so the discovery
+ * form and the scope list below cannot disagree about what a scope is.
+ */
+export const SCOPE_DIMENSIONS = ["project_code", "revision_label", "network_name", "snapshot_label"];
+
+/**
+ * The scopes an `ambiguous` result resolved to, and which dimension tells them
+ * apart (#195 item 1).
+ *
+ * **`ambiguous` arrives in two shapes and this reads both.**
+ * `entity-discovery-v0.1` puts the scopes in a top-level `candidate_scopes`;
+ * `mvp-v0.1` has no such key and puts them in `rows`, because there they are
+ * the rows of `TPL_SNAPSHOT_CANDIDATES_V1`. `WF-002` and `WF-020` register that
+ * difference. A page that read only one of the two would print the bare status
+ * word for the other, which is the defect this function exists to remove.
+ *
+ * `differing` is **computed, never assumed to be `snapshot_label`**: the
+ * dimension that fails to resolve is whichever one the request left open, and
+ * on this registry a term is ambiguous across `revision_label` too
+ * (`SAMPLE_MSG_WHEEL_SPEED` exists in `SAMPLE_REV_A` and `SAMPLE_REV_B`).
+ *
+ * Nothing is sorted and nothing is dropped. Obligation 7 forbids reordering, so
+ * the scopes keep the order they arrived in; obligation 1 forbids omitting, so
+ * every dimension of every scope is listed and `differs` marks one rather than
+ * hiding the rest. Obligation 3's rule for candidates -- none pre-selected,
+ * none highlighted as likely -- is the reason there is no `selected` here and
+ * no ordering by anything: these are scopes the runtime reported, and the
+ * screen must not prefer one.
+ */
+export function scopeChoicesOf(result) {
+  if (result?.status !== "ambiguous") return null;
+  const listed =
+    Array.isArray(result?.candidate_scopes) && result.candidate_scopes.length > 0
+      ? result.candidate_scopes
+      : Array.isArray(result?.rows)
+        ? result.rows
+        : [];
+  if (listed.length === 0) return null;
+
+  const differing = SCOPE_DIMENSIONS.filter((name) => {
+    const values = new Set(listed.map((scope) => JSON.stringify(scope?.[name] ?? null)));
+    return values.size > 1;
+  });
+
+  // The dimensions the request did not bind. `mvp-v0.1` Section 4.2 answers an
+  // unbound one with the candidate snapshots, which is why this result exists.
+  const bound = result?.evidence_bundle?.bound_parameters ?? {};
+  const unbound = SCOPE_DIMENSIONS.filter(
+    (name) => typeof bound?.[name] !== "string" || bound[name] === "",
+  );
+
+  return {
+    differing,
+    unbound,
+    scopes: listed.map((scope) => ({
+      fields: entries(scope).map((field) => ({ ...field, differs: differing.includes(field.key) })),
+      // What a person's act on this row writes into the discovery form: the
+      // dimensions **this request left unbound**, which is why the scope did
+      // not resolve. Not the differing ones, which was the first version and
+      // which offers nothing at all on a single-scope `ambiguous` -- there
+      // nothing differs and `mvp-v0.1` Section 5 still calls it ambiguous
+      // (B2 on #196). The bound dimensions are what the person already typed,
+      // and rewriting those would be the page editing a field nobody asked it
+      // to touch. A non-string or empty value fills nothing: the owner's
+      // reading on #195 permits filling a value the runtime returned, and
+      // `null` is not one.
+      fill: unbound
+        .filter((name) => typeof scope?.[name] === "string" && scope[name] !== "")
+        .map((name) => ({ name, value: scope[name] })),
+    })),
+  };
+}
+
+/**
+ * What a status means, where the runtime wrote nothing (#195 item 2, as B1
+ * and B2 on #196 corrected it).
+ *
+ * **The page writes a sentence only where `rendered` is null.** That is
+ * obligation 2 -- "the answer text is `rendered`, verbatim" -- and the first
+ * version of this function broke it: it printed a sentence of the page's own
+ * directly above the runtime's, for every `mvp-v0.1` result. Those two
+ * accounts then disagreed. The committed envelopes make the split exact:
+ * every `mvp-v0.1` result carries a Section 4.8 render, and every
+ * `entity-discovery-v0.1` result carries `rendered: null`. So the screen the
+ * owner met -- a bare `ambiguous` from `/v1/discover` -- was the only place a
+ * sentence was missing, and it is the only place one is added.
+ *
+ * What is left is therefore `entity-discovery-v0.1`'s vocabulary alone, and
+ * each sentence is that contract's Section 5 condition for its status and
+ * nothing more:
+ *
+ * - `not_found` there really is about the registry -- "no approved entity
+ *   matches the term at any tier" -- which is what made the same word wrong
+ *   on an `mvp-v0.1` fact route, where `not_found` means no row matched the
+ *   lookup key and no registry was consulted at all.
+ * - `ambiguous` says the scope is under-specified and **not** that it names
+ *   more than one snapshot. `mvp-v0.1` Section 5: "One matching candidate is
+ *   still `ambiguous`", so a sentence claiming two would be false on
+ *   `FX-113` and `DX-011`.
+ * - `coverage_gap` asserts **no cause**. Section 5 makes it coverage that is
+ *   absent *or cannot be established*, and naming one of the two states a
+ *   thing the response does not.
+ *
+ * `candidates` and `resolved` are absent for the same reason as before: the
+ * first carries the `no_reference_resolved` limitation obligation 3 shows the
+ * list under, and the second carries its tier and matched text.
+ */
+const SENTENCE = new Map([
+  [
+    "not_found",
+    "The scope resolved to one snapshot within approved coverage, and no approved entity in it matched this term at any tier.",
+  ],
+  [
+    "ambiguous",
+    "The source scope is missing or under-specified, so no discovery template ran.",
+  ],
+  [
+    "coverage_gap",
+    "The approved data scope does not contain, or cannot be established to contain, the coverage this request needs.",
+  ],
+  [
+    "invalid_request",
+    "The request did not satisfy this contract's validation. No fact template ran.",
+  ],
+  [
+    "unsupported",
+    "This contract cannot represent the request at the producing layer, which the trace records.",
+  ],
+]);
+
+/**
+ * The one scope dimension a person may clear to search more broadly.
+ *
+ * Only this one. The other three are what make a scope resolve at all, and
+ * `mvp-v0.1` Section 4.2 refuses a request that omits them; clearing
+ * `snapshot_label` reaches `ambiguous` or `coverage_gap`, which are results
+ * with their evidence and a listed choice.
+ */
+const WIDENABLE = "snapshot_label";
+
+/**
+ * The clause `ambiguous` gains **only when there is something below to read**.
+ *
+ * Adopted from the loop Writer's round-1 fix on #196, which found the defect
+ * this repairs: the sentence carried "the candidate scopes are listed below"
+ * unconditionally, and `scopeChoicesOf` returns `null` for an `ambiguous`
+ * result that lists none -- so the page pointed at a list that was not on the
+ * screen. A sentence naming a thing the reader cannot see is the same failure
+ * as one naming a value the response does not carry.
+ */
+const SCOPES_BELOW = "The candidate scopes are listed below.";
+
+/**
+ * The sentence for this envelope's status, what the request was bound with,
+ * and the one field a person may clear to search again.
+ *
+ * `searched` is the result's own `bound_parameters`, beside the sentence
+ * rather than inside the disclosure with the rest of the bundle. Deliberate
+ * duplication: for a negative result the first question is what was actually
+ * searched for, and obligation 4 puts the person's **whole request text** in
+ * the discovery `term`, which is surprising the first time it is seen.
+ *
+ * `widen` is #195 item 2's other half, which the first version of this slice
+ * left out (B3 on #196). It names `snapshot_label` when this request bound
+ * one, and **says nothing about what clearing it would find** -- a
+ * `not_found` response does not establish that anything exists in another
+ * snapshot, and obligation 7 forbids the page adding what the response does
+ * not contain. It is an act the person may take, not a suggestion that it
+ * will succeed.
+ */
+export function statusNotice(envelope) {
+  // Obligation 2. Where the runtime wrote the answer, that is the answer.
+  if (typeof envelope?.rendered === "string") return null;
+  const result = envelope?.result ?? null;
+  const status = result?.status ?? null;
+  const sentence = SENTENCE.get(status);
+  if (sentence === undefined) return null;
+  const bound = result?.evidence_bundle?.bound_parameters ?? null;
+  // The rule is the bound value, not the status, and the reason written here
+  // before was **false** -- N1 on #196 caught it and a run confirms it.
+  //
+  // It said `coverage_gap` binds `snapshot_label` as null by definition. It
+  // does not: a `/v1/discover` naming a snapshot no snapshot has returns
+  // `coverage_gap` with `bound_parameters.snapshot_label` set to the name the
+  // request gave, so the widening **is** offered there. That is intended --
+  // clearing a snapshot nothing matches and searching again is exactly the
+  // next act on that screen -- but it was reached by accident rather than
+  // decided, which is the failure this whole slice is about, committed in a
+  // comment. `discovery_coverage_gap` is now an envelope, so the case is a
+  // registered one rather than a claim.
+  //
+  // What is true, and why there is no status test: `ambiguous` binds it as
+  // null because it is the dimension the request left open, and
+  // `invalid_request` and `unsupported` are refused before anything binds. So
+  // a status test would still be a branch no response takes differently from
+  // the value test below (M19 survived it, which is how the branch was
+  // found), and an untested branch is worse than one rule stated once.
+  const widenable =
+    bound !== null &&
+    typeof bound === "object" &&
+    typeof bound[WIDENABLE] === "string" &&
+    bound[WIDENABLE] !== "";
+  const listsScopes = scopeChoicesOf(result) !== null;
+  return {
+    status,
+    sentence: listsScopes ? `${sentence} ${SCOPES_BELOW}` : sentence,
+    searched: entries(bound),
+    widen: widenable ? [{ name: WIDENABLE, value: bound[WIDENABLE] }] : [],
+  };
+}
+
+/**
+ * The evidence that is not behind a disclosure (#195 item 3).
+ *
+ * Obligation 1 permits collapsing and forbids omitting. `evidenceOf` is
+ * unchanged and the disclosure still carries **every** section, so this is a
+ * second view of some of those values and never a subset that replaces them:
+ * getting this list wrong can show too little here, and cannot omit anything
+ * from the screen.
+ *
+ * Why anything is outside at all: Pew Research measured a click on a source
+ * inside an AI summary at about 1% of visits (2025-07-22), so what sits behind
+ * a disclosure is in practice not read. The three values chosen are the ones
+ * whose absence changes what a reader concludes from the screen alone -- how
+ * many rows there are, which snapshot they came from, and what the result says
+ * it does not establish. The template identifier and the bound parameters stay
+ * inside: they are what a reader checks an answer with, not what they read it
+ * with, and `statusNotice` already surfaces the parameters where a negative
+ * status makes them the point.
+ */
+const HEADLINE_KEYS = ["row_count", "candidate_count", "resolved_scope"];
+
+export function headlineOf(result) {
+  if (result === null || result === undefined) return null;
+  const bundle = result.evidence_bundle ?? null;
+  const hasBundle = bundle !== null && typeof bundle === "object";
+  const limitations = Array.isArray(result.limitations) ? result.limitations : [];
+  return {
+    facts: HEADLINE_KEYS.filter((key) => hasBundle && key in bundle).map((key) => ({ key, value: bundle[key] })),
+    // Obligation 1 names every `limitations` entry's kind and detail. Outside
+    // the disclosure because a limitation is the result telling a reader what
+    // it does not establish, which is the one thing a confident-looking answer
+    // hides best.
+    limitations: limitations.map((entry) => entries(entry)),
+  };
+}
+
+/**
+ * Three requests, as fixed strings (#195 item 4).
+ *
+ * Not from the survey behind #195 -- the writer's proposal, kept on the owner's
+ * record of 2026-09-21. It is the cheapest answer to "the page requires prior
+ * understanding": a person who has read no contract has no way to know that
+ * this database holds `SAMPLE_*` identifiers and nothing else, and a request
+ * naming anything real returns `not_found` correctly and teaches nothing.
+ *
+ * **Each is a question and nothing more.** None is labelled with what it
+ * returns, because the page cannot know: the same string reaches a different
+ * status as the registry changes, and a label promising a result would be the
+ * page stating a fact no response has produced (obligations 2 and 7). Clicking
+ * one fills the Ask field; the person presses Ask.
+ */
+export const EXAMPLE_REQUESTS = [
+  "What is the temperature signal in SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE?",
+  "Tell me about engine speed in SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN",
+  "Summarize the overall health of the powertrain network",
+];
+
+/**
  * The whole screen for one envelope.
  *
  * Obligation 5 is why there is no `error` branch: a status is carried through
@@ -328,6 +605,9 @@ export function view(envelope, { requestText = "" } = {}) {
     proposal,
     contract: envelope?.contract ?? null,
     candidatesNotice: candidatesNotice(result),
+    statusNotice: statusNotice(envelope),
+    headline: headlineOf(result),
+    scopeChoices: scopeChoicesOf(result),
     selection: candidates.length > 0 ? selectionForm({ candidates }) : null,
     requestText,
   };

@@ -17,7 +17,9 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  EXAMPLE_REQUESTS,
   FACT_ROUTES,
+  SCOPE_DIMENSIONS as EXPORTED_SCOPE_DIMENSIONS,
   answerOf,
   candidatesOf,
   chooseRank,
@@ -25,7 +27,10 @@ import {
   evidenceOf,
   maySend,
   proposalOf,
+  headlineOf,
+  scopeChoicesOf,
   selectionForm,
+  statusNotice,
   targetRoutesFor,
   view,
   unreachedView,
@@ -79,6 +84,29 @@ function displayed(model) {
     for (const item of section.items) for (const field of item) scalars(field.value, values);
   }
   if (model.resolved) for (const field of model.resolved) scalars(field.value, values);
+  // The three surfaces this slice added, which `ui/index.html` paints and
+  // which this helper did not walk until N7 on #196. `api-v0.1` Section 8
+  // names the test below as `G2`'s automated evidence, so a value shown on
+  // one of them and absent from the result was a fact on screen that the
+  // containment check never read.
+  //
+  // `statusNotice.sentence` is deliberately left out: it is a fixed label,
+  // and "the sentence interpolates no value" is where it is governed.
+  if (model.headline) {
+    for (const fact of model.headline.facts) scalars(fact.value, values);
+    for (const entry of model.headline.limitations) {
+      for (const field of entry) scalars(field.value, values);
+    }
+  }
+  if (model.statusNotice) {
+    for (const field of model.statusNotice.searched) scalars(field.value, values);
+  }
+  if (model.scopeChoices) {
+    for (const scope of model.scopeChoices.scopes) {
+      for (const field of scope.fields) scalars(field.value, values);
+      for (const entry of scope.fill) scalars(entry.value, values);
+    }
+  }
   return values.filter((value) => value !== null && value !== undefined && value !== "");
 }
 
@@ -481,5 +509,420 @@ describe("obligation 7 — it adds no value the response does not contain", () =
       assert.equal(field.value, row[key]);
       assert.equal(typeof field.value, typeof row[key]);
     }
+  });
+});
+
+/** Every status word the two vocabularies use, as the fixture carries them. */
+function statusesInFixture() {
+  return Object.values(envelopes)
+    .filter((envelope) => "result" in envelope)
+    .map((envelope) => envelope.result.status);
+}
+
+describe("#195 item 1 — an `ambiguous` result lists the scopes it resolved to", () => {
+  it("reads both shapes, because the two contracts carry the scopes elsewhere", () => {
+    // `mvp-v0.1` has no top-level `candidate_scopes`; the scopes are the rows
+    // of `TPL_SNAPSHOT_CANDIDATES_V1` (`WF-002`). `entity-discovery-v0.1` has
+    // the key and no rows (`WF-020`). A reader of one shape alone prints the
+    // bare status word for the other, which is the defect #195 is about.
+    const fromRows = envelopes.fact_ambiguous.result;
+    const fromKey = envelopes.discovery_ambiguous.result;
+    assert.equal("candidate_scopes" in fromRows, false);
+    assert.equal("rows" in fromKey, false);
+    for (const result of [fromRows, fromKey]) {
+      const choices = scopeChoicesOf(result);
+      assert.ok(choices, "an ambiguous result lists no scopes");
+      assert.equal(choices.scopes.length, 2);
+    }
+  });
+
+  it("marks the dimension that differs, and no dimension that does not", () => {
+    // Computed, never assumed: the open dimension is whichever one the request
+    // left out, and on this registry a term can be ambiguous across
+    // `revision_label` too.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      const choices = scopeChoicesOf(envelopes[name].result);
+      assert.deepEqual(choices.differing, ["snapshot_label"], name);
+      for (const scope of choices.scopes) {
+        for (const field of scope.fields) {
+          assert.equal(field.differs, field.key === "snapshot_label", `${name} ${field.key}`);
+        }
+      }
+    }
+  });
+
+  it("lists every dimension of every scope, not only the differing one", () => {
+    // Obligation 1. A list showing only what differs would tell a reader the
+    // scopes are two snapshots and never say of which project or revision.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous"]) {
+      for (const scope of scopeChoicesOf(envelopes[name].result).scopes) {
+        assert.deepEqual(
+          scope.fields.map((field) => field.key).sort(),
+          [...SCOPE_DIMENSIONS].sort(),
+          name,
+        );
+      }
+    }
+  });
+
+  it("keeps the order the response carried", () => {
+    // Obligation 7 forbids reordering. Asserted against the response's own
+    // list rather than an expected order written here.
+    const result = envelopes.discovery_ambiguous.result;
+    const choices = scopeChoicesOf(result);
+    assert.deepEqual(
+      choices.scopes.map((scope) => scope.fields.find((f) => f.key === "snapshot_label").value),
+      result.candidate_scopes.map((scope) => scope.snapshot_label),
+    );
+  });
+
+  it("offers to fill the dimensions this request left unbound", () => {
+    // The owner's reading on #195: a person's act may fill a value the runtime
+    // returned. The unbound ones, not the differing ones -- a single-scope
+    // `ambiguous` has nothing differing and is still ambiguous, and offering
+    // nothing there would leave that screen with no act at all (B2 on #196).
+    // Filling a bound dimension would rewrite what the person typed.
+    for (const name of ["fact_ambiguous", "discovery_ambiguous", "fact_ambiguous_one_scope"]) {
+      const result = envelopes[name].result;
+      const choices = scopeChoicesOf(result);
+      assert.deepEqual(choices.unbound, ["snapshot_label"], name);
+      for (const scope of choices.scopes) {
+        assert.deepEqual(scope.fill.map((entry) => entry.name), ["snapshot_label"], name);
+        for (const entry of scope.fill) assert.equal(typeof entry.value, "string");
+      }
+    }
+  });
+
+  it("lists the one scope of a single-scope `ambiguous`, with nothing marked", () => {
+    // `mvp-v0.1` Section 5: "One matching candidate is still `ambiguous`."
+    const choices = scopeChoicesOf(envelopes.fact_ambiguous_one_scope.result);
+    assert.equal(choices.scopes.length, 1);
+    assert.deepEqual(choices.differing, []);
+    for (const field of choices.scopes[0].fields) assert.equal(field.differs, false);
+  });
+
+  it("lists the same rows a result carries, so suppressing the rows table hides nothing", () => {
+    // `ui/index.html` draws the scope list **instead of** the rows table
+    // whenever `scopeChoices` is non-null. That is safe only while the listed
+    // scopes are those rows. `scopeChoicesOf` prefers `candidate_scopes` and
+    // falls back to `rows`, so a result carrying both would show its rows
+    // nowhere outside the disclosure -- and what forbids that combination is
+    // `src/evidence_first_rag/runtime/service.py`, a file this suite does not
+    // read. N2 on #196: stated here, over the envelopes, in both parts.
+    let withRows = 0;
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const result = envelope.result;
+      const carriesScopes = Array.isArray(result.candidate_scopes) && result.candidate_scopes.length > 0;
+      const carriesRows = Array.isArray(result.rows) && result.rows.length > 0;
+      assert.equal(carriesScopes && carriesRows, false, `${name} carries both`);
+      if (result.status !== "ambiguous" || !carriesRows) continue;
+      withRows += 1;
+      const listed = scopeChoicesOf(result).scopes;
+      assert.equal(listed.length, result.rows.length, name);
+      for (const [index, scope] of listed.entries()) {
+        assert.deepEqual(
+          Object.fromEntries(scope.fields.map((field) => [field.key, field.value])),
+          result.rows[index],
+          `${name} scope ${index}`,
+        );
+      }
+    }
+    assert.ok(withRows > 0, "no ambiguous envelope carries rows");
+  });
+
+  it("lists nothing for a status that is not `ambiguous`", () => {
+    // Without the guard, `fact_success`'s rows become a scope chooser on an
+    // answered request -- a screen inviting a choice about a result that
+    // already resolved.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || envelope.result.status === "ambiguous") continue;
+      assert.equal(scopeChoicesOf(envelope.result), null, name);
+    }
+  });
+});
+
+describe("#195 item 2 — a sentence only where the runtime wrote none", () => {
+  it("writes nothing where `rendered` carries the answer", () => {
+    // Obligation 2. The first version of this slice printed a sentence of the
+    // page's own directly above the runtime's Section 4.8 render, and the two
+    // disagreed (B1 on #196). Every `mvp-v0.1` result carries a render.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      if (typeof envelope.rendered !== "string") continue;
+      assert.equal(statusNotice(envelope), null, name);
+    }
+  });
+
+  it("writes one for every status that arrives with no prose at all", () => {
+    // The screen the owner met: `/v1/discover` returns `rendered: null`, so
+    // without this the page shows a status word and nothing else.
+    const carriesItsOwnText = new Set(["candidates", "resolved"]);
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || typeof envelope.rendered === "string") continue;
+      const notice = statusNotice(envelope);
+      if (carriesItsOwnText.has(envelope.result.status)) {
+        assert.equal(notice, null, name);
+      } else {
+        assert.ok(notice, `${name} (${envelope.result.status}) has no sentence`);
+        assert.equal(notice.status, envelope.result.status);
+      }
+    }
+  });
+
+  it("writes for one vocabulary only, which is what keeps B1 from recurring", () => {
+    // **This test asserted nothing until N6 on #196.** It looked for a
+    // sentence naming another contract's provenance, and skipped every
+    // envelope `statusNotice` returned null for -- which is every `mvp-v0.1`
+    // one, since they all carry `rendered`. What survived was all
+    // `entity-discovery-v0.1`, and the inner loop then skipped its only
+    // entry. Zero assertions ran, and removing the `rendered` guard left it
+    // green: the exact recurrence of B1 it was written to catch.
+    //
+    // Stated directly instead. The sentences are `entity-discovery-v0.1`'s
+    // Section 5 conditions, and its `not_found` really is about the registry;
+    // the same word on an `mvp-v0.1` fact route would name a source no
+    // request consulted. So the rule is which vocabulary may be spoken for at
+    // all, and it is asserted over every envelope, in both directions, with
+    // the count that makes each side real.
+    const DISCOVERY = "entity-discovery-v0.1";
+    let spokenFor = 0;
+    let silent = 0;
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const contract = envelope.result.evidence_bundle.contract_identifier;
+      const notice = statusNotice(envelope);
+      if (contract === DISCOVERY) {
+        if (notice !== null) spokenFor += 1;
+      } else {
+        assert.equal(notice, null, `${name} (${contract}) was given a sentence`);
+        silent += 1;
+      }
+    }
+    // The #101 guard: green either way if no envelope reached either side.
+    assert.ok(spokenFor > 0, "no discovery envelope is given a sentence");
+    assert.ok(silent > 0, "no envelope of another contract is withheld one");
+
+    // And the half that gives the rule its point: this contract's `not_found`
+    // is about an approved entity matching a term at a tier, which is true
+    // here and false on an `mvp-v0.1` fact route, where `not_found` means no
+    // row matched the lookup key and nothing was searched for by term at all.
+    // Naming that provenance on the wrong vocabulary is what B1 did, so the
+    // two assertions together say why the split matters and not only that it
+    // holds.
+    const sentence = statusNotice(envelopes.discovery_not_found).sentence;
+    for (const word of ["approved entity", "term", "tier"]) {
+      assert.ok(sentence.includes(word), `the discovery not_found sentence drops "${word}"`);
+    }
+    assert.equal(sentence.includes("lookup key"), false);
+  });
+
+  it("does not claim an `ambiguous` result lists more than one scope", () => {
+    // `mvp-v0.1` Section 5: "One matching candidate is still `ambiguous`."
+    // `FX-113` and `DX-011` register that shape (B2 on #196).
+    const one = envelopes.fact_ambiguous_one_scope.result;
+    assert.equal(one.status, "ambiguous");
+    assert.equal(scopeChoicesOf(one).scopes.length, 1);
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope) || envelope.result.status !== "ambiguous") continue;
+      const notice = statusNotice(envelope);
+      if (notice === null) continue;
+      for (const word of ["single", "more than one", "two", "several"]) {
+        assert.equal(notice.sentence.includes(word), false, `${name}: ${word}`);
+      }
+    }
+  });
+
+  it("names a list below only when one is below", () => {
+    // The defect the loop Writer's round-1 fix found: the clause was
+    // unconditional, and `scopeChoicesOf` returns null for an `ambiguous`
+    // result that lists no scope -- so the sentence pointed at a list that
+    // was not on the screen. Asserted in both directions.
+    const listing = envelopes.discovery_ambiguous;
+    assert.ok(scopeChoicesOf(listing.result));
+    assert.ok(statusNotice(listing).sentence.includes("listed below"));
+
+    // The same envelope with its list removed, which is the one input no
+    // committed envelope carries. Derived from a real one rather than written,
+    // and used only to assert the guard, never as a wire shape.
+    const empty = { ...listing, result: { ...listing.result, candidate_scopes: [] } };
+    assert.equal(scopeChoicesOf(empty.result), null);
+    assert.equal(statusNotice(empty).sentence.includes("listed below"), false);
+  });
+
+  it("asserts no cause for `coverage_gap`, which has two", () => {
+    // Section 5: coverage the scope "does not contain, or cannot be
+    // established to contain". Naming one states what the response does not.
+    //
+    // Asserted against `discovery_coverage_gap`, the envelope that really
+    // reaches this sentence. It was `fact_coverage_gap` with its `rendered`
+    // dropped -- an `mvp-v0.1` result, a vocabulary this sentence is never
+    // shown for, so the assertion ran on an input the surface never produces
+    // (N1 on #196).
+    const envelope = envelopes.discovery_coverage_gap;
+    assert.equal(envelope.result.status, "coverage_gap");
+    assert.equal(envelope.rendered, null);
+    assert.ok(statusNotice(envelope).sentence.includes("or cannot be established"));
+  });
+
+  it("shows every sentence it holds on some envelope the surface produced", () => {
+    // The #101 guard over the map itself. Two entries were reachable in a
+    // browser and unreachable in this suite, so their wording was asserted by
+    // nothing (N1 on #196). This fails when an entry is added without a case.
+    const shown = new Set();
+    for (const envelope of Object.values(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope);
+      if (notice !== null) shown.add(notice.status);
+    }
+    assert.deepEqual(
+      [...shown].sort(),
+      ["ambiguous", "coverage_gap", "invalid_request", "not_found", "unsupported"],
+    );
+  });
+
+  it("states nothing the response carries — the sentence interpolates no value", () => {
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope);
+      if (notice === null) continue;
+      for (const value of scalars(envelope.result)) {
+        if (typeof value !== "string" || value.length < 3) continue;
+        assert.equal(notice.sentence.includes(value), false, `${name}: ${value}`);
+      }
+    }
+  });
+
+  it("carries the bound parameters beside the sentence, unchanged", () => {
+    const envelope = envelopes.discovery_not_found;
+    const notice = statusNotice(envelope);
+    assert.deepEqual(
+      Object.fromEntries(notice.searched.map((field) => [field.key, field.value])),
+      envelope.result.evidence_bundle.bound_parameters,
+    );
+  });
+
+  it("offers to clear `snapshot_label` on a `not_found` that bound one", () => {
+    // #195 item 2's other half, absent from the first version (B3 on #196).
+    const envelope = envelopes.discovery_not_found;
+    const bound = envelope.result.evidence_bundle.bound_parameters;
+    assert.equal(typeof bound.snapshot_label, "string");
+    assert.deepEqual(statusNotice(envelope).widen, [
+      { name: "snapshot_label", value: bound.snapshot_label },
+    ]);
+  });
+
+  it("offers a widening exactly where a non-empty `snapshot_label` was bound", () => {
+    // Stated over the bound value rather than the status, because the status
+    // is not the rule: `ambiguous` and `coverage_gap` bind `snapshot_label` as
+    // null -- it is the dimension the request left open -- and
+    // `invalid_request` and `unsupported` are refused before anything binds.
+    // Asserted in both directions, so neither dropping the offer nor offering
+    // it where nothing was bound survives.
+    let offered = 0;
+    let withheld = 0;
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const notice = statusNotice(envelope);
+      if (notice === null) continue;
+      const bound = envelope.result.evidence_bundle.bound_parameters.snapshot_label;
+      const expected = typeof bound === "string" && bound !== "";
+      assert.equal(notice.widen.length === 1, expected, name);
+      if (expected) {
+        assert.deepEqual(notice.widen, [{ name: "snapshot_label", value: bound }], name);
+        offered += 1;
+      } else {
+        withheld += 1;
+      }
+    }
+    // The #101 guard: green either way if no envelope reached either side.
+    assert.ok(offered > 0, "no envelope offers a widening");
+    assert.ok(withheld > 0, "no envelope withholds one");
+  });
+});
+
+describe("#195 item 3 — some evidence is outside the disclosure", () => {
+  it("puts every limitations entry outside, whole", () => {
+    // `selection_two_limitations` carries two, and a screen showing one tells
+    // a reader the other did not happen.
+    const result = envelopes.selection_two_limitations.result;
+    const headline = headlineOf(result);
+    assert.equal(headline.limitations.length, result.limitations.length);
+    assert.ok(headline.limitations.length > 1);
+    for (const [index, entry] of headline.limitations.entries()) {
+      assert.deepEqual(
+        Object.fromEntries(entry.map((field) => [field.key, field.value])),
+        result.limitations[index],
+      );
+    }
+  });
+
+  it("puts the row count and the resolved scope outside, where the bundle has them", () => {
+    const result = envelopes.fact_success.result;
+    const facts = Object.fromEntries(headlineOf(result).facts.map((f) => [f.key, f.value]));
+    assert.equal(facts.row_count, result.evidence_bundle.row_count);
+    assert.deepEqual(facts.resolved_scope, result.evidence_bundle.resolved_scope);
+  });
+
+  it("omits nothing: the disclosure still carries every value the headline shows", () => {
+    // Obligation 1 forbids omitting, and this is the assertion that makes the
+    // headline a second view rather than a place a value could live alone.
+    for (const [name, envelope] of Object.entries(envelopes)) {
+      if (!("result" in envelope)) continue;
+      const headline = headlineOf(envelope.result);
+      const inside = [];
+      for (const section of evidenceOf(envelope.result)) {
+        for (const item of section.items) for (const field of item) scalars(field.value, inside);
+      }
+      for (const fact of headline.facts) {
+        for (const value of scalars(fact.value)) {
+          assert.ok(inside.includes(value), `${name}: ${fact.key} is only outside`);
+        }
+      }
+    }
+  });
+});
+
+describe("#195 item 4 — the example requests claim nothing", () => {
+  it("names no identifier that is not a SAMPLE_ one", () => {
+    // Charter Section 11: this repository carries synthetic identifiers only,
+    // and the page is served to whoever opens it.
+    for (const request of EXAMPLE_REQUESTS) {
+      for (const token of request.split(/[^A-Za-z0-9_]+/)) {
+        // An identifier, as this repository writes them: it carries an
+        // underscore, or it is all upper case. A capital that merely begins an
+        // English sentence is neither, and flagging it would make this test
+        // about prose rather than about identifiers.
+        const isIdentifier =
+          token.includes("_") || (token.length > 1 && token === token.toUpperCase());
+        if (!isIdentifier) continue;
+        assert.ok(token.startsWith("SAMPLE_"), `${request} names ${token}`);
+      }
+    }
+  });
+
+  it("says nothing about what it returns", () => {
+    // The page cannot know before a response exists: the same string reaches a
+    // different status as the registry changes, so a label promising one would
+    // be a fact no response has produced (obligations 2 and 7).
+    const statuses = new Set(statusesInFixture());
+    assert.ok(statuses.size > 1);
+    for (const request of EXAMPLE_REQUESTS) {
+      for (const status of statuses) {
+        assert.equal(request.includes(status), false, `${request} names ${status}`);
+      }
+    }
+  });
+
+  it("is a list of non-empty strings, and the page holds no other scope list", () => {
+    assert.ok(EXAMPLE_REQUESTS.length > 0);
+    for (const request of EXAMPLE_REQUESTS) {
+      assert.equal(typeof request, "string");
+      assert.ok(request.trim().length > 0);
+    }
+    // The exported dimensions are what `ui/index.html` now imports instead of
+    // keeping its own copy; this is the independent statement of what a scope
+    // is that keeps the exported one honest.
+    assert.deepEqual([...EXPORTED_SCOPE_DIMENSIONS].sort(), [...SCOPE_DIMENSIONS].sort());
   });
 });
