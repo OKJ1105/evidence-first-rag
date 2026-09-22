@@ -50,10 +50,16 @@ adapter = ["anthropic>=1.4"]
 # `httpx` is here because `fastapi.testclient` needs it -- the surface's own
 # tests drive the app through it, and without it every test in
 # tests/test_api_surface.py skips, which is green and proves nothing (#101).
+# `mcp` is here rather than in an extra of its own because contract `mcp-v0.1`
+# Section 4.5 serves the tool surface from the same process as `api-v0.1`'s,
+# over the same `Services`: the two are one server, and an install that opts
+# into serving one serves both. It also means the CI jobs that install this
+# extra run `tests/test_mcp_surface.py` without a workflow change.
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",
+    "mcp>=2.2,<3",
 ]
 
 [project.urls]

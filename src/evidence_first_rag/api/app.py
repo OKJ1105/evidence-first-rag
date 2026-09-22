@@ -35,6 +35,7 @@ adding validation the contract forbids; it is the framework expressing the one
 check the contract requires.
 """
 
+import contextlib
 import dataclasses
 import json
 import mimetypes
@@ -403,9 +404,42 @@ def _is_json_object(text: object) -> bool:
 # --------------------------------------------------------------------------
 
 
+def _mcp(services: Services):
+    """The `mcp-v0.1` surface over the same `services`, or `None`.
+
+    `mcp-v0.1` Section 4.5 serves its tools from this process, over the same
+    `Services`, beside `/v1` -- one runtime, two surfaces, which is what makes
+    that contract's equality cases a statement about one system. The import
+    is inside the function because `mcp/surface.py` imports this module, and
+    because the `mcp` package arrives with the `api` extra: a checkout that
+    installed the framework without it still serves `/v1`, and
+    `tests/test_mcp_surface.py` then fails rather than skips, so the absence
+    is loud (#101).
+    """
+    try:
+        from ..mcp import surface
+    except ImportError:  # pragma: no cover - the api extra carries mcp
+        return None
+    return surface.mount(services)
+
+
 def create_app(services: Services) -> fastapi.FastAPI:
-    """The Section 4.1 surface over `services`."""
+    """The Section 4.1 surface over `services`, with `mcp-v0.1`'s beside it."""
+    mounted = _mcp(services)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
+        # The MCP session manager answers nothing until it is running, and it
+        # runs for the life of the process; entering it here is what makes
+        # `PATH` answer under uvicorn and under a `with TestClient(app)`.
+        if mounted is None:
+            yield
+            return
+        async with mounted.lifespan():
+            yield
+
     app = fastapi.FastAPI(
+        lifespan=lifespan,
         title="Evidence-First RAG Runtime",
         version=CONTRACT_VERSION,
         description=(
@@ -424,6 +458,14 @@ def create_app(services: Services) -> fastapi.FastAPI:
     )
     _install_refusal_handlers(app)
     _install_routes(app, services)
+    if mounted is not None:
+        # Before the presentation mount, which takes every path not yet
+        # claimed; and not under `/v1`, which Section 4.1 fixes exhaustively.
+        # A route at the exact path, not a mount: the protocol posts to `PATH`
+        # itself, and with `redirect_slashes` off a mount would not match it.
+        from ..mcp.surface import PATH
+
+        app.router.add_route(PATH, mounted, include_in_schema=False, name="mcp")
     _install_presentation(app)
     return app
 
