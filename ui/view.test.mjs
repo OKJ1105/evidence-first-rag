@@ -84,6 +84,29 @@ function displayed(model) {
     for (const item of section.items) for (const field of item) scalars(field.value, values);
   }
   if (model.resolved) for (const field of model.resolved) scalars(field.value, values);
+  // The three surfaces this slice added, which `ui/index.html` paints and
+  // which this helper did not walk until N7 on #196. `api-v0.1` Section 8
+  // names the test below as `G2`'s automated evidence, so a value shown on
+  // one of them and absent from the result was a fact on screen that the
+  // containment check never read.
+  //
+  // `statusNotice.sentence` is deliberately left out: it is a fixed label,
+  // and "the sentence interpolates no value" is where it is governed.
+  if (model.headline) {
+    for (const fact of model.headline.facts) scalars(fact.value, values);
+    for (const entry of model.headline.limitations) {
+      for (const field of entry) scalars(field.value, values);
+    }
+  }
+  if (model.statusNotice) {
+    for (const field of model.statusNotice.searched) scalars(field.value, values);
+  }
+  if (model.scopeChoices) {
+    for (const scope of model.scopeChoices.scopes) {
+      for (const field of scope.fields) scalars(field.value, values);
+      for (const entry of scope.fill) scalars(entry.value, values);
+    }
+  }
   return values.filter((value) => value !== null && value !== undefined && value !== "");
 }
 
@@ -647,25 +670,51 @@ describe("#195 item 2 — a sentence only where the runtime wrote none", () => {
     }
   });
 
-  it("names no source the contract that produced the result does not implicate", () => {
-    // B1's mechanism, asserted rather than read. `not_found` on an
-    // `mvp-v0.1` fact route means no row matched the lookup key and no
-    // registry was consulted; the same word on `entity-discovery-v0.1` really
-    // is about the registry. A sentence naming one on a result of the other
-    // is a claim about provenance the response does not carry.
-    const OWNED = new Map([["entity-discovery-v0.1", ["registry", "term", "tier"]]]);
+  it("writes for one vocabulary only, which is what keeps B1 from recurring", () => {
+    // **This test asserted nothing until N6 on #196.** It looked for a
+    // sentence naming another contract's provenance, and skipped every
+    // envelope `statusNotice` returned null for -- which is every `mvp-v0.1`
+    // one, since they all carry `rendered`. What survived was all
+    // `entity-discovery-v0.1`, and the inner loop then skipped its only
+    // entry. Zero assertions ran, and removing the `rendered` guard left it
+    // green: the exact recurrence of B1 it was written to catch.
+    //
+    // Stated directly instead. The sentences are `entity-discovery-v0.1`'s
+    // Section 5 conditions, and its `not_found` really is about the registry;
+    // the same word on an `mvp-v0.1` fact route would name a source no
+    // request consulted. So the rule is which vocabulary may be spoken for at
+    // all, and it is asserted over every envelope, in both directions, with
+    // the count that makes each side real.
+    const DISCOVERY = "entity-discovery-v0.1";
+    let spokenFor = 0;
+    let silent = 0;
     for (const [name, envelope] of Object.entries(envelopes)) {
       if (!("result" in envelope)) continue;
-      const notice = statusNotice(envelope);
-      if (notice === null) continue;
       const contract = envelope.result.evidence_bundle.contract_identifier;
-      for (const [owner, words] of OWNED) {
-        if (owner === contract) continue;
-        for (const word of words) {
-          assert.equal(notice.sentence.includes(word), false, `${name}: ${word}`);
-        }
+      const notice = statusNotice(envelope);
+      if (contract === DISCOVERY) {
+        if (notice !== null) spokenFor += 1;
+      } else {
+        assert.equal(notice, null, `${name} (${contract}) was given a sentence`);
+        silent += 1;
       }
     }
+    // The #101 guard: green either way if no envelope reached either side.
+    assert.ok(spokenFor > 0, "no discovery envelope is given a sentence");
+    assert.ok(silent > 0, "no envelope of another contract is withheld one");
+
+    // And the half that gives the rule its point: this contract's `not_found`
+    // is about an approved entity matching a term at a tier, which is true
+    // here and false on an `mvp-v0.1` fact route, where `not_found` means no
+    // row matched the lookup key and nothing was searched for by term at all.
+    // Naming that provenance on the wrong vocabulary is what B1 did, so the
+    // two assertions together say why the split matters and not only that it
+    // holds.
+    const sentence = statusNotice(envelopes.discovery_not_found).sentence;
+    for (const word of ["approved entity", "term", "tier"]) {
+      assert.ok(sentence.includes(word), `the discovery not_found sentence drops "${word}"`);
+    }
+    assert.equal(sentence.includes("lookup key"), false);
   });
 
   it("does not claim an `ambiguous` result lists more than one scope", () => {
