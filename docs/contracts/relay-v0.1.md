@@ -184,7 +184,7 @@ The relay adds nothing to `evidence_bundle`, `source_trace` or `limitations`, re
 | Section 4.8 identity | Automated where observable: `RL-017`, the relay's settings expose no database credential and the runtime's no Anthropic key. The deployment contract carries the deployed check. |
 | Section 4.10 records | Automated: `RL-018`, as registered below |
 | Section 4.7 page obligations | The portfolio site's slice, automated there (Section 8.2), and the owner's recorded decision that the page materially supports use |
-| End to end, deployed | The deployment contract's deployed run, with one recorded conversation per registered case in Section 8.1's last rows |
+| End to end, deployed | The deployment contract's `DP-012`: one deployed `POST /chat`, asserting only what the relay controls — HTTP 200, the Section 4.3 block types, `scope_checks`, and the `relay` key — never the model's words |
 
 ### 8.1 Registered cases
 
