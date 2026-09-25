@@ -562,25 +562,26 @@ export function headlineOf(result) {
 }
 
 /**
- * Three requests, as fixed strings (#195 item 4).
+ * Three discovery terms, as fixed strings (#195 item 4).
  *
  * Not from the survey behind #195 -- the writer's proposal, kept on the owner's
  * record of 2026-09-21. It is the cheapest answer to "the page requires prior
  * understanding": a person who has read no contract has no way to know that
- * this database holds `SAMPLE_*` identifiers and nothing else, and a request
+ * this database holds `SAMPLE_*` identifiers and nothing else, and a term
  * naming anything real returns `not_found` correctly and teaches nothing.
  *
- * **Each is a question and nothing more.** None is labelled with what it
- * returns, because the page cannot know: the same string reaches a different
- * status as the registry changes, and a label promising a result would be the
- * page stating a fact no response has produced (obligations 2 and 7). Clicking
- * one fills the Ask field; the person presses Ask.
+ * Terms rather than questions since #203: this page no longer sends `/v1/ask`
+ * (`api-v0.1` Section 9), so its entry is the discovery form and what a click
+ * fills is that form's `term` field -- the one field obligation 4 lets the
+ * person's own words reach. Nothing here fills a scope dimension.
+ *
+ * **Each is a term and nothing more.** None is labelled with what it returns,
+ * because the page cannot know: the same string reaches a different status as
+ * the registry changes, and a label promising a result would be the page
+ * stating a fact no response has produced (obligations 2 and 7). Clicking one
+ * fills the term field; the person presses Search.
  */
-export const EXAMPLE_REQUESTS = [
-  "What is the temperature signal in SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE?",
-  "Tell me about engine speed in SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN",
-  "Summarize the overall health of the powertrain network",
-];
+export const EXAMPLE_TERMS = ["temperature", "engine speed", "SAMPLE_ALIAS_GEARBOX_STATE"];
 
 /**
  * The whole screen for one envelope.

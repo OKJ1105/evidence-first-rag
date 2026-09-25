@@ -99,9 +99,12 @@ from the stack's own containers and not from your machine.
 After changing anything under `src/`, `ui/`, `sql/` or `fixtures/`, start it
 with `docker compose up --build`: the image is built from those directories
 rather than mounting them, so without `--build` a second `up` serves the image
-it built the first time. Open that address, type a question in your own words,
-choose among the candidates it offers, and read the fact it returns with its
-scope, its template, its bound parameters and its limitations beside it.
+it built the first time. Open that address, search the approved registry for
+an entity in one `SAMPLE_*` scope, choose among the candidates it offers, and
+read the fact it returns with its scope, its template, its bound parameters and
+its limitations beside it. Asking in your own words is what the MCP tool
+surface below is for: a host's model composes the calls, and the page is where
+the evidence behind a fact can be read at the source.
 
 `api-v0.1` Section 4.7 is why this is one command rather than a list of steps,
 and why the stack provisions through the same path CI uses rather than one of
@@ -109,11 +112,12 @@ its own: Charter Section 9's Milestone 5 gate forbids a second schema or
 fixture meaning, so the way this starts locally is the way a deployment has to
 start.
 
-**No model credential is needed.** Four of the five routes answer without one,
-and `/v1/ask` — the one that asks a model to propose a route — refuses with
-`adapter_unavailable` until `ANTHROPIC_API_KEY` is in your environment. That is
-the contract's own arrangement, not a degraded mode: the facts come from
-registered SQL templates, and the model only ever proposes which one to run.
+**No model credential is needed.** Neither the page nor the MCP tool surface
+calls a model. `/v1/ask`, the Thin LLM Adapter's route, is still served for the
+Milestone 2 evaluation path and refuses with `adapter_unavailable` until
+`ANTHROPIC_API_KEY` is in your environment, but it is no longer the documented
+way in: [ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md)
+item 5, and `api-v0.1` Section 9 (#203).
 
 **The same stack serves the MCP tool surface at `/mcp`** — `mcp-v0.1`
 Section 4.5, Streamable HTTP, beside `/v1` in the same process over the same

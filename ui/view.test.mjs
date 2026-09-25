@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
-  EXAMPLE_REQUESTS,
+  EXAMPLE_TERMS,
   FACT_ROUTES,
   SCOPE_DIMENSIONS as EXPORTED_SCOPE_DIMENSIONS,
   answerOf,
@@ -883,11 +883,11 @@ describe("#195 item 3 — some evidence is outside the disclosure", () => {
   });
 });
 
-describe("#195 item 4 — the example requests claim nothing", () => {
+describe("#195 item 4 — the example terms claim nothing", () => {
   it("names no identifier that is not a SAMPLE_ one", () => {
     // Charter Section 11: this repository carries synthetic identifiers only,
     // and the page is served to whoever opens it.
-    for (const request of EXAMPLE_REQUESTS) {
+    for (const request of EXAMPLE_TERMS) {
       for (const token of request.split(/[^A-Za-z0-9_]+/)) {
         // An identifier, as this repository writes them: it carries an
         // underscore, or it is all upper case. A capital that merely begins an
@@ -907,7 +907,7 @@ describe("#195 item 4 — the example requests claim nothing", () => {
     // be a fact no response has produced (obligations 2 and 7).
     const statuses = new Set(statusesInFixture());
     assert.ok(statuses.size > 1);
-    for (const request of EXAMPLE_REQUESTS) {
+    for (const request of EXAMPLE_TERMS) {
       for (const status of statuses) {
         assert.equal(request.includes(status), false, `${request} names ${status}`);
       }
@@ -915,8 +915,8 @@ describe("#195 item 4 — the example requests claim nothing", () => {
   });
 
   it("is a list of non-empty strings, and the page holds no other scope list", () => {
-    assert.ok(EXAMPLE_REQUESTS.length > 0);
-    for (const request of EXAMPLE_REQUESTS) {
+    assert.ok(EXAMPLE_TERMS.length > 0);
+    for (const request of EXAMPLE_TERMS) {
       assert.equal(typeof request, "string");
       assert.ok(request.trim().length > 0);
     }
@@ -924,5 +924,37 @@ describe("#195 item 4 — the example requests claim nothing", () => {
     // keeping its own copy; this is the independent statement of what a scope
     // is that keeps the exported one honest.
     assert.deepEqual([...EXPORTED_SCOPE_DIMENSIONS].sort(), [...SCOPE_DIMENSIONS].sort());
+  });
+});
+
+describe("#203 — the page does not send `/v1/ask`", () => {
+  // `api-v0.1` Section 9, the `/v1/ask` row: the route stays served and keeps
+  // every obligation, and this page no longer points a reader at it. Read off
+  // the page's own source, because the page is what a reader opens and nothing
+  // in `view.mjs` decides which route it sends.
+  const page = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  const script = page.slice(page.indexOf('<script type="module">'));
+
+  it("sends no request to `/v1/ask`", () => {
+    assert.equal(/send\(\s*["']\/v1\/ask["']/.test(script), false);
+    assert.equal(/fetch\(\s*["']\/v1\/ask["']/.test(script), false);
+  });
+
+  it("opens on the discovery form, since there is no other entry", () => {
+    // A `hidden` discovery panel with no Ask panel is a page with nothing a
+    // person can do: the only control that used to reveal it is gone.
+    assert.match(page, /<section id="discover-panel">/);
+    assert.match(script, /^showDiscovery\(\);$/m);
+  });
+
+  it("fills only the term field from an example", () => {
+    // Obligation 4: the person's own words may reach `term`; nothing on this
+    // page may default a scope dimension. The block is the example loop, from
+    // its header to the next top-level statement.
+    const start = script.indexOf("for (const term of EXAMPLE_TERMS)");
+    assert.ok(start >= 0, "the example loop is gone");
+    const block = script.slice(start, script.indexOf("\n}\n", start));
+    const targeted = [...block.matchAll(/data-name="([^"]+)"/g)].map((match) => match[1]);
+    assert.deepEqual(targeted, ["term"]);
   });
 });
