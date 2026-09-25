@@ -199,5 +199,26 @@ class TheProvenanceIsTheCommittedFixtures(unittest.TestCase):
         self.assertEqual(present, set(serve.FIXTURE_PROVENANCE))
 
 
+@unittest.skipUnless(HAS_API, "the api extra is not installed")
+class TheRegisteredOriginComesFromTheEnvironment(unittest.TestCase):
+    """`api-v0.1` Section 4.5 (`0.2.0`): `EFR_CORS_ORIGIN`, unset in the stack."""
+
+    ORIGIN = "https://sample-origin.example"
+    PREFLIGHT = {"Origin": ORIGIN, "Access-Control-Request-Method": "POST"}
+
+    def test_set_it_admits_a_preflight(self):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(serve.build({**BASE, "EFR_CORS_ORIGIN": self.ORIGIN}))
+        self.assertEqual(client.options("/v1/query", headers=self.PREFLIGHT).status_code, 204)
+
+    def test_unset_or_empty_it_admits_none(self):
+        from fastapi.testclient import TestClient
+
+        for environment in (BASE, {**BASE, "EFR_CORS_ORIGIN": ""}):
+            client = TestClient(serve.build(environment))
+            self.assertEqual(client.options("/v1/query", headers=self.PREFLIGHT).status_code, 405)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

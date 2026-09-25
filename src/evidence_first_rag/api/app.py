@@ -64,7 +64,7 @@ from .serialize import as_json, dumps
 # Section 1 of docs/contracts/api-v0.1.md. Carried on every result-bearing
 # response by Section 4.2's `contract` key, and reported by `GET /v1/health`.
 CONTRACT_IDENTIFIER = "api-v0.1"
-CONTRACT_VERSION = "0.1.2"
+CONTRACT_VERSION = "0.2.0"
 
 # Section 4.5's six kinds, with the HTTP code each is fixed to. A dict rather
 # than six constants so that the refusal writer cannot pair a kind with a code
@@ -437,8 +437,12 @@ def _mcp(services: Services):
     return surface.mount(services)
 
 
-def create_app(services: Services) -> fastapi.FastAPI:
-    """The Section 4.1 surface over `services`, with `mcp-v0.1`'s beside it."""
+def create_app(services: Services, *, cors_origin: str | None = None) -> fastapi.FastAPI:
+    """The Section 4.1 surface over `services`, with `mcp-v0.1`'s beside it.
+
+    `cors_origin` is Section 4.5's one registered origin (`0.2.0`), or `None`,
+    in which case no preflight is admitted and nothing changes from `0.1.x`.
+    """
     mounted = _mcp(services)
 
     @contextlib.asynccontextmanager
@@ -481,7 +485,74 @@ def create_app(services: Services) -> fastapi.FastAPI:
 
         app.router.add_route(PATH, mounted, include_in_schema=False, name="mcp")
     _install_presentation(app)
+    if cors_origin:
+        app.add_middleware(_Preflight, origin=cors_origin)
     return app
+
+
+# Section 4.5 at `0.2.0`: the three routes a person's choice is sent to from
+# another origin's page. Not `/v1/ask`, not `/v1/health`.
+CORS_PATHS = frozenset({NAMESPACE + "/select", NAMESPACE + "/query", NAMESPACE + "/discover"})
+
+
+class _Preflight:
+    """Section 4.5's one exception to `method_not_allowed` (`0.2.0`).
+
+    A pure ASGI wrapper, so it answers **before routing**: an admitted
+    preflight reaches no route and opens no connection. It needs all four
+    conditions -- `OPTIONS`, one of `CORS_PATHS`, the registered origin, and
+    `Access-Control-Request-Method: POST` -- and anything short of all four is
+    passed through untouched, to be refused exactly as at `0.1.x`.
+
+    A `POST` from the registered origin to one of the same paths gets the
+    response it would have had, plus `Access-Control-Allow-Origin` and
+    `Vary: Origin`. Nothing is added for any other origin: the origin is
+    compared, never reflected.
+    """
+
+    def __init__(self, app, *, origin: str) -> None:
+        self.app = app
+        self.origin = origin.encode("latin-1")
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"] not in CORS_PATHS:
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope["headers"])
+        from_origin = headers.get(b"origin") == self.origin
+        if (
+            scope["method"] == "OPTIONS"
+            and from_origin
+            and headers.get(b"access-control-request-method") == b"POST"
+        ):
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 204,
+                    "headers": [
+                        (b"access-control-allow-origin", self.origin),
+                        (b"access-control-allow-methods", b"POST"),
+                        (b"access-control-allow-headers", b"content-type"),
+                        (b"vary", b"Origin"),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": b""})
+            return
+        if not (scope["method"] == "POST" and from_origin):
+            await self.app(scope, receive, send)
+            return
+
+        async def with_origin(message):
+            if message["type"] == "http.response.start":
+                message = dict(message)
+                message["headers"] = list(message.get("headers", [])) + [
+                    (b"access-control-allow-origin", self.origin),
+                    (b"vary", b"Origin"),
+                ]
+            await send(message)
+
+        await self.app(scope, receive, with_origin)
 
 
 # Section 4.6's page, and Section 3.2's reason it is not fixed by the contract.
