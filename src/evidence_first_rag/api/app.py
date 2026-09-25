@@ -35,6 +35,7 @@ adding validation the contract forbids; it is the framework expressing the one
 check the contract requires.
 """
 
+import contextlib
 import dataclasses
 import json
 import mimetypes
@@ -403,9 +404,56 @@ def _is_json_object(text: object) -> bool:
 # --------------------------------------------------------------------------
 
 
+def _mcp(services: Services):
+    """The `mcp-v0.1` surface over the same `services`, or `None`.
+
+    `mcp-v0.1` Section 4.5 serves its tools from this process, over the same
+    `Services`, beside `/v1` -- one runtime, two surfaces, which is what makes
+    that contract's equality cases a statement about one system. The import
+    is inside the function because `mcp/surface.py` imports this module.
+
+    **Only a missing package is tolerated, and that is deliberate.** `mcp`
+    arrives with the `api` extra, and a checkout that installed the framework
+    before this surface landed has fastapi without it; there, `/v1` keeps
+    serving and this returns `None`. The guard is on the **package**, not on
+    the import of this repository's module over it: an SDK that is installed
+    but incompatible raises from that second import, and it propagates. A
+    surface that half-built itself and served `/v1` anyway would be a fallback
+    runtime with no signal -- Charter Section 9's Milestone 5 gate forbids one,
+    and nothing in CI would see it, because a deployment that quietly lost its
+    tools looks exactly like one that never had them.
+    """
+    try:
+        import mcp  # noqa: F401
+    except ImportError:  # pragma: no cover - the api extra carries mcp
+        return None
+    # Outside the guard on purpose. Once the package is there, any failure
+    # importing this repository's module over it -- a symbol that moved in a
+    # later SDK, a defect in the module -- propagates and the process does not
+    # start. Catching it here would serve `/v1` with the tool surface silently
+    # absent, which is a fallback runtime with no signal (#101 at run time).
+    from ..mcp import surface
+
+    return surface.mount(services)
+
+
 def create_app(services: Services) -> fastapi.FastAPI:
-    """The Section 4.1 surface over `services`."""
+    """The Section 4.1 surface over `services`, with `mcp-v0.1`'s beside it."""
+    mounted = _mcp(services)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
+        # The MCP session manager answers nothing until it is running, and it
+        # runs for the life of the process; entering it here is what makes
+        # `PATH` answer under uvicorn and under a `with TestClient(app)`.
+        if mounted is None:
+            yield
+            return
+        async with mounted.lifespan():
+            yield
+
     app = fastapi.FastAPI(
+        lifespan=lifespan,
         title="Evidence-First RAG Runtime",
         version=CONTRACT_VERSION,
         description=(
@@ -424,6 +472,14 @@ def create_app(services: Services) -> fastapi.FastAPI:
     )
     _install_refusal_handlers(app)
     _install_routes(app, services)
+    if mounted is not None:
+        # Before the presentation mount, which takes every path not yet
+        # claimed; and not under `/v1`, which Section 4.1 fixes exhaustively.
+        # A route at the exact path, not a mount: the protocol posts to `PATH`
+        # itself, and with `redirect_slashes` off a mount would not match it.
+        from ..mcp.surface import PATH
+
+        app.router.add_route(PATH, mounted, include_in_schema=False, name="mcp")
     _install_presentation(app)
     return app
 
