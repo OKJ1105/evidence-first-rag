@@ -168,6 +168,11 @@ class TheImageCarriesWhatTheContractNeeds(unittest.TestCase):
         README and `compose.yaml`, and leaving the page's "ask in your own
         words" panel dead in the stack built to demonstrate it. The owner's
         disposition on #192 is to install the extra and keep that prose true.
+
+        Since #203 the page has no such panel, and the reason is narrower:
+        `/v1/ask` stays served (`api-v0.1` `0.1.2`, Section 9), so a stack
+        that carries a credential must still answer it rather than refuse on
+        a missing library the contract never made optional.
         """
         dockerfile = DOCKERFILE.read_text(encoding="utf-8")
         self.assertIn('".[api,adapter]"', dockerfile)

@@ -113,11 +113,14 @@ fixture meaning, so the way this starts locally is the way a deployment has to
 start.
 
 **No model credential is needed.** Neither the page nor the MCP tool surface
-calls a model. `/v1/ask`, the Thin LLM Adapter's route, is still served for the
-Milestone 2 evaluation path and refuses with `adapter_unavailable` until
-`ANTHROPIC_API_KEY` is in your environment, but it is no longer the documented
-way in: [ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md)
-item 5, and `api-v0.1` Section 9 (#203).
+calls a model. `/v1/ask`, the Thin LLM Adapter's route, is still served — it
+refuses with `adapter_unavailable` until `ANTHROPIC_API_KEY` is in your
+environment — but it is no longer the documented way in. It stays in the route
+table because removing a route is a minor version of an `Accepted` contract,
+and the repository owner chose to retire only the documented path (#203,
+`api-v0.1` `0.1.2`). The adapter itself, not the route, remains available for
+evaluation ([ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md)
+item 5).
 
 **The same stack serves the MCP tool surface at `/mcp`** — `mcp-v0.1`
 Section 4.5, Streamable HTTP, beside `/v1` in the same process over the same
