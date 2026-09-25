@@ -12,9 +12,11 @@ It registers no route, template, status, tool or fixture. It deploys the ones th
 
 ## 2. Status
 
-**Status:** `Proposed`
+**Status:** `Accepted 2026-09-25`
 
-Drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210) against [ADR-0005](../adr/0005-the-chat-relay-is-a-host-this-project-operates.md) and `relay-v0.1`, both `Proposed`. The owner decided on 2026-09-25 to review the three together in one sitting. The owner-side Azure setup this contract builds on is [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205). Until the owner records acceptance, no deployment code may be written against this document (Framework Section 2.1).
+This contract is binding on implementation from that date under [Contract Shape Framework](README.md) Section 2.1. The repository owner reviewed it with [ADR-0005](../adr/0005-the-chat-relay-is-a-host-this-project-operates.md) and `relay-v0.1` in one sitting, recorded the open decisions on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) (database access: "allow Azure services"; the `/v1` preflight: option (a), implemented in `api-v0.1` `0.2.0`), and merged it in [#211](https://github.com/OKJ1105/evidence-first-rag/pull/211). The acceptance is the owner's merge of the pull request that moves this line ([#218](https://github.com/OKJ1105/evidence-first-rag/issues/218)). The owner-side Azure setup this contract builds on is recorded on [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205).
+
+**How this document reached here.** Drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`.
 
 ## 3. Scope
 
@@ -132,7 +134,7 @@ Every key a deployed process reads. Nothing else is read, and nothing here is a 
 
 - Both apps write **one JSON line per request** to standard output: timestamp, path, HTTP status, latency, and for a result its `status`, or for a refusal its kind. `relay` adds what `relay-v0.1` Section 4.10 lists, and no more.
 - **No log line carries a request body, a message text, a bound parameter value, a row, or a credential.** A request identifier may be logged, and a person's words may not.
-- Logs go to the platform's built-in log store, retained **7 days**. Metrics are the platform's built-in request count, latency and HTTP status per app. **No additional monitoring service**, because it would cost more than the budget has room for (Section 4.9).
+- Logs go to the platform's built-in log store, retained **7 days**. Metrics are the platform's built-in request count, latency and HTTP status per app. **No additional monitoring service**: whether one fits under the Section 4.9 budget is not known until that section's cost computation is committed, and adding one is a later minor version (Section 9).
 - **Failure classification** (Charter Section 9: data, retrieval, contract, runtime, presentation) is read off what is already logged. A refusal kind or an HTTP status is **runtime**. A registered negative status is **data** or **retrieval**, as its contract assigns it. A deployed-run mismatch is **contract**. A page defect is **presentation**, reported by the site's slice. No new field is invented for it.
 
 ### 4.8 The deployed conformance run

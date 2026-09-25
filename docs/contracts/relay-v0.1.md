@@ -12,9 +12,11 @@ It is a **separate document, not an amendment** to `mcp-v0.1`, `api-v0.1`, `enti
 
 ## 2. Status
 
-**Status:** `Proposed`
+**Status:** `Accepted 2026-09-25`
 
-Drafted on [#208](https://github.com/OKJ1105/evidence-first-rag/issues/208) against ADR-0005, which is itself `Proposed` on [#207](https://github.com/OKJ1105/evidence-first-rag/pull/207). The owner decided on 2026-09-25 to review this contract, ADR-0005 and the deployment contract together in one sitting. Until the owner records acceptance, no code may be written against this document (Framework Section 2.1).
+This contract is binding on implementation from that date under [Contract Shape Framework](README.md) Section 2.1. The repository owner reviewed it with ADR-0005 and `deploy-v0.1` in one sitting, recorded the open decisions on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) (the model is `claude-haiku-4-5`), and merged it in [#209](https://github.com/OKJ1105/evidence-first-rag/pull/209). The acceptance is the owner's merge of the pull request that moves this line ([#218](https://github.com/OKJ1105/evidence-first-rag/issues/218)). No milestone gate is involved (Framework Section 2.1).
+
+**How this document reached here.** Drafted on [#208](https://github.com/OKJ1105/evidence-first-rag/issues/208) against ADR-0005 ([#207](https://github.com/OKJ1105/evidence-first-rag/pull/207)). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`.
 
 ## 3. Scope
 
