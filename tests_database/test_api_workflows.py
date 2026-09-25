@@ -412,7 +412,7 @@ class TheSurfaceProperties(WorkflowCase):
         # that, by giving the parity tests a home with no optional import.
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.1.1", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.1.2", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         self.assertIs(document["adapter_configured"], False)
 

@@ -2,7 +2,7 @@
   "ask_invented_scope": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "proposal": {
       "arguments": {
@@ -52,7 +52,7 @@
   "ask_verbatim_scope": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "proposal": {
       "arguments": {
@@ -111,7 +111,7 @@
   "candidates": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -264,7 +264,7 @@
   "discovery_ambiguous": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -348,7 +348,7 @@
   "discovery_coverage_gap": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -411,7 +411,7 @@
   "discovery_invalid_request": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -464,7 +464,7 @@
   "discovery_not_found": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -545,7 +545,7 @@
   "discovery_resolved": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -647,7 +647,7 @@
   "discovery_unsupported": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": null,
     "result": {
@@ -700,7 +700,7 @@
   "fact_ambiguous": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "Scope is missing or under-specified. These candidate snapshots match; the runtime does not choose between them.\nRoute: message_facts, Status: ambiguous.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_REVISED\n",
     "result": {
@@ -770,7 +770,7 @@
   "fact_ambiguous_one_scope": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "Scope is missing or under-specified. These candidate snapshots match; the runtime does not choose between them.\nRoute: message_facts, Status: ambiguous.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE\n",
     "result": {
@@ -828,7 +828,7 @@
   "fact_coverage_gap": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "The approved data scope does not contain, or could not be established to contain, the coverage this request needs.\nRoute: message_facts, Status: coverage_gap.\nLimitation (coverage_not_established): no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_POWERTRAIN, so the coverage this request needs could not be established (Sections 4.2 and 5).\n",
     "result": {
@@ -877,7 +877,7 @@
   "fact_not_found": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "Scope resolved to one snapshot within approved coverage, and no row matched the lookup key.\nRoute: message_facts, Status: not_found.\nResolved scope: SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE.\n",
     "result": {
@@ -927,7 +927,7 @@
   "fact_success": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "The registered template returned these rows.\nRoute: signal_facts, Status: success.\nResolved scope: SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE, message_key: SAMPLE_MSG_ENGINE_STATUS, signal_key: SAMPLE_SIG_ENGINE_SPEED, unit_label: SAMPLE_UNIT_RPM, scale_factor: 0.250, scale_offset: 0.000, bit_width: 16, bit_offset: 8\n",
     "result": {
@@ -1003,7 +1003,7 @@
   "needs_entity_discovery": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "The route is determined, but no canonical reference could be formed.\nRoute: signal_facts, Status: needs_entity_discovery.\nLimitation (entity_discovery_not_implemented): Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'signal_facts' is determined, but ['message_key', 'signal_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)\n",
     "result": {
@@ -1051,7 +1051,7 @@
   "selection_two_limitations": {
     "contract": {
       "identifier": "api-v0.1",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     "rendered": "The registered template returned these rows.\nRoute: signal_facts, Status: success.\nResolved scope: SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE.\n- project_code: SAMPLE_PROJECT_ALPHA, revision_label: SAMPLE_REV_A, network_name: SAMPLE_NET_POWERTRAIN, snapshot_label: SAMPLE_SNAP_BASE, message_key: SAMPLE_MSG_TRANSMISSION_STATE, signal_key: SAMPLE_SIG_GEAR_POSITION, unit_label: SAMPLE_UNIT_RPM, scale_factor: 0.250, scale_offset: 0.000, bit_width: 16, bit_offset: 8, superseded_by_project_code: SAMPLE_PROJECT_ALPHA, superseded_by_revision_label: SAMPLE_REV_A, superseded_by_network_name: SAMPLE_NET_CHASSIS, superseded_by_snapshot_label: SAMPLE_SNAP_BASE\nLimitation (superseded_snapshot): SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_POWERTRAIN / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2).\nLimitation (scope_selected_by_user): This reference was selected explicitly, at rank 1 of 2 candidates in candidate set 9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7, and dispatched to signal_facts. The selection was verified by re-deriving the candidate set (entity-discovery-v0.1 Section 4.8).\n",
     "result": {

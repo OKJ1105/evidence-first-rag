@@ -79,25 +79,23 @@
     establish. Nothing on this page is written by a model.
   </p>
 
-  <section>
-    <h2>Ask</h2>
-    <label for="ask">A question, in your own words</label>
-    <textarea id="ask" rows="2" placeholder="SAMPLE_… identifiers only; this database holds synthetic fixtures"></textarea>
-    <p class="note">Sent to <code>POST /v1/ask</code>. A model proposes a route; the runtime revalidates it and answers, or refuses.</p>
+  <!--
+    `api-v0.1` Section 9, the `/v1/ask` row (#203): this page does not send
+    `/v1/ask`. A reader who wants a conversation reaches the runtime through a
+    host over the MCP tool surface (`mcp-v0.1`, ADR-0004); this page is where
+    the evidence behind a fact can be read at the source.
+  -->
+  <section id="discover-panel">
+    <h2>Find the entity</h2>
+    <p class="note">Choose a kind and type a term. Leave a scope field empty and the response lists the scopes that exist, with a button to fill each one; nothing is looked up until you press Search.</p>
     <!--
-      #195 item 4. Fixed strings from `view.mjs`, filled into the field above on
-      a click; the person presses Ask. None is labelled with what it returns,
+      #195 item 4. Fixed strings from `view.mjs`, filled into the term field on
+      a click; the person presses Search. None is labelled with what it returns,
       because the page cannot know that before a response exists.
     -->
-    <p class="note" style="margin-top:14px">This database holds synthetic <code>SAMPLE_*</code> fixtures only. To start from one of these, click it:</p>
+    <p class="note" style="margin-top:14px">This database holds synthetic <code>SAMPLE_*</code> fixtures only. To start from one of these terms, click it:</p>
     <div id="examples" class="chips"></div>
-    <p style="margin-top:12px"><button id="ask-send">Ask</button></p>
-  </section>
-
-  <section id="discover-panel" hidden>
-    <h2>Find the entity</h2>
-    <p class="note">The request named no canonical reference, so nothing was looked up. Search the approved registry, then choose.</p>
-    <div id="discover-fields" class="grid"></div>
+    <div id="discover-fields" class="grid" style="margin-top:12px"></div>
     <p style="margin-top:12px"><button id="discover-send">Search</button></p>
   </section>
 
@@ -113,7 +111,7 @@
 
 <script type="module">
 import {
-  EXAMPLE_REQUESTS,
+  EXAMPLE_TERMS,
   SCOPE_DIMENSIONS,
   chooseRank,
   discoveryForm,
@@ -123,7 +121,9 @@ import {
   viewFor,
 } from "./view.mjs";
 const out = document.getElementById("out");
-const state = { requestText: "", proposal: null, candidates: [], selection: null, discovery: null };
+// `requestText` stays empty: this page takes no request text, so nothing in
+// the discovery form is transcribed from one and no proposal exists to read.
+const state = { requestText: "", candidates: [], selection: null, discovery: null };
 
 const el = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -330,9 +330,9 @@ function render(model) {
       block.append(fieldTable(scope.fields));
       // The act the owner's reading on #195 permits: it writes the dimensions
       // that differ into the discovery form, visible and editable, and sends
-      // nothing. Offered only where that form is on screen to write into --
-      // a `/v1/query` ambiguity has no such form, and a button that did
-      // nothing would be worse than none.
+      // nothing. Since #203 that form is the page's entry and is always on
+      // screen; the check stays so that the button is never offered for a
+      // field it could not write into.
       const targets = scope.fill.filter((entry) => discoveryInput(entry.name) !== null);
       if (targets.length > 0) {
         const use = el("button", `Use ${targets.map((entry) => `${entry.name} = ${entry.value}`).join(", ")}`);
@@ -425,7 +425,7 @@ function showSelection(form) {
 function showDiscovery() {
   const form = discoveryForm({
     requestText: state.requestText,
-    proposal: state.proposal,
+    proposal: null,
     scopeDimensions: SCOPE_DIMENSIONS,
     entityKind: null,
   });
@@ -469,39 +469,26 @@ function wire(id, handler) {
     try {
       await handler();
     } catch (cause) {
-      document.getElementById("discover-panel").hidden = true;
+      // The discovery form is the page's entry and stays; what goes is the
+      // selection made against a response that never arrived.
       clearSelection();
       render(unreachedView(cause));
     }
   });
 }
 
-// #195 item 4. Fixed strings from `view.mjs`; a click fills the field and
+showDiscovery();
+
+// #195 item 4. Fixed strings from `view.mjs`; a click fills the term field and
 // stops there. Nothing is sent, and no chip says what it will return.
-for (const request of EXAMPLE_REQUESTS) {
-  const chip = el("button", request);
+for (const term of EXAMPLE_TERMS) {
+  const chip = el("button", term);
   chip.addEventListener("click", () => {
-    document.getElementById("ask").value = request;
+    const input = document.querySelector('#discover-fields [data-name="term"]');
+    if (input) input.value = term;
   });
   document.getElementById("examples").append(chip);
 }
-
-wire("ask-send", async () => {
-  state.requestText = document.getElementById("ask").value;
-  document.getElementById("discover-panel").hidden = true;
-  // The invariant, on the third of the three paths that end a candidate list.
-  // Hiding the panel alone left the chosen rank, the digest and the arguments
-  // in `state` and the send button enabled: unreachable today only because a
-  // `hidden` section is `display: none`, which is a CSS property standing in
-  // for a rule about what a person chose.
-  clearSelection();
-  const { body } = await send("/v1/ask", { request_text: state.requestText });
-  const model = viewFor(body, { requestText: state.requestText });
-  state.proposal = model.kind === "result" ? model.proposal : null;
-  render(model);
-  // Obligation 5: the page offers the next step; it does not take it.
-  if (model.kind === "result" && model.status === "needs_entity_discovery") showDiscovery();
-});
 
 wire("discover-send", async () => {
   const args = {};

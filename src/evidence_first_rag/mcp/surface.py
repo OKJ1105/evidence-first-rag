@@ -66,7 +66,7 @@ from ..runtime.faults import ConnectionUnavailable, Fault
 # tool result's `contract` key is `api-v0.1`'s, because the envelope is that
 # contract's (Section 4.2).
 CONTRACT_IDENTIFIER = "mcp-v0.1"
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.1.1"
 
 # Section 4.5: one path beside `/v1`, fixed by this slice. Not under `/v1`,
 # which `api-v0.1` Section 4.1 fixes exhaustively.

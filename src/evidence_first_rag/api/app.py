@@ -64,7 +64,7 @@ from .serialize import as_json, dumps
 # Section 1 of docs/contracts/api-v0.1.md. Carried on every result-bearing
 # response by Section 4.2's `contract` key, and reported by `GET /v1/health`.
 CONTRACT_IDENTIFIER = "api-v0.1"
-CONTRACT_VERSION = "0.1.1"
+CONTRACT_VERSION = "0.1.2"
 
 # Section 4.5's six kinds, with the HTTP code each is fixed to. A dict rather
 # than six constants so that the refusal writer cannot pair a kind with a code
