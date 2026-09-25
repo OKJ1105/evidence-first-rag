@@ -1758,3 +1758,97 @@ class TheSurfaceDoesNotBlockItself(SurfaceCase):
 
         self.assertEqual(answers[parseable].status_code, 200)
         self.assert_refusal(answers[unparseable], "adapter_unavailable")
+
+
+ORIGIN = "https://sample-origin.example"
+PREFLIGHT = {"Origin": ORIGIN, "Access-Control-Request-Method": "POST"}
+
+
+@unittest.skipUnless(HAS_API, "the api extra is not installed")
+class ThePreflight(unittest.TestCase):
+    """`api-v0.1` Section 4.5 at `0.2.0`: `WF-023` to `WF-025`."""
+
+    def client(self, origin=ORIGIN):
+        db = fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)})
+        services = Services(
+            runtime=Counting(Runtime(database=db, fixture_provenance=PROVENANCE)),
+            discovery=Counting(Discovery(database=db, fixture_provenance=PROVENANCE)),
+            selection=Counting(Selection(database=db, fixture_provenance=PROVENANCE)),
+            proposer=None,
+        )
+        return TestClient(create_app(services, cors_origin=origin)), services
+
+    def test_wf_023_a_preflight_from_the_registered_origin_is_admitted(self):
+        for path in ("/v1/select", "/v1/query", "/v1/discover"):
+            client, services = self.client()
+            response = client.options(path, headers=PREFLIGHT)
+            self.assertEqual(response.status_code, 204, path)
+            self.assertEqual(response.content, b"")
+            self.assertEqual(response.headers["access-control-allow-origin"], ORIGIN)
+            self.assertEqual(response.headers["access-control-allow-methods"], "POST")
+            self.assertEqual(response.headers["access-control-allow-headers"], "content-type")
+            self.assertEqual(response.headers["vary"], "Origin")
+            # Before routing: nothing was dispatched.
+            self.assertEqual(dispatches(services), 0)
+
+    def test_wf_024_every_other_preflight_is_refused_as_before(self):
+        cases = {
+            "another origin": ("/v1/query", {**PREFLIGHT, "Origin": "https://other.example"}, ORIGIN),
+            "a route the page does not call": ("/v1/ask", PREFLIGHT, ORIGIN),
+            "no origin configured": ("/v1/query", PREFLIGHT, None),
+            "another method": ("/v1/query", {**PREFLIGHT, "Access-Control-Request-Method": "DELETE"}, ORIGIN),
+            "the method header absent": ("/v1/query", {"Origin": ORIGIN}, ORIGIN),
+        }
+        for name, (path, headers, origin) in cases.items():
+            client, _ = self.client(origin)
+            response = client.options(path, headers=headers)
+            self.assertEqual(response.status_code, 405, name)
+            self.assertEqual(response.json()["refusal"], "method_not_allowed", name)
+            self.assertNotIn("access-control-allow-origin", response.headers, name)
+
+    def test_a_preflight_to_an_unknown_path_under_the_namespace_is_unknown_route(self):
+        client, _ = self.client()
+        response = client.options("/v1/nowhere", headers=PREFLIGHT)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["refusal"], "unknown_route")
+
+    def test_wf_025_a_cross_origin_post_is_unchanged_but_for_two_headers(self):
+        body = {"route": "message_facts", "arguments": FACT_MESSAGE}
+        plain, _ = surface(fact_database({"TPL_MESSAGE_FACTS_V1": (message_row(),)}))
+        client, _ = self.client()
+        expected = plain.post("/v1/query", json=body)
+        response = client.post("/v1/query", json=body, headers={"Origin": ORIGIN})
+        self.assertEqual(response.content, expected.content)
+        self.assertEqual(response.headers["access-control-allow-origin"], ORIGIN)
+        self.assertEqual(response.headers["vary"], "Origin")
+        # Another origin gets no header: the origin is compared, never reflected.
+        other = client.post("/v1/query", json=body, headers={"Origin": "https://other.example"})
+        self.assertNotIn("access-control-allow-origin", other.headers)
+
+    def test_a_cross_origin_post_that_reaches_the_catch_all_still_carries_the_headers(self):
+        """Section 4.5's sentence about a `POST` from the registered origin has
+        no exception in it, and the response it most matters for is the one a
+        caller cannot otherwise see.
+
+        The `runtime_fault` 500 for an exception no handler names is written by
+        Starlette's outermost layer -- `ServerErrorMiddleware`, which is why
+        the test above it needs `raise_server_exceptions=False` -- and that
+        layer is *outside* anything `add_middleware` installs. Installed there,
+        the preflight wrapper would add its two headers to every response
+        except that one, a browser would block it, and the page would show an
+        opaque network error where Section 4.5 gives a refusal to read. The
+        suite would have stayed green: `WF-025` registers the 200 case.
+        """
+        services = Services(runtime=Exploding(), discovery=Exploding(), selection=Exploding())
+        client = TestClient(
+            create_app(services, cors_origin=ORIGIN), raise_server_exceptions=False
+        )
+        response = client.post(
+            "/v1/query",
+            json={"route": "message_facts", "arguments": FACT_MESSAGE},
+            headers={"Origin": ORIGIN},
+        )
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["refusal"], "runtime_fault")
+        self.assertEqual(response.headers["access-control-allow-origin"], ORIGIN)
+        self.assertEqual(response.headers["vary"], "Origin")

@@ -100,12 +100,15 @@ def proposer(environment=None):
 def build(environment=None):
     """The Section 4.1 surface and the Section 4.6 page, over a real database."""
     environment = os.environ if environment is None else environment
+    # `api-v0.1` Section 4.5 (`0.2.0`): the one origin a preflight is admitted
+    # from. Unset in the Section 4.7 stack, so none is.
     return create_app(
         services(
             PsycopgDatabase(connection_parameters=connection_parameters(environment)),
             fixture_provenance=FIXTURE_PROVENANCE,
             proposer=proposer(environment),
-        )
+        ),
+        cors_origin=environment.get("EFR_CORS_ORIGIN") or None,
     )
 
 
