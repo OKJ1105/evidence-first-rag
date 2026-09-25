@@ -182,7 +182,16 @@ export function discoveryForm({ requestText = "", proposal = null, scopeDimensio
   const proposed = new Map((proposal?.arguments ?? []).map((argument) => [argument.name, argument]));
 
   const fields = [
-    { name: "term", value: requestText, source: "the person's own request text", editable: true, offered: null },
+    // Labelled only when something was transcribed: since #203 the page takes
+    // no request text, and a label naming one would state a provenance for a
+    // value the person has not typed yet.
+    {
+      name: "term",
+      value: requestText,
+      source: requestText ? "the person's own request text" : null,
+      editable: true,
+      offered: null,
+    },
     {
       name: "entity_kind",
       value: entityKind ?? "",

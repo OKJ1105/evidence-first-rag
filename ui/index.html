@@ -330,9 +330,9 @@ function render(model) {
       block.append(fieldTable(scope.fields));
       // The act the owner's reading on #195 permits: it writes the dimensions
       // that differ into the discovery form, visible and editable, and sends
-      // nothing. Offered only where that form is on screen to write into --
-      // a `/v1/query` ambiguity has no such form, and a button that did
-      // nothing would be worse than none.
+      // nothing. Since #203 that form is the page's entry and is always on
+      // screen; the check stays so that the button is never offered for a
+      // field it could not write into.
       const targets = scope.fill.filter((entry) => discoveryInput(entry.name) !== null);
       if (targets.length > 0) {
         const use = el("button", `Use ${targets.map((entry) => `${entry.name} = ${entry.value}`).join(", ")}`);

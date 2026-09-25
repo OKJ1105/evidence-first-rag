@@ -366,6 +366,15 @@ describe("obligation 4 — a selection is a person's act, and a prefilled field 
     const term = form.fields.find((field) => field.name === "term");
     assert.equal(term.value, "SAMPLE_WHAT_I_TYPED");
     assert.equal(term.editable, true);
+    assert.equal(term.source, "the person's own request text");
+  });
+
+  it("labels no provenance for a term nobody transcribed (#203)", () => {
+    // The page passes no request text, so the field is labelled plainly.
+    const form = discoveryForm({ requestText: "", scopeDimensions: SCOPE_DIMENSIONS });
+    const term = form.fields.find((field) => field.name === "term");
+    assert.equal(term.value, "");
+    assert.equal(term.source, null);
   });
 
   it("prefills a scope dimension only from a value named in `proposal.verbatim`", () => {
