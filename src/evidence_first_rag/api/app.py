@@ -437,11 +437,16 @@ def _mcp(services: Services):
     return surface.mount(services)
 
 
-def create_app(services: Services, *, cors_origin: str | None = None) -> fastapi.FastAPI:
+def create_app(
+    services: Services, *, cors_origin: str | None = None
+) -> "fastapi.FastAPI | _Preflight":
     """The Section 4.1 surface over `services`, with `mcp-v0.1`'s beside it.
 
     `cors_origin` is Section 4.5's one registered origin (`0.2.0`), or `None`,
     in which case no preflight is admitted and nothing changes from `0.1.x`.
+    Registered, the app is returned **wrapped** rather than as the `FastAPI`
+    itself; `_Preflight` says why. Both are ASGI applications, which is all
+    `serve.build`'s uvicorn and the tests' `TestClient` ask of it.
     """
     mounted = _mcp(services)
 
@@ -486,7 +491,7 @@ def create_app(services: Services, *, cors_origin: str | None = None) -> fastapi
         app.router.add_route(PATH, mounted, include_in_schema=False, name="mcp")
     _install_presentation(app)
     if cors_origin:
-        app.add_middleware(_Preflight, origin=cors_origin)
+        return _Preflight(app, origin=cors_origin)
     return app
 
 
@@ -508,6 +513,21 @@ class _Preflight:
     response it would have had, plus `Access-Control-Allow-Origin` and
     `Vary: Origin`. Nothing is added for any other origin: the origin is
     compared, never reflected.
+
+    **It wraps the app from outside rather than being added to it, and the
+    difference is the catch-all 500.** Starlette builds its stack as
+    `[ServerErrorMiddleware] + user_middleware + [ExceptionMiddleware]` and
+    routes the handler keyed on `Exception` to the outermost layer, not to the
+    inner one every other handler in `_install_refusal_handlers` runs in. An
+    `add_middleware` wrapper would therefore sit *inside* the layer that writes
+    the `runtime_fault` 500 for an exception nothing named -- a third driver
+    condition `runtime/connection.py` does not wrap, or a defect here -- and
+    that response would leave carrying neither header. Section 4.5's sentence
+    about a `POST` from the registered origin admits no exception, and a
+    browser handed a 500 without `Access-Control-Allow-Origin` blocks it: the
+    page would show an opaque network error in place of the refusal, which is
+    the one response a caller most needs to read. Outside the framework, every
+    response passes through `with_origin`.
     """
 
     def __init__(self, app, *, origin: str) -> None:

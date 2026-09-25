@@ -1824,3 +1824,31 @@ class ThePreflight(unittest.TestCase):
         # Another origin gets no header: the origin is compared, never reflected.
         other = client.post("/v1/query", json=body, headers={"Origin": "https://other.example"})
         self.assertNotIn("access-control-allow-origin", other.headers)
+
+    def test_a_cross_origin_post_that_reaches_the_catch_all_still_carries_the_headers(self):
+        """Section 4.5's sentence about a `POST` from the registered origin has
+        no exception in it, and the response it most matters for is the one a
+        caller cannot otherwise see.
+
+        The `runtime_fault` 500 for an exception no handler names is written by
+        Starlette's outermost layer -- `ServerErrorMiddleware`, which is why
+        the test above it needs `raise_server_exceptions=False` -- and that
+        layer is *outside* anything `add_middleware` installs. Installed there,
+        the preflight wrapper would add its two headers to every response
+        except that one, a browser would block it, and the page would show an
+        opaque network error where Section 4.5 gives a refusal to read. The
+        suite would have stayed green: `WF-025` registers the 200 case.
+        """
+        services = Services(runtime=Exploding(), discovery=Exploding(), selection=Exploding())
+        client = TestClient(
+            create_app(services, cors_origin=ORIGIN), raise_server_exceptions=False
+        )
+        response = client.post(
+            "/v1/query",
+            json={"route": "message_facts", "arguments": FACT_MESSAGE},
+            headers={"Origin": ORIGIN},
+        )
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["refusal"], "runtime_fault")
+        self.assertEqual(response.headers["access-control-allow-origin"], ORIGIN)
+        self.assertEqual(response.headers["vary"], "Origin")
