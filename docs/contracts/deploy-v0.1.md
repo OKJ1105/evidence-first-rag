@@ -67,7 +67,7 @@ The deployed database is built by **`evidence_first_rag.db.provision`, unchanged
 
 - It runs **from the deploy workflow**, in the GitHub Actions job gated by the `production` environment (#205), which means **after the owner's approval of that run**.
 - The server's administrator login plays the role the local stack's superuser plays: it runs `sql/cluster`. It is used by that job only, and never by an app.
-- The job opens the server's firewall to its own runner address for the duration of the step, and **closes it in a step that runs whether provisioning succeeded or failed**.
+- The job opens the server's firewall to its own runner address for **the provisioning step and the Section 4.8 deployed checks**, which also connect from the runner, and **closes it in a final step that runs whatever the result of either**.
 - Provisioning is re-runnable. `--recreate` rebuilds the application database from the committed files. There is no migration, and no state to preserve: `mvp-v0.1` Section 3.4 says "reproducibility comes from re-provisioning".
 
 **What the first deployed run must show, because this contract cannot assume it.** Flexible Server's administrator is not a PostgreSQL superuser. `sql/cluster` creates two `NOSUPERUSER` roles, creates a database with `LC_COLLATE 'C'` from `template0`, and sets `statement_timeout` on a role. **That these succeed under the managed administrator is expected and unverified.** The data-level invariant check and the conformance runner already assert the collation and the timeout they got. So a managed service that silently substituted either fails the deployed run (Section 8) rather than passing it. If one fails, the fix is an amendment to this contract or to `mvp-v0.1` Section 3.4. It is never a deployment-only SQL file.
@@ -77,8 +77,8 @@ The deployed database is built by **`evidence_first_rag.db.provision`, unchanged
 | Identity | Holds | Used by | Never |
 | --- | --- | --- | --- |
 | Deploy identity (#205) | nothing; federated, no secret | the deploy workflow in the `production` environment | an app |
-| Server administrator | its password, in Key Vault | the provisioning step only | an app, a log |
-| `mvp_provisioning` | its password, in Key Vault | the provisioning step only | an app |
+| Server administrator | its password, in Key Vault | the provisioning step of the deploy job only | an app, a log |
+| `mvp_provisioning` | its password, in Key Vault | the provisioning step and the deployed checks of the deploy job (the conformance runner's Group C data-level invariants connect as it) | an app |
 | `mvp_runtime` | its password, in Key Vault | **`surface` only** | `relay` |
 | Anthropic key | in Key Vault (#205, entered by the owner) | **`relay` only** | `surface` |
 | `surface`, `relay` | a system-assigned managed identity each | reading **only** their own Key Vault secrets | any other secret |
@@ -98,13 +98,15 @@ Charter Section 9's gate: "the deployed runtime identity cannot write data or ch
 | --- | --- | --- |
 | `surface` `/v1`, the page, `/mcp` | the public internet, HTTPS only | read-only grants over synthetic fixtures; `statement_timeout`; per-template row limits (`mvp-v0.1` Section 4.4); the plan's fixed cost. **No per-call spend exists on this path.** |
 | `relay` `POST /chat` | the public internet, HTTPS only | `relay-v0.1` Section 4.6's caps, checked before any model call |
-| The database | **only** from Azure services, by the server's "allow Azure services" rule; and from the deploy job's runner, during provisioning only | the server firewall; TLS required |
+| The database | **only** from Azure services, by the server's "allow Azure services" rule; and from the deploy job's runner, during the provisioning step and the deployed checks only | the server firewall; TLS required |
 | Key Vault | the two apps' identities and the deploy identity, by role | Azure RBAC |
 
 - **HTTPS only** on both apps, with HTTP redirected. TLS terminates at the platform, and the database connection requires TLS (`PGSSLMODE=require`).
 - **CORS**: `relay` allows exactly one origin, the portfolio site's production origin, recorded in Section 4.6 once it is known. `surface` allows the same origin on `/v1/select`, `/v1/query` and `/v1/discover`, which the page calls (`relay-v0.1` P3). Nothing else is allowed from a browser.
 - **`/mcp`'s host allowlist** (`mcp-v0.1` Section 4.5) is widened to `surface`'s host name with `EFR_MCP_ALLOWED_HOSTS`. The Messages API connector reaches `/mcp` from Anthropic's side over public HTTPS (ADR-0005, Context).
-- **The client address** that `relay-v0.1` Section 4.6 rate-limits is the first address in the platform's forwarded-for header, as set by the App Service front end. A value the request itself supplies is never trusted over the platform's.
+- **The client address** that `relay-v0.1` Section 4.6 rate-limits is the address **the platform's front end appends** to the forwarded-for header, which is its last entry, and never an entry the request already carried. A caller can write any value into that header; only the entry the platform adds is the caller's connection. `DP-009` asserts, against the deployed relay, that a request carrying its own forwarded-for header is rate-limited on the same key as one carrying none. **That the platform appends rather than replaces is expected and unverified here**; `DP-009` settles it, and a different platform behaviour is a patch to this bullet, not a relaxed check.
+
+**No rate limit on `surface`, decided rather than left open.** `api-v0.1` Section 9 and `mcp-v0.1` Section 9 defer rate limiting to this contract. This contract registers **none** for `/v1`, the page and `/mcp`, on the ground in the table above: those paths carry no per-call spend, the plan's cost is fixed whatever the request volume, and each request is bounded by the read-only grants, the statement timeout and the template row limits. The cost of a flood is degraded service for the demo, not money. The two deferral rows close here. Adding a limit later is a minor version.
 
 **The residual this accepts.** "Allow Azure services" admits connections from any Azure tenant's services, not only this subscription's. The database still requires a password that only `surface` and the deploy job hold, and it holds only synthetic data. A private network (VNet integration and a private endpoint) closes that gap at additional cost, and the owner decides it in Section 9.
 
@@ -118,6 +120,7 @@ Every key a deployed process reads. Nothing else is read, and nothing here is a 
 | `PGSSLMODE` | `require` | — |
 | `MVP_RUNTIME_PASSWORD` | Key Vault reference | — |
 | `EFR_MCP_ALLOWED_HOSTS` | `surface`'s host name | — |
+| `EFR_MCP_ALLOWED_ORIGINS` | **unset**, so loopback origins only: the Messages API connector calls `/mcp` server to server and is expected to send no `Origin`, and a browser has no reason to call `/mcp`. `DP-010` asserts both halves on the deployed `/mcp` | — |
 | `EFR_CORS_ORIGIN` | the portfolio site's origin | the portfolio site's origin |
 | `ANTHROPIC_API_KEY` | — | Key Vault reference |
 | `EFR_RELAY_MCP_URL` | — | `https://<surface host>/mcp` |
@@ -136,12 +139,12 @@ Every key a deployed process reads. Nothing else is read, and nothing here is a 
 
 Charter Section 9's first gate item: "the deployed environment passes the same representative conformance and end-to-end contracts as the local PostgreSQL environment". After every deploy, the workflow runs, **against the deployed resources**:
 
-1. **The `mvp-v0.1` Section 4.9 conformance runner** against the deployed database, as the runtime identity, over every registered fixture case. It uses the same committed expected results CI compares against.
+1. **The `mvp-v0.1` Section 4.9 conformance runner** against the deployed database, over every registered fixture case: **as the runtime identity for every request**, and as `mvp_provisioning` for its Group C data-level invariants only, exactly as it connects in CI. It runs from the deploy job's runner, inside the firewall window Section 4.2 opens. It uses the same committed expected results CI compares against.
 2. **The `api-v0.1` `WF-*` and `mcp-v0.1` `MC-*` equality cases**, over HTTPS against `surface`, for every case that needs no model.
-3. **`DP-001` to `DP-008`** (Section 8.1).
+3. **`DP-001` to `DP-010`** (Section 8.1); `DP-011` runs only on the failure path.
 4. **One `POST /chat` smoke call**, registered in `relay-v0.1` Section 8, which costs one model call.
 
-The run writes **one JSON artifact**, and the artifact is committed under `docs/acceptance/milestone-5/`, with the commit, the image digest and the date. **A deploy whose run does not pass does not leave the previous deployment replaced**: the workflow deploys to a staging slot where the tier has one, and otherwise redeploys the last passing image and records the failure.
+The run writes **one JSON artifact**, and the artifact is committed under `docs/acceptance/milestone-5/`, with the commit, the image digest and the date. **A deploy whose run does not pass is rolled back in both halves.** The Section 4.1 tier has no deployment slots, and one database serves both apps, so there is no second environment to test in first. On a failed run the workflow **re-provisions the database from the last passing commit** with the Section 4.2 path, **and redeploys that commit's image**, and then re-runs `DP-006` against the restored state. `DP-011` asserts that the restored state digest's stable part (`DP-006`) equals the last passing run's. The failure is recorded in the artifact either way. **During a deploy, and during a rollback, the demo may answer `database_unavailable` or serve a mismatched pair for the minutes the steps take**; that is accepted for a demonstration deployment, and removing it needs a second database or a slotted tier, which is a later minor version.
 
 ### 4.9 Cost and teardown
 
@@ -155,7 +158,7 @@ This contract produces **no result status**. Every status a person sees is one t
 
 ## 6. Determinism
 
-The deployed runtime carries `mvp-v0.1` Section 6 and `entity-discovery-v0.1` Section 6 unchanged: `C` collation, registered ordering, and repeatable provisioning. **Repeatability across environments is asserted, not assumed**: `DP-006` compares the deployed state digest (`mvp-v0.1` Section 4.10) and registry digest with those the local provisioning produces from the same commit. They are equal, or the deploy fails.
+The deployed runtime carries `mvp-v0.1` Section 6 and `entity-discovery-v0.1` Section 6 unchanged: `C` collation, registered ordering, and repeatable provisioning. **Repeatability across environments is asserted, not assumed**: `DP-006` compares, between the deployed provisioning and the local provisioning of the same commit, **the row count of every table, the `registry_digest`, and the committed template digests** the conformance artifact records. They are equal, or the deploy fails. **The `mvp-v0.1` Section 4.10 state digest's highest transaction identifier is excluded**: it is a property of one database instance, compared by that section before and after a single run, and two instances number their transactions independently.
 
 ## 7. Evidence obligations
 
@@ -165,11 +168,11 @@ Unchanged. The deployment adds nothing to `evidence_bundle`, `source_trace` or `
 
 | Obligation | Evidence |
 | --- | --- |
-| Section 4.2 provisioning path | Automated: `DP-001`, the deploy workflow invokes `evidence_first_rag.db.provision` and no other SQL; `DP-002`, the firewall rule opened for the runner is closed after the step, whatever its result |
+| Section 4.2 provisioning path | Automated: `DP-001`, the deploy workflow invokes `evidence_first_rag.db.provision` and no other SQL; `DP-002`, the firewall rule opened for the runner is closed after the final step, whatever the result of provisioning or the deployed checks |
 | Section 4.3 secrets | Automated: `DP-003`, a scan of the built image, the workflow files and the committed artifact for every secret pattern the sensitive-string scan defines, plus a check that `surface`'s settings name no `ANTHROPIC_API_KEY` and `relay`'s name no `MVP_RUNTIME_PASSWORD`; `RL-017` carries the same statement per process |
 | Section 4.4 the runtime cannot write | Automated, deployed: `DP-004` |
-| Section 4.5 networking | Automated, deployed: `DP-005`, HTTP redirects to HTTPS on both apps, a cross-origin request from an origin other than the registered one is refused, and the database refuses a connection without TLS |
-| Section 4.8 deployed conformance | Automated, deployed: the run itself; `DP-006` for the digests; `DP-007`, the conformance runner's verdict equals the local run's for every case |
+| Section 4.5 networking | Automated, deployed: `DP-009` and `DP-010` for the rate-limit key and `/mcp` origins; `DP-005`, HTTP redirects to HTTPS on both apps, a cross-origin request from an origin other than the registered one is refused, and the database refuses a connection without TLS |
+| Section 4.8 deployed conformance | Automated, deployed: the run itself; `DP-006` for the digests; `DP-011` for the rollback; `DP-007`, the conformance runner's verdict equals the local run's for every case |
 | Section 4.7 logs | Automated: `DP-008`, a deployed request carrying a registered `SAMPLE_*` term, after which that term appears in no log line |
 | Section 4.9 cost | Recorded human decision: the owner's acceptance of the committed cost computation |
 | The Milestone 5 gate as a whole | The Milestone 5 acceptance record, citing the committed deployed run and this table |
@@ -179,13 +182,16 @@ Unchanged. The deployment adds nothing to `evidence_bundle`, `source_trace` or `
 | Case | Where | Expected |
 | --- | --- | --- |
 | `DP-001` | the deploy workflow definition | provisioning is exactly `python -m evidence_first_rag.db.provision` with the committed `sql/` and `fixtures/` |
-| `DP-002` | the deploy workflow, a provisioning step forced to fail | the runner's firewall rule is absent afterwards |
+| `DP-002` | the deploy workflow, with the provisioning step forced to fail and, separately, a deployed check forced to fail | the runner's firewall rule is absent after the final step in both |
 | `DP-003` | image, workflows, artifact, app settings | no secret; neither app holds the other's credential |
 | `DP-004` | deployed database, as `mvp_runtime` | `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP` each refused with a privilege error |
 | `DP-005` | both apps and the database | HTTP → HTTPS redirect; foreign origin refused; non-TLS connection refused |
-| `DP-006` | deployed and local provisioning of one commit | equal state digest and registry digest |
+| `DP-006` | deployed and local provisioning of one commit | equal row count per table, `registry_digest` and template digests; the highest transaction identifier is not compared |
 | `DP-007` | the conformance runner, deployed and local | equal verdicts on every registered case |
 | `DP-008` | one deployed request with a `SAMPLE_*` term, then the log store | the term is in no log line |
+| `DP-009` | two deployed `POST /chat` requests from one runner, one carrying a forged forwarded-for header | both counted against the same rate-limit key |
+| `DP-010` | deployed `/mcp`, called with no `Origin` and with a foreign `Origin` | the first is served; the second is refused |
+| `DP-011` | a deploy whose conformance run is forced to fail | the database and image are the last passing commit's, and the `DP-006` comparison against the last passing run is equal |
 
 ### 8.2 Deferral of the acceptance evidence
 
