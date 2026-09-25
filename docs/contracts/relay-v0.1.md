@@ -78,7 +78,7 @@ For every accepted request, exactly one Messages API call, with **exactly** thes
 
 | Parameter | Value |
 | --- | --- |
-| `model` | `claude-haiku-4-5` — owner's decision pending, Section 9 |
+| `model` | `claude-haiku-4-5` (the owner's decision, Section 9) |
 | `max_tokens` | `1024` |
 | `system` | the registered text in Section 4.9, byte for byte |
 | `messages` | the request's `messages`, unchanged |
@@ -229,7 +229,7 @@ The ceiling is a count of model calls per UTC day, registered **before the first
 
 | Decision | Owner |
 | --- | --- |
-| **The model.** `claude-haiku-4-5` is proposed as the lowest-cost current model that makes tool calls. A stronger model (`claude-sonnet-5`) would follow the system prompt more reliably at a higher cost per call, and so a lower daily ceiling. | The repository owner, at the review of this contract. Changing it later is a minor version. |
+| **The model — decided**: `claude-haiku-4-5`, the lowest-cost current model that makes tool calls, chosen by the repository owner over `claude-sonnet-5` on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894). | Decided. Changing it later is a minor version. |
 | The numeric daily ceiling | The deployment contract, which carries it as configuration, computed as Section 8.3 fixes, before the first deployed run |
 | The CORS origin allowed to call `POST /chat`, and the client address used by the rate limit behind the hosting's proxy | The deployment contract |
 | Streaming responses | Not opened. A later minor version. |
