@@ -18,6 +18,8 @@ This contract is binding on implementation from that date under [Contract Shape 
 
 **How this document reached here.** Drafted on [#208](https://github.com/OKJ1105/evidence-first-rag/issues/208) against ADR-0005 ([#207](https://github.com/OKJ1105/evidence-first-rag/pull/207)). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`.
 
+**ADR-0005's status line still reads `Proposed`.** The owner adopted it as drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) and merged it in [#207](https://github.com/OKJ1105/evidence-first-rag/pull/207). This is the same standing ADR-0004 has under the accepted `mcp-v0.1`: this repository's ADR status lines have not been moved on merge. A change to ADR-0005 that removes an item this contract implements is a change to this contract's authority, and it reopens this contract.
+
 ## 3. Scope
 
 ### 3.1 What this contract fixes
@@ -239,7 +241,7 @@ The ceiling is a count of model calls per UTC day, registered **before the first
 
 ## 10. Change control
 
-- This contract is `Proposed`, and it is amended by an ordinary contract-only pull request until it is `Accepted`.
+- This contract is `Accepted`. Under [Contract Shape Framework](README.md) Section 7, a change that does not weaken a Charter or ADR invariant produces a new contract version with a recorded human decision. The looser rule that governed it while `Proposed` — amendment by an ordinary contract-only pull request — no longer applies.
 - After acceptance, a change that does not weaken a Charter or ADR invariant produces a new version with a recorded human decision. Changing the model, the system prompt, a cap or a page obligation, or adding a route or refusal kind is a minor version and requires a fresh independent design review.
 - **Enabling `query_facts` or `select_candidate`** in Section 4.3, or letting the relay or the page select, fetch a fact, or choose a scope on a person's behalf, is not a contract-level change: it reverses ADR-0005 item 2 or item 4 and requires an ADR and a recorded human decision.
 - A superseded version is retained with a `Superseded by` status rather than deleted.

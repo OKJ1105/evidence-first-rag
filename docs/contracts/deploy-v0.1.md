@@ -18,6 +18,8 @@ This contract is binding on implementation from that date under [Contract Shape 
 
 **How this document reached here.** Drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`.
 
+**ADR-0005's status line still reads `Proposed`.** The owner adopted it as drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) and merged it in [#207](https://github.com/OKJ1105/evidence-first-rag/pull/207). This is the same standing ADR-0004 has under the accepted `mcp-v0.1`: this repository's ADR status lines have not been moved on merge. A change to ADR-0005 that removes an item this contract implements is a change to this contract's authority, and it reopens this contract.
+
 ## 3. Scope
 
 ### 3.1 What this contract fixes
@@ -104,7 +106,7 @@ Charter Section 9's gate: "the deployed runtime identity cannot write data or ch
 | Key Vault | the two apps' identities and the deploy identity, by role | Azure RBAC |
 
 - **HTTPS only** on both apps, with HTTP redirected. TLS terminates at the platform, and the database connection requires TLS (`PGSSLMODE=require`).
-- **CORS**: `relay` allows exactly one origin, the portfolio site's production origin, recorded in Section 4.6 once it is known. `surface` allows the same origin on `/v1/select`, `/v1/query` and `/v1/discover`, which the page calls (`relay-v0.1` P3). Nothing else is allowed from a browser. **This collides with an `Accepted` contract, and the owner decided how it is resolved (Section 9, option (a)).** A browser sends an `OPTIONS` preflight before a cross-origin JSON `POST`, and `api-v0.1` Section 4.5 answers every method but `POST` on a `/v1` route with `method_not_allowed`. So as `api-v0.1` stands the page's calls to `/v1` are blocked by the browser. This contract does not answer that by changing `api-v0.1` itself.
+- **CORS**: `relay` allows exactly one origin, the portfolio site's production origin, recorded in Section 4.6 once it is known. `surface` allows the same origin on `/v1/select`, `/v1/query` and `/v1/discover`, which the page calls (`relay-v0.1` P3). Nothing else is allowed from a browser. **This collides with an `Accepted` contract, and the owner decided how it is resolved (Section 9, option (a)).** A browser sends an `OPTIONS` preflight before a cross-origin JSON `POST`, and `api-v0.1` Section 4.5 answers every method but `POST` on a `/v1` route with `method_not_allowed`. Under `api-v0.1` `0.1.2`, then, the page's calls to `/v1` would have been blocked by the browser. This contract does not answer that by changing `api-v0.1` itself: option (a) did, as `api-v0.1` `0.2.0` (Section 4.5, the preflight from the one origin named by `EFR_CORS_ORIGIN`), implemented in [#215](https://github.com/OKJ1105/evidence-first-rag/pull/215).
 - **`/mcp`'s host allowlist** (`mcp-v0.1` Section 4.5) is widened to `surface`'s host name with `EFR_MCP_ALLOWED_HOSTS`. The Messages API connector reaches `/mcp` from Anthropic's side over public HTTPS (ADR-0005, Context).
 - **The client address** that `relay-v0.1` Section 4.6 rate-limits is the address **the platform's front end appends** to the forwarded-for header, which is its last entry, and never an entry the request already carried. A caller can write any value into that header; only the entry the platform adds is the caller's connection. `DP-009` asserts, against the deployed relay, that a request carrying its own forwarded-for header is rate-limited on the same key as one carrying none. **That the platform appends rather than replaces is expected and unverified here**; `DP-009` settles it, and a different platform behaviour is a patch to this bullet, not a relaxed check.
 
@@ -214,7 +216,7 @@ Every `DP-*` case needs the deployed resources, and the resources need #205's se
 
 ## 10. Change control
 
-- This contract is `Proposed`, and it is amended by an ordinary contract-only pull request until it is `Accepted`.
+- This contract is `Accepted`. Under [Contract Shape Framework](README.md) Section 7, a change that does not weaken a Charter or ADR invariant produces a new contract version with a recorded human decision. The looser rule that governed it while `Proposed` — amendment by an ordinary contract-only pull request — no longer applies.
 - After acceptance, a change that does not weaken a Charter or ADR invariant produces a new version with a recorded human decision. Adding a process, an identity, a secret, a network path or a configuration key is a minor version and requires a fresh independent design review.
 - **A deployment-only schema, SQL file, fixture, template or fallback runtime is not a contract-level change**: Charter Section 9 forbids it. **Giving `relay` a database credential or `surface` the Anthropic key** reverses ADR-0005 and `relay-v0.1` Section 4.8, and requires an ADR and a recorded human decision.
 - A superseded version is retained with a `Superseded by` status rather than deleted.
