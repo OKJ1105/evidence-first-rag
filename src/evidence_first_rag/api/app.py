@@ -63,8 +63,20 @@ from .serialize import as_json, dumps
 
 # Section 1 of docs/contracts/api-v0.1.md. Carried on every result-bearing
 # response by Section 4.2's `contract` key, and reported by `GET /v1/health`.
+#
+# The constant tracks the document's `**Version:**` line, and
+# `test_the_version_constant_is_the_one_the_contract_document_declares` fails
+# when the two drift -- which is why `0.2.0` is here on the amendment's own
+# pull request, although #212 scoped this constant to the implementation slice
+# that follows it. **In the interval between the two, the surface reports
+# `0.2.0` without serving Section 4.5's preflight**: `OPTIONS` on
+# `/v1/select`, `/v1/query` and `/v1/discover` still reaches
+# `method_not_allowed` by way of `_NothingElseUnderTheNamespace` below. The
+# advertised version is therefore not evidence that the preflight is
+# available; Section 4.5's obligation is served when the handler and `WF-023`
+# to `WF-025` land.
 CONTRACT_IDENTIFIER = "api-v0.1"
-CONTRACT_VERSION = "0.1.2"
+CONTRACT_VERSION = "0.2.0"
 
 # Section 4.5's six kinds, with the HTTP code each is fixed to. A dict rather
 # than six constants so that the refusal writer cannot pair a kind with a code
