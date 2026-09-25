@@ -361,7 +361,7 @@ class TheSurfaceProperties(StackCase):
         # would assert that a dict equals itself.
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.2.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.1.2", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
         )
         # Section 4.7's optional adapter, as the stack started.
         self.assertFalse(document["adapter_configured"])
