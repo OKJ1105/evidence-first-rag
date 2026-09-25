@@ -4,7 +4,7 @@
 
 **Identifier:** `relay-v0.1`
 
-**Version:** `0.1.0` — the identifier names the document; the version tracks its obligations. The version changes when any observable obligation in Section 4, 5, 6, or 7 changes. Adding or removing a route, a request or response key, a refusal kind, an enabled tool, or a page obligation, or changing a registered text or cap, is a minor change. Adding a registered case that exercises an existing obligation is a patch change. Removing or weakening an obligation is not permitted at the contract layer; see Section 10.
+**Version:** `0.1.0` — the identifier names the document; the version tracks its obligations. The version changes when any observable obligation in Section 4, 5, 6, or 7 changes. Adding or removing a route, a request or response key, a refusal kind, or a page obligation, or changing a registered text or cap, is a minor change. **Enabling a tool is never a minor change**: Section 10. Adding a registered case that exercises an existing obligation is a patch change. Removing or weakening an obligation is not permitted at the contract layer; see Section 10.
 
 This contract is the one [ADR-0005](../adr/0005-the-chat-relay-is-a-host-this-project-operates.md) names as its next slice: the **relay**, the endpoint the portfolio site's chat calls and the only component that holds the Anthropic key. In [Contract Shape Framework](README.md) Section 5 terms it is a route contract for a surface *above* [mcp-v0.1](mcp-v0.1.md). It registers no entity, no template, no status family, no tool, and no route on the runtime.
 
@@ -40,7 +40,7 @@ Drafted on [#208](https://github.com/OKJ1105/evidence-first-rag/issues/208) agai
 | The three tools, their results, their descriptions and their refusals | `mcp-v0.1` Sections 4.1 to 4.4 |
 | Which routes a page calls for a person's choice, and their envelopes | `api-v0.1` Sections 4.1, 4.2 |
 | The verbatim rule, byte-exact over the identifier alphabet `A-Za-z0-9_.-` | `api-v0.1` Section 4.3 |
-| Every page obligation restated in Section 4.7, in its original wording | `api-v0.1` Section 4.6 obligations 1, 2, 3, 4, 5 and 7 |
+| The page obligations Section 4.7 restates for this surface | `api-v0.1` Section 4.6 obligations 1, 3, 4, 5 and 7 (the evidence region), and obligation 2's "`rendered`, verbatim" for a fact. Obligation 2's "no prose" and obligation 7's "no summary" are displaced for the prose region by the Charter Section 3.1 carve-out (ADR-0005 item 3). Obligation 6 does not arise: no `proposal` reaches this page. |
 | The candidate list, the candidate-set digest, and what a selection re-runs | `entity-discovery-v0.1` Sections 4.6 to 4.8 |
 
 ## 4. Normative requirements
@@ -62,7 +62,13 @@ The path is outside `/v1`, which `api-v0.1` Section 4.1 fixes exhaustively, and 
 | a person's turn | `{"role": "user", "content": "<text>"}` — a string, 1 to 500 characters |
 | a relay turn | `{"role": "assistant", "content": [...]}` — **exactly** the `content` array a previous `POST /chat` response returned, unchanged |
 
-The list alternates, starts with a person's turn and ends with one. It carries at most **10** person's turns (Section 4.6). Anything else — a missing or extra key, a role outside the two, a person's turn that is not a string or exceeds 500 characters, a relay turn containing a block type outside Section 4.3's list — is `malformed_request`, refused before any model call.
+The list alternates, starts with a person's turn and ends with one.
+
+**Size.** The serialized request body is at most **128 KiB**, and each relay turn's serialized `content` at most **32 KiB**. These bound what one model call can be sent, which is what makes Section 8.3's per-call bound a bound: without them a client could return relay turns of any size, and a ceiling that counts calls would bound nothing.
+
+**The relay cannot verify that a relay turn is one it returned**, because it holds no conversation. A client may forge one. The size bound limits what that costs. The scope check reads only person's turns (Section 4.5). And a fact never comes from a relay turn on the page (Section 4.7, P2). So a forged relay turn can change what the model writes, which is prose, and nothing the page renders as a fact.
+
+**`malformed_request`**, refused before any model call, is exactly: a body that is not a JSON object with the one key `messages`; a role outside the two; a person's turn that is not a string of 1 to 500 characters; a relay turn containing a block type outside Section 4.3's list; turns that do not alternate or do not start and end with a person's turn; or a body or relay turn over the size bound. **The number of person's turns is not a shape error**: more than 10 is `conversation_limit` (Section 4.6).
 
 **The page sends no `/v1` result to the model.** A fact the person obtains by clicking (Section 4.7, P3) is not appended to the conversation. The model sees only what its own tool returned.
 
@@ -78,7 +84,8 @@ For every accepted request, exactly one Messages API call, with **exactly** thes
 | `messages` | the request's `messages`, unchanged |
 | `mcp_servers` | one entry: `{"type": "url", "url": "<this deployment's public /mcp URL>", "name": "evidence-first-rag"}` |
 | `tools` | one entry: `{"type": "mcp_toolset", "mcp_server_name": "evidence-first-rag", "default_config": {"enabled": false}, "configs": {"discover_entity": {"enabled": true}}}` |
-| beta | `mcp-client-2025-11-20` |
+
+The beta is not a body parameter. It is sent as the `anthropic-beta` request header, with the value `mcp-client-2025-11-20` and nothing else.
 
 **The toolset enables `discover_entity` alone** (ADR-0005 item 2). `query_facts` and `select_candidate` stay disabled, and no other tool of any kind is sent. The relay adds no retry. A failed call is refused as `model_unavailable` (Section 4.6). The relay never retries with a different model, never truncates the conversation to fit, and never writes a reply of its own.
 
@@ -120,7 +127,7 @@ A refusal carries no `content`. It is HTTP JSON `{"refusal", "detail"}`, with `d
 | `daily_ceiling_reached` | 503 | the relay has already made the registered number of model calls in the current UTC day (Section 8.3) |
 | `model_unavailable` | 502 | the Messages API call failed, timed out after 60 seconds, or returned a block type outside Section 4.3's list |
 
-**Every cap is checked before the model call**, so a refused request costs nothing. The daily ceiling is a count of model calls, not an estimate of spend. Section 8.3 registers the count and the arithmetic that bounds it under the owner's budget (#205: an alert at 3,000 JPY per month). The Azure budget alert and the Anthropic Console usage limit are backstops (ADR-0005 item 5).
+**Every cap is checked before the model call**, so a refused request costs nothing. **A numeric daily ceiling is registered before the relay serves any request**, as a configuration value the deployment contract carries. While none is registered, the relay refuses every request with `daily_ceiling_reached`: it fails closed, and it never runs uncapped. The daily ceiling is a count of model calls, not an estimate of spend. Section 8.3 registers the count and the arithmetic that bounds it under the owner's budget (#205: an alert at 3,000 JPY per month). The Azure budget alert and the Anthropic Console usage limit are backstops (ADR-0005 item 5).
 
 ### 4.7 The page obligations
 
@@ -130,6 +137,8 @@ A page that renders a `POST /chat` response is the relay's client, and these obl
 - **P2. A fact comes only from a route result.** A fact is rendered only from a `/v1/select` or `/v1/query` response the page itself received, with its `rendered` string verbatim and its evidence under `api-v0.1` Section 4.6 obligations 1, 2 and 7. Nothing in a `text` block is rendered as a fact, and no fact is written into the prose region.
 - **P3. A choice is a person's act.** A request to `/v1/select`, `/v1/query` or `/v1/discover` is sent only on an explicit act naming one listed candidate, one resolved reference, or one listed scope. A candidate list is rendered under obligation 3, and a selection is made under obligation 4. The page never sends one itself, and none is preselected or highlighted.
 - **P4. A negative status is rendered as itself** (obligation 5), from the `mcp_tool_result` it arrived in: `not_found`, `ambiguous`, `coverage_gap`, `unsupported` and `invalid_request` are results.
+- **P4a. Every result rendered out of a `mcp_tool_result` shows its evidence** (obligation 1): the status, every `limitations` entry's kind and detail, the `evidence_bundle` and `source_trace` keys Charter Section 3.1 names, and for a discovery result the `registry_digest`, `method_identifier`, and per-candidate `match_tier`, `matched_text`, `match_kind` and alias provenance. It may collapse them and may not omit them. Obligation 7 holds on the evidence region: no value the result does not contain, and no reordering of rows or candidates.
+- **P4b. A tool refusal is rendered as a refusal.** A `mcp_tool_result` with `isError` true carries an `mcp-v0.1` Section 4.3 refusal (`malformed_request`, `database_unavailable` or `runtime_fault`) and no result. The page renders it in the evidence region **as a refusal**, never as an absence, never as a negative status, and never as a `not_found`. It offers no act on it.
 - **P5. A scope the person did not write is not offered as clickable.** For a `discover_entity` result whose `scope_checks` entry lists any dimension in `not_person_stated`, the page renders the result under P4 but offers **no** act on its candidates or its resolved reference. Instead it offers the person a scope to choose. For an `ambiguous` result, that is the candidate scopes it lists, none defaulted and none preselected. The person's chosen scope is sent to `/v1/discover` **by the page**, with the same `entity_kind` and `term`. That result's scope is the person's by construction.
 - **P6. Before the first message**, the page states that messages are sent to Anthropic and that the relay stores none.
 - **P7. A refusal is shown as a refusal**, not as a reply and not as a result.
@@ -149,11 +158,11 @@ It supersedes, for this host only, the two sentences of `mcp-v0.1` Section 4.4's
 
 ### 4.10 What the relay records
 
-The relay stores no message text and **logs no message text**, neither a person's turn nor a model block. Per request it logs exactly the timestamp, the refusal kind or HTTP 200, the latency, the Messages API usage counts, the names of the tools called, and the `status` of each `mcp_tool_result`. What that feeds, and how long it is kept, is the deployment contract's.
+The relay stores no message text and **logs no message text**, neither a person's turn nor a model block. Per request it logs exactly the timestamp, the refusal kind or HTTP 200, the latency, the Messages API usage counts, the names of the tools called, and for each `mcp_tool_result` its result `status`, or its refusal kind when it carries `isError` true. What that feeds, and how long it is kept, is the deployment contract's.
 
 ## 5. Outcome coverage
 
-The relay produces **no result status of its own**. Every status a person sees comes from an `mcp-v0.1` tool result, passed through inside `content` (Section 4.4), or from a `/v1` response the page receives. The relay's own outcomes are HTTP 200 with a response, or one of the six refusal kinds in Section 4.6. A registered negative status inside a tool result is never a refusal, and a refusal never carries `content`.
+The relay produces **no result status of its own**. Every status a person sees comes from an `mcp-v0.1` tool result, passed through inside `content` (Section 4.4), or from a `/v1` response the page receives. The relay's own outcomes are HTTP 200 with a response, or one of the six refusal kinds in Section 4.6. A registered negative status inside a tool result is never a refusal, and a refusal never carries `content`. **An `mcp-v0.1` Section 4.3 refusal also crosses this boundary**, inside `content` as a `mcp_tool_result` with `isError` true: `malformed_request`, `database_unavailable` or `runtime_fault`. It is not a status and not a relay refusal. The relay passes it through unchanged with HTTP 200, and the page renders it under P4b.
 
 ## 6. Determinism
 
@@ -167,13 +176,13 @@ The relay adds nothing to `evidence_bundle`, `source_trace` or `limitations`, re
 
 | Obligation | Evidence |
 | --- | --- |
-| Section 4.2 request shape | Automated: `RL-001` to `RL-004` |
-| Section 4.3 the call, toolset and system prompt | Automated, against a stub Messages API client: `RL-005` asserts the exact parameter set, that `configs` enables `discover_entity` alone and `default_config` disables the rest, and that `system` equals the Section 4.9 text read off this document byte for byte |
+| Section 4.2 request shape and size | Automated: `RL-001` to `RL-004`, `RL-019` |
+| Section 4.3 the call, toolset and system prompt | Automated, against a stub Messages API client: `RL-005` asserts the exact body parameter set and, separately, the header, that `configs` enables `discover_entity` alone and `default_config` disables the rest, and that `system` equals the Section 4.9 text read off this document byte for byte |
 | Section 4.4 pass-through | Automated: `RL-006`, the response's `content` equals the stub's byte for byte |
 | Section 4.5 scope check | Automated: `RL-007` to `RL-010` |
 | Section 4.6 caps and refusals | Automated: `RL-011` to `RL-016`, one per kind, each asserting that **no model call was made** when a cap refuses |
 | Section 4.8 identity | Automated where observable: `RL-017`, the relay's settings expose no database credential and the runtime's no Anthropic key. The deployment contract carries the deployed check. |
-| Section 4.10 records | Automated: `RL-018`, no log line from a request carries any substring of its message text |
+| Section 4.10 records | Automated: `RL-018`, as registered below |
 | Section 4.7 page obligations | The portfolio site's slice, automated there (Section 8.2), and the owner's recorded decision that the page materially supports use |
 | End to end, deployed | The deployment contract's deployed run, with one recorded conversation per registered case in Section 8.1's last rows |
 
@@ -192,7 +201,9 @@ Every case runs against a stub Messages API client that returns a registered `co
 | `RL-007` | the person wrote all four scope values; the call uses them | all four in `person_stated` |
 | `RL-008` | the person wrote none; the call carries four | all four in `not_person_stated` |
 | `RL-009` | the person wrote `SAMPLE_SNAP_BASE_EXTENDED`; the call carries `SAMPLE_SNAP_BASE` | `snapshot_label` in `not_person_stated`, which is the boundary-alphabet case of `api-v0.1` Section 4.3 |
-| `RL-010` | an `ambiguous` result, then a second call carrying one of its listed scopes the person never wrote | that dimension in `not_person_stated` for the second call, which is ADR-0005 item 4's case |
+| `RL-010` | **across turns**: a relay turn in the request carrying an `ambiguous` result, then, in this response, a call carrying one of its listed scopes that no person's turn contains | that dimension in `not_person_stated`, which is ADR-0005 item 4's case, and the multi-turn case ADR-0005's Consequences require |
+| `RL-019` | a relay turn whose serialized `content` is 32 KiB plus one byte | `malformed_request`; no model call |
+| `RL-020` | a stub response whose `mcp_tool_result` has `isError` true with a `database_unavailable` refusal | 200; `content` unchanged; the log line names the refusal kind |
 | `RL-011` | 11 person's turns | `conversation_limit`; no model call |
 | `RL-012` | a 7th request within 60 seconds from one address | `rate_limited`; no model call |
 | `RL-013` | a 61st request in one UTC day from one address | `rate_limited`; no model call |
@@ -200,11 +211,11 @@ Every case runs against a stub Messages API client that returns a registered `co
 | `RL-015` | the stub raises, or times out | `model_unavailable`; no `content` |
 | `RL-016` | the stub returns a `tool_use` block | `model_unavailable` |
 | `RL-017` | the relay's and the runtime's settings | neither holds the other's secret |
-| `RL-018` | any request, with logs captured | no log line contains the message text |
+| `RL-018` | a person's turn containing a registered marker `SAMPLE_LOG_MARKER_7Q2`, with logs captured | the marker appears in no log line |
 
 ### 8.2 Deferral of the acceptance evidence
 
-The Section 4.7 page obligations are discharged in the portfolio site's repository, by tests against registered `POST /chat` responses — the `RL-006`, `RL-008` and `RL-010` shapes at minimum — and by the owner's recorded decision on that repository's slice. This repository cannot run them, and this contract names them so that the site's slice has a fixed target.
+The Section 4.7 page obligations are discharged in the portfolio site's repository, by tests against registered `POST /chat` responses — the `RL-006`, `RL-008`, `RL-010` and `RL-020` shapes at minimum, and a discovery result's full evidence under P4a — and by the owner's recorded decision on that repository's slice. This repository cannot run them, and this contract names them so that the site's slice has a fixed target.
 
 ### 8.3 The daily ceiling
 
@@ -212,14 +223,14 @@ The ceiling is a count of model calls per UTC day, registered **before the first
 
 `ceiling = floor( (monthly_budget / 30) / cost_per_call_upper_bound )`
 
-`cost_per_call_upper_bound` is computed from the live published price of the Section 4.3 model, at the maximum request this contract admits: 10 person's turns of 500 characters, the returned relay turns, the Section 4.9 text and the tool definitions as input, plus `max_tokens` as output. `monthly_budget` is the owner's (3,000 JPY, #205). **The price, the exchange rate used, the token counts and the resulting number are committed with the date they were read, before deployment**, so that the bound is checkable. Prices change, and a number written here now would be a remembered one.
+`cost_per_call_upper_bound` is computed from the live published price of the Section 4.3 model, at the maximum request this contract admits: a **128 KiB** body (Section 4.2), plus the Section 4.9 text and the tool definitions, as input tokens **counted by the API's token-counting endpoint** on a registered maximal request, not estimated; plus `max_tokens` as output; plus the tool results the connector adds within the call, bounded by counting a registered maximal `discover_entity` result. `monthly_budget` is the owner's (3,000 JPY, #205). **The price, the exchange rate used, the token counts and the resulting number are committed with the date they were read, before deployment**, so that the bound is checkable. Prices change, and a number written here now would be a remembered one.
 
 ## 9. Deferred decisions
 
 | Decision | Owner |
 | --- | --- |
 | **The model.** `claude-haiku-4-5` is proposed as the lowest-cost current model that makes tool calls. A stronger model (`claude-sonnet-5`) would follow the system prompt more reliably at a higher cost per call, and so a lower daily ceiling. | The repository owner, at the review of this contract. Changing it later is a minor version. |
-| The numeric daily ceiling | Section 8.3, before the first deployed run |
+| The numeric daily ceiling | The deployment contract, which carries it as configuration, computed as Section 8.3 fixes, before the first deployed run |
 | The CORS origin allowed to call `POST /chat`, and the client address used by the rate limit behind the hosting's proxy | The deployment contract |
 | Streaming responses | Not opened. A later minor version. |
 | Whether the page offers a person's scope choice for a non-`ambiguous` result with a `not_person_stated` dimension (P5 offers the candidate scopes only where an `ambiguous` result listed them) | The portfolio site's slice may propose it; adding it here is a minor version |
@@ -227,6 +238,6 @@ The ceiling is a count of model calls per UTC day, registered **before the first
 ## 10. Change control
 
 - This contract is `Proposed`, and it is amended by an ordinary contract-only pull request until it is `Accepted`.
-- After acceptance, a change that does not weaken a Charter or ADR invariant produces a new version with a recorded human decision. Enabling another tool, changing the model, the system prompt, a cap or a page obligation, or adding a route or refusal kind is a minor version and requires a fresh independent design review.
+- After acceptance, a change that does not weaken a Charter or ADR invariant produces a new version with a recorded human decision. Changing the model, the system prompt, a cap or a page obligation, or adding a route or refusal kind is a minor version and requires a fresh independent design review.
 - **Enabling `query_facts` or `select_candidate`** in Section 4.3, or letting the relay or the page select, fetch a fact, or choose a scope on a person's behalf, is not a contract-level change: it reverses ADR-0005 item 2 or item 4 and requires an ADR and a recorded human decision.
 - A superseded version is retained with a `Superseded by` status rather than deleted.
