@@ -42,7 +42,7 @@ Discovery may rank candidates. It must not invent an identifier or supply final 
 
 ### 3.1 Evidence before prose
 
-User-facing text is a rendering of validated data. It must not contradict or extend the evidence bundle.
+User-facing text is a rendering of validated data. It must not contradict or extend the evidence bundle. On a surface this project operates, a model's prose is permitted only when it is labelled as the model's and shown apart from the evidence, and a fact is shown only from a tool or route result ([ADR-0005](adr/0005-the-chat-relay-is-a-host-this-project-operates.md)).
 
 Every factual result must expose its source scope, fixed-template identifier and version, bound parameters, row count, source trace, and limitations. The committed public query-template registry contains the inspectable SQL. The applicable contracts define how conformance exposes the system-level read-only safeguards.
 

@@ -1,0 +1,52 @@
+# ADR-0005: The Chat Relay Is a Host This Project Operates
+
+**Status:** Proposed. Recorded by the writer session on [#206](https://github.com/OKJ1105/evidence-first-rag/issues/206) from the repository owner's decision of 2026-09-25, recorded on [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205), that the chat relay runs in this repository's Milestone 5 deployment. The owner's disposition on the pull request is the recorded human decision.
+
+**Date:** 2026-09-25
+
+## Context
+
+[ADR-0004](0004-mcp-surface-and-the-tool-result-boundary.md) made one MCP server the single new entry point and left the conversation to a host: "This repository owns no conversational loop." Its Consequences named the page that makes the goal's link — "a page whose backend calls the Messages API with `mcp_servers` set" — and placed it in the portfolio site's repository.
+
+That placement does not survive the site's own design. The site's Blueprint fixes that it "makes no server-side calls", that its deployment holds "no secrets", and that rate limiting, CORS and cost control "live in the RAG repository" (its Sections 3.1 and 10.3). A backend that holds an Anthropic key is a server-side call holding a secret. The owner therefore decided on 2026-09-25 that the **relay** — the endpoint the site's chat calls, the only component holding the Anthropic key — runs in this repository's Milestone 5 deployment beside `/v1` and `/mcp`.
+
+The Messages API's MCP connector runs the tool-call loop on Anthropic's side: the caller supplies `mcp_servers` and an `mcp_toolset` that references each server, and the response carries the model's text and `mcp_tool_use` / `mcp_tool_result` blocks. The toolset takes per-tool configuration, including disabling a tool. The connector is a beta (`mcp-client-2025-11-20`) and reaches the server over public HTTPS.
+
+So this repository does not own a loop, and ADR-0004's sentence stands. But it now owns **the host's configuration**: which model runs, what it is told, how much it may write, and which tools it may call. ADR-0004 accepted three residual risks — host prose beyond the tool boundary, host-composed arguments, and a selection the host makes or bypasses — **because the host was someone else's**. With the host ours, the question each risk was accepted under changes.
+
+## Decision
+
+**The relay is a host this project operates. It adds no tool, no route on the runtime and no second source of facts. It uses its configuration to close deterministically what ADR-0004 could only instruct, and the page that renders it keeps model prose and evidence visibly apart.**
+
+1. **What the relay is.** One HTTP endpoint in this deployment. It takes a person's messages and returns one Messages API response: the model's text blocks, and the `mcp_tool_use` / `mcp_tool_result` blocks unchanged. It calls the Messages API with `mcp_servers` naming this deployment's own `/mcp`, and nothing else. It never calls the runtime, `/v1` or the database itself; every fact it returns reached it as an `mcp-v0.1` tool result. It holds the Anthropic key and no database credential. Its exact request and response shape is fixed in a contract, `relay-v0.1`, drafted beside this ADR.
+
+2. **The model may discover; only a person may select.** The relay's toolset **enables `discover_entity` alone** and disables `query_facts` and `select_candidate`. A candidate list reaches the page as a `mcp_tool_result` block. The page renders it as `api-v0.1` Section 4.6 obligation 3 requires, and a **person's click** sends the selection to `/v1/select` from the browser. This closes two of ADR-0004's residual risks on this page. **The selection is a person's act again**, verifiably so, because the model holds no tool that selects. **No fact reaches the page without a person's click**, because the model holds no fact tool — close to the "no fact tool, every fact through selection" alternative ADR-0004 item 4 named, taken here at the host rather than in `mcp-v0.1`. `mcp-v0.1` is not changed: other hosts still see three tools, and ADR-0004's residual risks stand for them exactly as accepted.
+
+   **One outcome takes a different road, and the record differs with it.** A discovery that resolves outright (tiers 1–2, `entity-discovery-v0.1` Section 4.7) returns one reference and **no `candidate_set_id`**, and that contract says a `resolved` outcome "needs no selection": its reference is an ordinary argument to a `mvp-v0.1` route. On this page it is shown with its tier and matched text, and the **person's click** sends it to `/v1/query`. The resulting fact carries no `selection` record, because there was no choice among several to record; what it carries instead is the byte-exact match that made the resolution, in the discovery result the person saw before clicking. So the property is "no fact without a person's click", not "every fact carries a `selection` record", and this ADR claims only the first.
+
+3. **Model prose is shown as the model's, beside the evidence and never as it.** The page renders the model's text blocks in a region labelled as the assistant's words, and renders every fact only from a `/v1/select` response or a `mcp_tool_result` block, verbatim and with its evidence, in a separate region. **This is where Charter Section 3.1 is reached.** "User-facing text is a rendering of validated data" was read by ADR-0004 as a claim about this system's own output, with host prose outside it. On a page this project serves, from a host this project configures, the model's prose is this system's user-facing text. This ADR does not claim that prose is a rendering of validated data — it is not, and cannot be made so. It amends Section 3.1 instead: **model prose on a surface this project operates is permitted only when labelled as the model's and shown apart from the evidence, and a fact is shown only from a tool or route result.** The system prompt tells the model to answer only from tool results and to say when it found nothing. That is an instruction and not a check; the check is that the page never presents the prose as the fact.
+
+4. **The residual risk that remains is arguments, and it shrinks.** The model still composes `discover_entity`'s arguments — a term, a kind, and scope values. A wrong term or kind fails closed, as `api-v0.1` Section 4.6's prefill table already records. A wrong scope value the model invents is refused by the runtime if no such snapshot exists, and if one exists the person sees it in the candidate's scope before choosing. A scope is now **shown to a person before any fact is produced**, which ADR-0004 item 2 could not say of an arbitrary host. The risk is accepted in that narrowed form.
+
+5. **Cost and abuse are bounded by the relay, not only by alerts.** The endpoint is unauthenticated, because the goal is a link a reader opens. So the relay enforces caps a runaway cannot pass: a request-rate limit per client, a turn limit per conversation, a fixed `max_tokens`, and a **daily ceiling past which it refuses** until the next day. The Azure budget alert (3,000 JPY/month, #205) and the Anthropic Console usage limit are backstops. They notify or stop at the provider, and neither is the design. The numbers are fixed in `relay-v0.1` and the deployment contract.
+
+6. **What the relay records.** A person's messages are sent to Anthropic; that is the point of the relay, and the page says so before the first message. The relay stores no message text and logs no message text. Its logs carry counts, latencies, the tools called and the statuses returned — what Charter Section 9's "latency/error metrics" and failure classification need, and nothing a reader typed. A privacy-safe feedback workflow remains Charter Section 9's "when real users exist" item, and it is not started here.
+
+## Alternatives considered
+
+**The relay in the portfolio site's repository**, as ADR-0004 placed it. Rejected on the site's own Blueprint: it would add the site's first secret and first server-side call, and it would put cost control somewhere other than where the site's design says it lives.
+
+**Give the model all three tools**, as any external host has them. Simpler, and consistent with every other host. Rejected because this is the one host where the two sharpest residual risks can be closed at zero contract cost, and leaving them open on the project's own page would present accepted risks as design.
+
+**An owned conversational loop** — ADR-0004's first alternative. Still not needed. The Messages API runs the loop, and item 2 obtains the property the owned loop was wanted for, person-made selection with every fact carrying its record, from configuration.
+
+**Authentication for readers.** Rejected for the link's purpose: a reviewer opening a link will not create an account. Item 5's caps are the substitute, and their numbers are reviewable.
+
+## Consequences
+
+- **Charter Section 3.1** gains one sentence, citing this ADR: on a surface this project operates, model prose is permitted only labelled as the model's and apart from the evidence, and a fact is shown only from a tool or route result. **Section 7's "general-purpose chat assistant" non-goal is untouched**: the model holds one tool over a registered set of synthetic entities, and the system prompt confines it there.
+- **ADR-0004 stands.** No repository-owned loop; `mcp-v0.1` unchanged; its residual risks stand for external hosts. Its Consequences sentence placing the page in the portfolio repository is superseded for the **relay**, while the **page** still lives there.
+- **`relay-v0.1`** is the next contract: the endpoint, its request and response, the toolset configuration of item 2, the system prompt as a fixed registered text (as `mcp-v0.1` fixes tool descriptions), the caps of item 5, the refusals, and its acceptance evidence — including that the toolset sent to the API enables `discover_entity` only.
+- **The deployment contract** carries the relay's identity: it alone reads the Anthropic key from Key Vault, and it holds no database credential.
+- **The portfolio site** changes its demo from calling the RAG API directly to calling the relay for conversation, and `/v1/select` or `/v1/query` for a person's choice, all from the browser, still holding no secret. That is the site repository's slice, against `relay-v0.1`.
+- **The standing hazard is item 3's.** A model can still write a wrong sentence beside a right fact. The page's separation is what keeps it from being read as the fact, and observed use is the evidence for whether that separation holds.
