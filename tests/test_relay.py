@@ -566,6 +566,8 @@ class TheSecretsAreSeparated(unittest.TestCase):
             "EFR_RELAY_MCP_URL": MCP_URL,
             "EFR_RELAY_DAILY_CEILING": "100",
         }
+        saved = list(relay.LOGGER.handlers)
+        self.addCleanup(setattr, relay.LOGGER, "handlers", saved)
         relay_serve.build(environment)
         for missing in ("ANTHROPIC_API_KEY", "EFR_RELAY_MCP_URL"):
             with self.subTest(missing=missing):
@@ -655,6 +657,33 @@ class TheMemoryBounds(RelayCase):
         # The live window survived the sweep: a 7th request is still refused.
         with self.assertRaises(relay.Refused):
             caps.admit_request("192.0.2.10", 1100.0)
+
+
+class TheRecordReachesStandardOutput(RelayCase):
+    """Section 4.10 at run time: `serve` wires the record to standard output,
+    since nothing else in the served process would emit an `INFO` line."""
+
+    def setUp(self):
+        super().setUp()
+        self.saved = (list(relay.LOGGER.handlers), relay.LOGGER.level, relay.LOGGER.propagate)
+        relay.LOGGER.handlers = [
+            h for h in relay.LOGGER.handlers if not getattr(h, "_relay_record", False)
+        ]
+
+    def tearDown(self):
+        relay.LOGGER.handlers, relay.LOGGER.level, relay.LOGGER.propagate = self.saved
+
+    def test_one_json_line_per_request(self):
+        import io
+
+        stream = io.StringIO()
+        relay_serve.configure_logging(stream)
+        relay_serve.configure_logging(stream)  # idempotent: no second handler
+        client = self.relay()
+        self.post(client)
+        lines = stream.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(json.loads(lines[0])["http_status"], 200)
 
 
 class TheWire(unittest.TestCase):

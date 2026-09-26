@@ -399,7 +399,9 @@ def _tool_result_kind(block: Mapping) -> str:
         document = json.loads(texts[-1])
     except (IndexError, TypeError, ValueError):
         return "unreadable"
-    key = "refusal" if block.get("is_error") else "status"
+    # The Messages API names the flag `is_error`; `relay-v0.1` Section 4.10
+    # writes the MCP spelling `isError`. Either marks a refusal.
+    key = "refusal" if (block.get("is_error") or block.get("isError")) else "status"
     value = document.get(key) if isinstance(document, dict) else None
     return value if isinstance(value, str) else "unreadable"
 
