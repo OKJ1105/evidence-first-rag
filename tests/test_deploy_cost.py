@@ -41,10 +41,50 @@ class TheMaximalRequest(unittest.TestCase):
         self.assertEqual(len(persons), relay.PERSON_TURN_LIMIT)
         self.assertTrue(all(len(turn["content"]) == 500 for turn in persons))
 
-    def test_the_tool_result_is_the_largest_registered_discovery_envelope(self):
-        text = cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json")
-        envelopes = json.loads((ROOT / "tests" / "ui_envelopes.json").read_text(encoding="utf-8"))
-        self.assertIn(json.loads(text), list(envelopes.values()))
+    def test_the_filler_is_not_one_repeated_character(self):
+        """A run of one character merges into multi-character tokens, so a
+        body filled with it is maximal in bytes and not in tokens. Every turn
+        carries mixed-case noise instead, and the same noise every run."""
+        messages = cost.maximal_messages()
+        for turn in messages:
+            text = turn["content"] if turn["role"] == "user" else turn["content"][0]["text"]
+            self.assertGreater(len(set(text)), 32)
+            self.assertLess(max(text.count(character) for character in set(text)), len(text) // 8)
+        self.assertEqual(messages, cost.maximal_messages())
+
+    def test_the_bound_is_the_byte_floor_when_the_filler_counts_below_it(self):
+        """No admitted body carries more than one token per byte, so the bound
+        never sits below that, whatever the filler happens to count."""
+        self.assertEqual(cost.byte_floor_tokens(1_000), 1_000 + relay.BODY_MAX_BYTES)
+        body = relay._serialized({"messages": cost.maximal_messages()})
+        self.assertGreaterEqual(cost.byte_floor_tokens(0), len(body))
+
+    def test_the_tool_result_carries_the_contracts_candidate_limit(self):
+        """`entity-discovery-v0.1` Section 4.6 fixes the list at k = 10. The
+        registered envelope carries two, which is not a maximal result."""
+        envelope = json.loads(cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json"))
+        result = envelope["result"]
+        self.assertEqual(cost.DISCOVERY_CANDIDATE_LIMIT, 10)
+        self.assertEqual(result["evidence_bundle"]["candidate_count"], 10)
+        self.assertEqual(len(result["candidates"]), 10)
+        self.assertEqual([c["rank"] for c in result["candidates"]], list(range(1, 11)))
+        self.assertEqual(len(result["source_trace"]["alias_provenance"]), 10)
+        self.assertEqual(len(result["source_trace"]["parent_messages"]), 10)
+
+    def test_the_tool_result_invents_nothing_the_registry_does_not_hold(self):
+        """Only the lengths the contract fixes are taken to their bound: every
+        candidate and trace entry is one the registered envelope carries."""
+        registered = json.loads((ROOT / "tests" / "ui_envelopes.json").read_text(encoding="utf-8"))
+        original = registered["candidates"]["result"]
+        widened = json.loads(cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json"))["result"]
+        for candidate in widened["candidates"]:
+            self.assertIn(
+                {**candidate, "rank": None},
+                [{**one, "rank": None} for one in original["candidates"]],
+            )
+        for key in ("alias_provenance", "parent_messages"):
+            for entry in widened["source_trace"][key]:
+                self.assertIn(entry, original["source_trace"][key])
 
 
 @unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
@@ -60,6 +100,16 @@ class TheArithmetic(unittest.TestCase):
         three = cost.cost_per_call_jpy(tool_calls=3, **common)
         self.assertAlmostEqual(one, 200.0)  # two input passes
         self.assertAlmostEqual(three, 400.0)  # four input passes
+
+    def test_the_accumulated_results_are_billed_with_every_later_pass(self):
+        """Pass k carries the k - 1 results already in the conversation, so N
+        rounds bill a result 1, 3, 6, 10 times -- not N times."""
+        common = dict(
+            input_tokens=0, tool_result_tokens=1_000_000,
+            input_usd=1.0, output_usd=0.0, jpy_per_usd=1,
+        )
+        billed = [cost.cost_per_call_jpy(tool_calls=calls, **common) for calls in (1, 2, 3, 4)]
+        self.assertEqual([round(one) for one in billed], [1, 3, 6, 10])
 
     def test_output_is_max_tokens(self):
         per_call = cost.cost_per_call_jpy(
