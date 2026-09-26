@@ -634,6 +634,8 @@ class TheMemoryBounds(RelayCase):
         consumed = []
 
         class Streaming:
+            headers = {}
+
             async def stream(self):
                 for _ in range(1000):
                     consumed.append(1)
@@ -644,6 +646,22 @@ class TheMemoryBounds(RelayCase):
         self.assertEqual(raised.exception.kind, "malformed_request")
         # 128 KiB is 128 chunks; the 129th crosses the bound and reading stops.
         self.assertEqual(len(consumed), 129)
+
+    def test_a_declared_length_over_the_bound_is_refused_unread(self):
+        import asyncio
+
+        read = []
+
+        class Declared:
+            headers = {"content-length": str(128 * 1024 + 1)}
+
+            async def stream(self):
+                read.append(1)
+                yield b""
+
+        with self.assertRaises(relay.Refused):
+            asyncio.run(relay.bounded_body(Declared()))
+        self.assertEqual(read, [])
 
     def test_stale_clients_are_dropped_and_live_windows_kept(self):
         caps = relay.Caps(ceiling=None)

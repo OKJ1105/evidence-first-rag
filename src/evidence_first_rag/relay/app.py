@@ -360,6 +360,9 @@ async def bounded_body(request: starlette.requests.Request) -> bytes:
     could be applied, so a client could make the relay hold any amount. Past
     the bound the request is `malformed_request` and the rest is never read.
     """
+    declared = request.headers.get("content-length", "")
+    if declared.isascii() and declared.isdigit() and int(declared) > BODY_MAX_BYTES:
+        raise Refused("malformed_request")
     received = bytearray()
     async for chunk in request.stream():
         received.extend(chunk)
