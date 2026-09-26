@@ -540,8 +540,16 @@ def create_app(
         # Section 4.1: any other method on the path. The framework's own 405
         # would be plain text and carry an `Allow` header this contract does
         # not name.
-        LOGGER.info(log_line(http_status=405, latency_ms=0.0, refusal="method_not_allowed"))
-        return refusal("method_not_allowed")
+        started = time.perf_counter()
+        response = refusal("method_not_allowed")
+        LOGGER.info(
+            log_line(
+                http_status=405,
+                latency_ms=(time.perf_counter() - started) * 1000,
+                refusal="method_not_allowed",
+            )
+        )
+        return response
 
     return starlette.applications.Starlette(
         routes=[starlette.routing.Route(PATH, chat, methods=["POST"])],
