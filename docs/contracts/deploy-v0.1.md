@@ -4,7 +4,7 @@
 
 **Identifier:** `deploy-v0.1`
 
-**Version:** `0.1.0` — the identifier names the document; the version tracks its obligations. The version changes when any observable obligation in Section 4, 5, 6, or 7 changes. Adding or removing a deployed process, an identity, a secret, a network path or a configuration key, or changing a registered limit, is a minor change. Adding a registered case that exercises an existing obligation is a patch change. Removing or weakening an obligation is not permitted at the contract layer; see Section 10.
+**Version:** `0.2.0` — the identifier names the document; the version tracks its obligations. The version changes when any observable obligation in Section 4, 5, 6, or 7 changes. Adding or removing a deployed process, an identity, a secret, a network path or a configuration key, or changing a registered limit, is a minor change. Adding a registered case that exercises an existing obligation is a patch change. Removing or weakening an obligation is not permitted at the contract layer; see Section 10.
 
 This is the Milestone 5 contract that [Project Charter](../PROJECT_CHARTER.md) Section 9 asks for — "deployment, configuration, database-identity, secret-handling, and networking contracts" — and the one Charter Section 12 leaves to answer "the Azure authentication, networking, service sizing, retention, teardown, and operating budget within the fixed App Service and PostgreSQL Flexible Server topology". [api-v0.1](api-v0.1.md) Section 9 and [mcp-v0.1](mcp-v0.1.md) Section 9 defer authentication, rate limiting, TLS, logs and metrics to it. [relay-v0.1](relay-v0.1.md) defers its hosting, CORS origin and client address to it.
 
@@ -16,7 +16,7 @@ It registers no route, template, status, tool or fixture. It deploys the ones th
 
 This contract is binding on implementation from that date under [Contract Shape Framework](README.md) Section 2.1. The repository owner reviewed it with [ADR-0005](../adr/0005-the-chat-relay-is-a-host-this-project-operates.md) and `relay-v0.1` in one sitting, recorded the open decisions on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) (database access: "allow Azure services"; the `/v1` preflight: option (a), implemented in `api-v0.1` `0.2.0`), and merged it in [#211](https://github.com/OKJ1105/evidence-first-rag/pull/211). The acceptance is the owner's merge of the pull request that moves this line ([#218](https://github.com/OKJ1105/evidence-first-rag/issues/218)). The owner-side Azure setup this contract builds on is recorded on [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205).
 
-**How this document reached here.** Drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`.
+**How this document reached here.** Drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`. **`0.2.0`** replaces the deploy gate: GitHub's required reviewers are not available for this repository's plan and visibility, so the owner decided on [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205#issuecomment-5844259676) that a deploy starts only when the owner starts it (Sections 4.2 and 4.3, `DP-013`), with no approval step and no automatic deploy. Recorded with a fresh design review on [#222](https://github.com/OKJ1105/evidence-first-rag/issues/222).
 
 **ADR-0005's status line still reads `Proposed`.** The owner adopted it as drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) and merged it in [#207](https://github.com/OKJ1105/evidence-first-rag/pull/207). This is the same standing ADR-0004 has under the accepted `mcp-v0.1`: this repository's ADR status lines have not been moved on merge. A change to ADR-0005 that removes an item this contract implements is a change to this contract's authority, and it reopens this contract.
 
@@ -69,7 +69,7 @@ This contract is binding on implementation from that date under [Contract Shape 
 
 The deployed database is built by **`evidence_first_rag.db.provision`, unchanged**: the same `sql/cluster` and `sql/database` files, the same lexical order, the same abort, and the same fixture loader in one transaction. That is the module CI's `database-checks` job runs and the local stack runs. Charter Section 9's Milestone 5 gate forbids "a second schema, fixture meaning, SQL-template behavior, or fallback runtime". A deployment that provisioned any other way would be that second path.
 
-- It runs **from the deploy workflow**, in the GitHub Actions job gated by the `production` environment (#205), which means **after the owner's approval of that run**.
+- It runs **from the deploy workflow**, in the GitHub Actions job that uses the `production` environment (#205), and **only when the owner starts that run** ([#205](https://github.com/OKJ1105/evidence-first-rag/issues/205#issuecomment-5844259676)). The workflow's only trigger is `workflow_dispatch`, and its job ends before any step that logs in to Azure unless the actor is `OKJ1105` and the ref is `refs/heads/main`. **There is no automatic deploy**, on push, merge, schedule or any other event, and no step waits on an approval: the environment has no required reviewers on this repository's plan. **The owner starting the run is the recorded human decision** for that deploy.
 - The server's administrator login plays the role the local stack's superuser plays: it runs `sql/cluster`. It is used by that job only, and never by an app.
 - The job opens the server's firewall to its own runner address for **the provisioning step and the Section 4.8 deployed checks**, which also connect from the runner, and **closes it in a final step that runs whatever the result of either**.
 - **Every deploy re-provisions**, with `--recreate`, from the commit being deployed, so the database and the image always come from one commit. Provisioning is re-runnable: `--recreate` rebuilds the application database from the committed files. There is no migration, and no state to preserve: `mvp-v0.1` Section 3.4 says "reproducibility comes from re-provisioning".
@@ -80,16 +80,17 @@ The deployed database is built by **`evidence_first_rag.db.provision`, unchanged
 
 | Identity | Holds | Used by | Never |
 | --- | --- | --- | --- |
-| Deploy identity (#205) | nothing; federated, no secret | the deploy workflow in the `production` environment | an app |
+| Deploy identity (#205) | nothing; federated, no secret | the deploy workflow in the `production` environment, started by the owner (Section 4.2) | an app |
 | Server administrator | its password, in Key Vault | the provisioning step of the deploy job only | an app, a log |
 | `mvp_provisioning` | its password, in Key Vault | the provisioning step and the deployed checks of the deploy job (the conformance runner's Group C data-level invariants connect as it) | an app |
 | `mvp_runtime` | its password, in Key Vault | **`surface` only** | `relay` |
 | Anthropic key | in Key Vault (#205, entered by the owner) | **`relay` only** | `surface` |
 | `surface`, `relay` | a system-assigned managed identity each | reading **only** their own Key Vault secrets | any other secret |
 
-- **The database passwords are generated by the deploy workflow** on the first run, as random values, and written to Key Vault. They are never printed, and never stored in GitHub. The owner approves that run in the `production` environment, and that approval is the recorded human decision CLAUDE.md requires for creating a secret. A later run reads them and never regenerates them.
+- **The database passwords are generated by the deploy workflow** on the first run, as random values, and written to Key Vault. They are never printed, and never stored in GitHub. The owner starts that run (Section 4.2), and starting it is the recorded human decision CLAUDE.md requires for creating a secret. A later run reads them and never regenerates them.
 - **Each app reads its secrets through a Key Vault reference** in its settings, under its own identity. Its role on the vault is scoped to the secrets it needs, and no other. So `surface` cannot read the Anthropic key, and `relay` cannot read `mvp_runtime`'s password. `relay-v0.1` Section 4.8 is enforced by the vault, not by convention.
 - **No secret is in the repository, in a workflow file, in a GitHub Secret, in a log, or in an image.** The GitHub environment holds only the non-secret identifiers #205 lists.
+- **What the Section 4.2 guard does not cover.** The federated credential trusts any job that names the `production` environment, and the guard lives in the deploy workflow's own file. A workflow file added on another branch could name the environment and log in without it. That residual is bounded by who can push: the owner, and writer sessions that CLAUDE.md forbids from editing `.github/` without the owner's recorded decision. If the plan offers a deployment-branch rule on the environment, restricting it to `main` closes the residual. Whether it does is not known to the writer.
 - The deployed `surface` holds **no** `ANTHROPIC_API_KEY`, so `/v1/ask` answers `adapter_unavailable` in the deployment. That is `api-v0.1` Section 4.5's arrangement, and it matches #203: the route stays served and is not the documented path.
 
 ### 4.4 The runtime identity cannot write
@@ -172,7 +173,7 @@ Unchanged. The deployment adds nothing to `evidence_bundle`, `source_trace` or `
 
 | Obligation | Evidence |
 | --- | --- |
-| Section 4.2 provisioning path | Automated: `DP-001`, the deploy workflow invokes `evidence_first_rag.db.provision` and no other SQL; `DP-002`, the firewall rule opened for the runner is closed after the final step, whatever the result of provisioning or the deployed checks |
+| Section 4.2 provisioning path | Automated: `DP-013`, the deploy starts only when the owner starts it; `DP-001`, the deploy workflow invokes `evidence_first_rag.db.provision` and no other SQL; `DP-002`, the firewall rule opened for the runner is closed after the final step, whatever the result of provisioning or the deployed checks |
 | Section 4.3 secrets | Automated: `DP-003`, a scan of the built image, the workflow files and the committed artifact for every secret pattern the sensitive-string scan defines, plus a check that `surface`'s settings name no `ANTHROPIC_API_KEY` and `relay`'s name no `MVP_RUNTIME_PASSWORD`; `RL-017` carries the same statement per process |
 | Section 4.4 the runtime cannot write | Automated, deployed: `DP-004` |
 | Section 4.5 networking | Automated, deployed: `DP-009` and `DP-010` for the rate-limit key and `/mcp` origins; `DP-005`, HTTP redirects to HTTPS on both apps, a cross-origin request from an origin other than the registered one is refused, and the database refuses a connection without TLS |
@@ -196,11 +197,12 @@ Unchanged. The deployment adds nothing to `evidence_bundle`, `source_trace` or `
 | `DP-009` | two deployed `POST /chat` requests from one runner, one carrying a forged forwarded-for header | both counted against the same rate-limit key |
 | `DP-010` | deployed `/mcp`, called with no `Origin` and with a foreign `Origin` | the first is served; the second is refused |
 | `DP-012` | one deployed `POST /chat` with the registered text `What is SAMPLE_ALIAS_GEARBOX_STATE?` | 200; only `relay-v0.1` Section 4.3 block types; `scope_checks` present; `relay.model` equals the registered model. The model's words are not asserted |
+| `DP-013` | the deploy workflow definition | its only trigger is `workflow_dispatch`; its deploy job's first condition requires `github.actor == 'OKJ1105'` and `github.ref == 'refs/heads/main'`; no step or job waits on an approval |
 | `DP-011` | a deploy whose conformance run is forced to fail | the database and image are the last passing commit's, and the `DP-006` comparison against the last passing run is equal |
 
 ### 8.2 Deferral of the acceptance evidence
 
-Every `DP-*` case needs the deployed resources, and the resources need #205's setup. They are therefore run by the first deploy after this contract's acceptance, not by this contract's pull request. The implementation slice commits the workflow and the tests. The first deployed run commits the artifact. The Milestone 5 acceptance record cites both.
+Every `DP-*` case but `DP-013` needs the deployed resources, and the resources need #205's setup. They are therefore run by the first deploy after this contract's acceptance, not by this contract's pull request. `DP-013` reads the workflow file, so it runs in the implementation slice's own checks. The implementation slice commits the workflow and the tests. The first deployed run commits the artifact. The Milestone 5 acceptance record cites both.
 
 ## 9. Deferred decisions
 
