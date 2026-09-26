@@ -98,8 +98,11 @@ class TheArithmetic(unittest.TestCase):
         common = dict(input_tokens=1_000_000, tool_result_tokens=0, input_usd=1.0, output_usd=0.0, jpy_per_usd=100)
         one = cost.cost_per_call_jpy(tool_calls=1, **common)
         three = cost.cost_per_call_jpy(tool_calls=3, **common)
-        self.assertAlmostEqual(one, 200.0)  # two input passes
-        self.assertAlmostEqual(three, 400.0)  # four input passes
+        # Each pass bills the input once more, and every earlier pass's output
+        # (MAX_TOKENS) is billed again as input in each later pass.
+        rebill = relay.MAX_TOKENS * 1e-6 * 100
+        self.assertAlmostEqual(one, 200.0 + 1 * rebill)  # two passes, one result
+        self.assertAlmostEqual(three, 400.0 + 6 * rebill)  # four passes, 1+2+3 results
 
     def test_the_accumulated_results_are_billed_with_every_later_pass(self):
         """Pass k carries the k - 1 results already in the conversation, so N
@@ -116,7 +119,8 @@ class TheArithmetic(unittest.TestCase):
             input_tokens=0, tool_result_tokens=0, tool_calls=1,
             input_usd=0.0, output_usd=1_000_000 / relay.MAX_TOKENS, jpy_per_usd=1,
         )
-        self.assertAlmostEqual(per_call, 1_000_000 / relay.MAX_TOKENS * relay.MAX_TOKENS / 1e6)
+        # One tool round is two passes, and each may write MAX_TOKENS.
+        self.assertAlmostEqual(per_call, 2 * 1_000_000 / relay.MAX_TOKENS * relay.MAX_TOKENS / 1e6)
 
     def test_the_fixed_cost_covers_every_registered_meter(self):
         prices = {name: 1.0 for name in cost.METERS}
@@ -137,7 +141,7 @@ class TheMeterReading(unittest.TestCase):
         return {
             "productName": "P", "skuName": "S", "meterName": "M",
             "unitOfMeasure": meter["unit_of_measure"] if unit is None else unit,
-            "retailPrice": price,
+            "retailPrice": price, "currencyCode": "JPY",
         }
 
     def test_the_one_match_at_the_registered_unit_is_returned(self):
@@ -160,6 +164,14 @@ class TheMeterReading(unittest.TestCase):
             meter = cost.METERS[name]
             with self.assertRaises(SystemExit):
                 cost.matched_item([self.priced(meter, unit=wrong)], meter)
+
+    def test_a_price_in_another_currency_stops_the_run(self):
+        """The fixed cost is added to yen, so a USD price would be off by the
+        exchange rate without any other sign."""
+        meter = cost.METERS["app_service_plan_b1_linux"]
+        item = dict(self.priced(meter), currencyCode="USD")
+        with self.assertRaises(SystemExit):
+            cost.matched_item([item], meter)
 
     def test_a_missing_unit_stops_the_run(self):
         meter = cost.METERS["postgresql_b1ms_compute"]

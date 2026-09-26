@@ -251,8 +251,13 @@ def cost_per_call_jpy(*, input_tokens, tool_result_tokens, tool_calls, input_usd
     Prices are USD per million tokens.
     """
     results = tool_calls * (tool_calls + 1) // 2
-    input_total = (tool_calls + 1) * input_tokens + results * tool_result_tokens
-    usd = input_total * input_usd / 1e6 + MAX_TOKENS * output_usd / 1e6
+    # N rounds are N + 1 model passes. Whether `max_tokens` bounds the whole
+    # call or each pass is not known to the writer, so each pass is charged a
+    # full `max_tokens` of output, and every earlier pass's output is billed
+    # again as input on each later pass, as the tool results are.
+    passes = tool_calls + 1
+    input_total = passes * input_tokens + results * (tool_result_tokens + MAX_TOKENS)
+    usd = input_total * input_usd / 1e6 + passes * MAX_TOKENS * output_usd / 1e6
     return usd * jpy_per_usd
 
 
@@ -282,6 +287,12 @@ def matched_item(items: list, meter: dict) -> dict:
         names = [(i.get("productName"), i.get("skuName"), i.get("meterName")) for i in items]
         raise SystemExit(f"expected exactly one meter for {meter['filter']!r}, got {len(items)}: {names}")
     item = items[0]
+    # The request asks for JPY, but the answer is what is read: a price in
+    # another currency would pass both checks above and be summed as yen.
+    if item.get("currencyCode") != "JPY":
+        raise SystemExit(
+            f"expected {meter['filter']!r} to be priced in JPY, got {item.get('currencyCode')!r}"
+        )
     if item.get("unitOfMeasure") != meter["unit_of_measure"]:
         raise SystemExit(
             f"expected {meter['filter']!r} to be priced per {meter['unit_of_measure']!r},"
@@ -300,7 +311,16 @@ def fetch_unit_price(meter: dict) -> tuple:
     item = matched_item(items, meter)
     return item["retailPrice"], {
         key: item.get(key)
-        for key in ("productName", "skuName", "meterName", "unitOfMeasure", "retailPrice", "effectiveStartDate")
+        for key in (
+            "productName", "skuName", "meterName", "unitOfMeasure",
+            "currencyCode", "retailPrice", "effectiveStartDate",
+        )
+    } | {
+        # What `monthly_fixed_jpy` multiplies the price by, so the fixed cost
+        # can be re-derived from the output alone.
+        "per": meter["per"],
+        "quantity": meter["quantity"],
+        "units_per_month": UNITS_PER_MONTH[meter["per"]],
     }
 
 
