@@ -244,8 +244,12 @@ def scope_checks(messages: list, content: list) -> list:
     value straddle the join. Relay turns are never read, so a scope the model
     lifted from an earlier `ambiguous` result is not the person's (`RL-010`).
 
-    Every block this runs over carries a readable `arguments` object, because
-    `_usable` refuses a response where one does not (`model_unavailable`).
+    A block carrying no readable `arguments` object gets an entry whose two
+    lists are empty: no dimension is present in the call's `arguments`, which
+    is what Section 4.5 says of it. The relay refuses nothing on this ground
+    (Section 4.6 lists only a block type outside Section 4.3's list), and the
+    result that call returns is the `mcp-v0.1` Section 4.3 refusal the served
+    schema produces, on which P4b already forbids the page any act.
     """
     person_texts = [turn["content"] for turn in messages if turn["role"] == "user"]
     checks = []
@@ -415,31 +419,21 @@ def refusal(kind: str) -> starlette.responses.Response:
 
 
 def _vouchable(block) -> bool:
-    """One block the relay can vouch for (Section 4.3).
+    """One block the relay can vouch for (Section 4.3): its type, and nothing
+    else.
 
-    The type is Section 4.3's list. On the one tool the relay enabled there is
-    a second condition, for the same stated reason -- the relay cannot vouch
-    for what it did not configure: a `discover_entity` call whose `input` is
-    not the `mcp-v0.1` Section 4.1 shape is not a call this deployment's `/mcp`
-    would have accepted, and its scope cannot be checked (Section 4.5).
-
-    **It fails closed rather than emitting an empty scope entry**, because an
-    empty entry is indistinguishable, to Section 4.7 P5, from "the person wrote
-    every dimension" -- and P5 would then offer the candidates as clickable.
-
-    **For the owner:** this reads onto Section 4.6's `model_unavailable` by
-    Section 4.3's reason rather than by its words, which name a block *type*
-    outside the list. It cannot fire on a well-formed response from this
-    deployment's `/mcp`, whose served schema makes the shape mandatory, and it
-    adds no refusal kind. If the reading is unwanted, the alternative is not "no
-    check": it is a Section 4.5 sentence saying what an unreadable `arguments`
-    yields, and that is a minor version (Section 10).
+    Section 4.6 makes `model_unavailable` exactly "the call failed, timed out
+    after 60 seconds, or returned a block type outside Section 4.3's list", so
+    the *type* is the whole of this test. A `discover_entity` call whose `input`
+    is not the `mcp-v0.1` Section 4.1 shape is still an `mcp_tool_use` block:
+    it passes through, its `mcp_tool_result` carries the `mcp-v0.1` Section 4.3
+    `malformed_request` the served schema produces, and Section 5 requires that
+    refusal to cross this boundary with HTTP 200. Its `scope_checks` entry lists
+    no dimension in either list, because none is present in the call's
+    `arguments` (Section 4.5), and the page offers no act on a tool refusal
+    (Section 4.7, P4b).
     """
-    if not isinstance(block, dict) or block.get("type") not in BLOCK_TYPES:
-        return False
-    if block.get("type") == "mcp_tool_use" and block.get("name") == ENABLED_TOOL:
-        return discover_arguments(block) is not None
-    return True
+    return isinstance(block, dict) and block.get("type") in BLOCK_TYPES
 
 
 def _usable(response) -> bool:

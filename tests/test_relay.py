@@ -382,12 +382,15 @@ class TheScopeCheck(RelayCase):
         client = self.relay(Stub(stub_response([other])))
         self.assertEqual(self.post(client).json()["scope_checks"], [])
 
-    def test_a_discover_call_with_no_readable_arguments_is_model_unavailable(self):
-        """Section 4.3: the relay cannot vouch for a call it did not configure.
+    def test_a_discover_call_with_no_readable_arguments_lists_no_dimension(self):
+        """Section 4.5: only a dimension *present* in the call's `arguments`.
 
-        An empty `scope_checks` entry would be worse than a refusal here:
-        Section 4.7 P5 cannot tell "no dimension was supplied" from "the person
-        wrote every dimension", and would offer the candidates as clickable.
+        An `mcp_tool_use` block whose `input` is not the `mcp-v0.1` Section 4.1
+        shape is still one of Section 4.3's block types, so it is not
+        `model_unavailable` (Section 4.6). It passes through with HTTP 200 and an
+        entry whose two lists are empty; the result such a call returns is the
+        served schema's `malformed_request`, which Section 5 carries through and
+        P4b forbids the page any act on.
         """
         for name, input_value in {
             "the four dimensions at the top level": dict(SCOPE),
@@ -396,8 +399,22 @@ class TheScopeCheck(RelayCase):
         }.items():
             with self.subTest(case=name):
                 block = dict(discover_use({}), input=input_value)
-                client = self.relay(Stub(stub_response([block])))
-                self.assert_refused(self.post(client), "model_unavailable", 502)
+                refused = tool_result({"refusal": "malformed_request"}, is_error=True)
+                content = [block, refused]
+                client = self.relay(Stub(stub_response(content)))
+                response = self.post(client)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["content"], content)
+                self.assertEqual(
+                    response.json()["scope_checks"],
+                    [
+                        {
+                            "tool_use_id": "SAMPLE_TOOL_USE_1",
+                            "person_stated": [],
+                            "not_person_stated": [],
+                        }
+                    ],
+                )
 
 
 class TheToolCallShape(unittest.TestCase):
