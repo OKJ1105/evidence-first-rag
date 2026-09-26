@@ -8,7 +8,7 @@ test calls a model. `serve.py` is the one module that reads an environment.
 What the relay does, in the order it does it:
 
 1. **Caps before anything costs** (Section 4.6). The rate limit counts every
-   request to the route, the shape and the conversation limit are checked
+   `POST` to the route, the shape and the conversation limit are checked
    next, and the daily ceiling last, all before the model call. A refused
    request makes no call.
 2. **Exactly one Messages API call** (Section 4.3), whose body is a pure
@@ -84,6 +84,9 @@ PERSON_TURN_LIMIT = 10
 RATE_WINDOW_SECONDS = 60
 RATE_WINDOW_LIMIT = 6
 RATE_DAY_LIMIT = 60
+
+# How many clients the rate-limit window holds before stale ones are dropped.
+PRUNE_THRESHOLD = 1024
 
 # Section 4.5: the four scope dimensions of a `discover_entity` call.
 SCOPE_DIMENSIONS = ("project_code", "revision_label", "network_name", "snapshot_label")
@@ -315,6 +318,8 @@ class Caps:
         the 61st in a UTC day. Every request counts, refused or not."""
         with self._lock:
             self._roll(now)
+            if len(self._recent) > PRUNE_THRESHOLD:
+                self._prune(now)
             recent = self._recent[client]
             while recent and recent[0] <= now - RATE_WINDOW_SECONDS:
                 recent.popleft()
@@ -323,6 +328,22 @@ class Caps:
             if len(recent) > RATE_WINDOW_LIMIT or self._per_client_today[client] > RATE_DAY_LIMIT:
                 raise Refused("rate_limited")
 
+    def _prune(self, now: float) -> None:
+        """Drop the clients with no request in the current window.
+
+        Without this the map grows by one key per address ever seen, on a
+        public route. A key is dropped only once its window is empty, so no
+        count a live window needs is lost -- including across midnight, which
+        is why the window is not simply cleared when the day rolls.
+        """
+        stale = [
+            client
+            for client, recent in self._recent.items()
+            if not recent or recent[-1] <= now - RATE_WINDOW_SECONDS
+        ]
+        for client in stale:
+            del self._recent[client]
+
     def admit_call(self, now: float) -> None:
         """Take one model call from today's ceiling, or refuse."""
         with self._lock:
@@ -330,6 +351,21 @@ class Caps:
             if self.ceiling is None or self._calls_today >= self.ceiling:
                 raise Refused("daily_ceiling_reached")
             self._calls_today += 1
+
+
+async def bounded_body(request: starlette.requests.Request) -> bytes:
+    """The body, read no further than one byte past the Section 4.2 bound.
+
+    `request.body()` would read the whole stream into memory before the bound
+    could be applied, so a client could make the relay hold any amount. Past
+    the bound the request is `malformed_request` and the rest is never read.
+    """
+    received = bytearray()
+    async for chunk in request.stream():
+        received.extend(chunk)
+        if len(received) > BODY_MAX_BYTES:
+            raise Refused("malformed_request")
+    return bytes(received)
 
 
 def client_address(request: starlette.requests.Request) -> str:
@@ -479,7 +515,7 @@ def create_app(
         started = time.perf_counter()
         try:
             caps.admit_request(client_address(request), clock())
-            messages = parse_request(await request.body())
+            messages = parse_request(await bounded_body(request))
             caps.admit_call(clock())
         except Refused as refused:
             return respond(started, refusal(refused.kind), refused=refused.kind)

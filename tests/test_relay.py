@@ -623,6 +623,40 @@ class TheRecords(RelayCase):
         self.assertEqual(line["http_status"], 503)
 
 
+class TheMemoryBounds(RelayCase):
+    """Two paths a public route could grow without limit, each bounded."""
+
+    def test_the_body_is_not_read_past_the_bound(self):
+        import asyncio
+
+        consumed = []
+
+        class Streaming:
+            async def stream(self):
+                for _ in range(1000):
+                    consumed.append(1)
+                    yield b"S" * 1024
+
+        with self.assertRaises(relay.Refused) as raised:
+            asyncio.run(relay.bounded_body(Streaming()))
+        self.assertEqual(raised.exception.kind, "malformed_request")
+        # 128 KiB is 128 chunks; the 129th crosses the bound and reading stops.
+        self.assertEqual(len(consumed), 129)
+
+    def test_stale_clients_are_dropped_and_live_windows_kept(self):
+        caps = relay.Caps(ceiling=None)
+        for index in range(relay.PRUNE_THRESHOLD + 1):
+            caps.admit_request(f"198.51.100.{index}", 1000.0)
+        for _ in range(6):
+            caps.admit_request("192.0.2.10", 1100.0)
+        caps.admit_request("192.0.2.11", 1100.0)  # triggers the sweep
+        self.assertNotIn("198.51.100.0", caps._recent)
+        self.assertLessEqual(len(caps._recent), 2)
+        # The live window survived the sweep: a 7th request is still refused.
+        with self.assertRaises(relay.Refused):
+            caps.admit_request("192.0.2.10", 1100.0)
+
+
 class TheWire(unittest.TestCase):
     """`RL-005` at the SDK boundary: what the real client puts on the wire.
 
@@ -634,17 +668,13 @@ class TheWire(unittest.TestCase):
     def test_the_sdk_sends_the_body_and_the_header_unchanged(self):
         if not HAS_RELAY:
             self.skipTest("the api extra is not installed")
-        # One skip per distribution, each naming the one it waits on: `httpx`
-        # is the `api` extra's transport and `anthropic` the `adapter` extra's
-        # SDK. A single guard over both would report "the adapter extra is not
-        # installed" in the job that installs it, which is the green skip #101
-        # exists to prevent.
-        try:
-            import httpx
-        except ImportError:  # pragma: no cover - exercised by the extra-free job
-            self.skipTest("the api extra is not installed")
+        # `httpx2`, not `httpx`: `anthropic` 1.x is built on `httpx2`, installs
+        # it as its own dependency, and refuses an `httpx.Client` outright
+        # ("this SDK uses `httpx2`"). So both come with the `adapter` extra,
+        # and one guard naming that extra is the true statement.
         try:
             import anthropic  # noqa: F401
+            import httpx2
         except ImportError:  # pragma: no cover - exercised by the extra-free job
             self.skipTest("the adapter extra is not installed")
         seen = {}
@@ -653,9 +683,9 @@ class TheWire(unittest.TestCase):
         def handler(request):
             seen["beta"] = request.headers.get("anthropic-beta")
             seen["body"] = json.loads(request.content)
-            return httpx.Response(200, json=answer)
+            return httpx2.Response(200, json=answer)
 
-        client = httpx.Client(transport=httpx.MockTransport(handler))
+        client = httpx2.Client(transport=httpx2.MockTransport(handler))
         call = relay_serve.anthropic_caller("SAMPLE_KEY_NOT_A_SECRET", http_client=client)
         body = relay.call_body([person("SAMPLE_A")], MCP_URL)
         self.assertEqual(call(body, dict(relay.CALL_HEADERS)), answer)
