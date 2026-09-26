@@ -31,6 +31,17 @@ try:
 except ImportError:  # pragma: no cover - exercised by the extra-free job
     HAS_RELAY = False
 
+# The `/mcp` surface, whose served schema fixes the shape of a `discover_entity`
+# call. Guarded separately from the relay: `mcp` and `fastapi` are two
+# distributions of the one `api` extra, so an install that predates the surface
+# can have one without the other.
+try:
+    from evidence_first_rag.mcp import surface as mcp_surface
+
+    HAS_MCP_SURFACE = True
+except ImportError:  # pragma: no cover - exercised by the extra-free job
+    HAS_MCP_SURFACE = False
+
 MCP_URL = "https://sample-surface.example/mcp"
 
 # `RL-018`'s registered marker.
@@ -49,12 +60,25 @@ def person(text):
 
 
 def discover_use(arguments, block_id="SAMPLE_TOOL_USE_1"):
+    """One `discover_entity` call, in the shape `/mcp` serves.
+
+    `mcp-v0.1` Section 4.1 nests the tool's arguments under `arguments` and
+    admits no additional property, so that is where the four scope dimensions
+    of Section 4.5 sit. `TheToolCallShape` asserts this block against the
+    schema `mcp/surface.py` serves, so the two cannot drift apart.
+    """
     return {
         "type": "mcp_tool_use",
         "id": block_id,
         "name": "discover_entity",
         "server_name": "evidence-first-rag",
-        "input": {"entity_kind": "signal", "term": "SAMPLE_ALIAS_GEARBOX_STATE", **arguments},
+        "input": {
+            "arguments": {
+                "entity_kind": "signal",
+                "term": "SAMPLE_ALIAS_GEARBOX_STATE",
+                **arguments,
+            }
+        },
     }
 
 
@@ -358,6 +382,58 @@ class TheScopeCheck(RelayCase):
         client = self.relay(Stub(stub_response([other])))
         self.assertEqual(self.post(client).json()["scope_checks"], [])
 
+    def test_a_discover_call_with_no_readable_arguments_is_model_unavailable(self):
+        """Section 4.3: the relay cannot vouch for a call it did not configure.
+
+        An empty `scope_checks` entry would be worse than a refusal here:
+        Section 4.7 P5 cannot tell "no dimension was supplied" from "the person
+        wrote every dimension", and would offer the candidates as clickable.
+        """
+        for name, input_value in {
+            "the four dimensions at the top level": dict(SCOPE),
+            "no input at all": {},
+            "arguments that is not an object": {"arguments": "SAMPLE_NOT_AN_OBJECT"},
+        }.items():
+            with self.subTest(case=name):
+                block = dict(discover_use({}), input=input_value)
+                client = self.relay(Stub(stub_response([block])))
+                self.assert_refused(self.post(client), "model_unavailable", 502)
+
+
+class TheToolCallShape(unittest.TestCase):
+    """The stub's `mcp_tool_use` block is the shape `/mcp` actually serves.
+
+    Section 4.5 reads the four scope dimensions out of "the call's
+    `arguments`", and `mcp-v0.1` Section 4.1 puts that object one level below
+    the block's `input`. A stub that flattened it would let `RL-007` to
+    `RL-010` pass over a reader that finds nothing in any real call, so the
+    block this module builds is pinned to the served schema.
+    """
+
+    def test_the_stub_block_is_the_served_discover_entity_schema(self):
+        if not HAS_MCP_SURFACE:
+            self.skipTest("the api extra is not installed")
+        schema = mcp_surface._SCHEMAS["discover_entity"]
+        self.assertEqual(set(schema["properties"]), {"arguments"})
+        self.assertEqual(schema["required"], ["arguments"])
+        self.assertIs(schema["additionalProperties"], False)
+        self.assertEqual(schema["properties"]["arguments"]["additionalProperties"]["type"], "string")
+        block_input = discover_use({"snapshot_label": SCOPE["snapshot_label"]})["input"]
+        self.assertEqual(set(block_input), {"arguments"})
+        self.assertIsInstance(block_input["arguments"], dict)
+        for value in block_input["arguments"].values():
+            self.assertIsInstance(value, str)
+
+    def test_the_relay_reads_the_dimensions_from_the_nested_object(self):
+        if not HAS_RELAY:
+            self.skipTest("the api extra is not installed")
+        block = discover_use({"snapshot_label": SCOPE["snapshot_label"]})
+        arguments = relay.discover_arguments(block)
+        self.assertEqual(arguments["snapshot_label"], SCOPE["snapshot_label"])
+        # The flat shape the served schema would refuse is not readable.
+        flat = dict(block, input=dict(block["input"]["arguments"]))
+        self.assertIsNone(relay.discover_arguments(flat))
+
 
 class TheCaps(RelayCase):
     """Section 4.6: one case per kind, each asserting no model call."""
@@ -541,10 +617,18 @@ class TheWire(unittest.TestCase):
     def test_the_sdk_sends_the_body_and_the_header_unchanged(self):
         if not HAS_RELAY:
             self.skipTest("the api extra is not installed")
+        # One skip per distribution, each naming the one it waits on: `httpx`
+        # is the `api` extra's transport and `anthropic` the `adapter` extra's
+        # SDK. A single guard over both would report "the adapter extra is not
+        # installed" in the job that installs it, which is the green skip #101
+        # exists to prevent.
+        try:
+            import httpx
+        except ImportError:  # pragma: no cover - exercised by the extra-free job
+            self.skipTest("the api extra is not installed")
         try:
             import anthropic  # noqa: F401
-            import httpx2
-        except ImportError:
+        except ImportError:  # pragma: no cover - exercised by the extra-free job
             self.skipTest("the adapter extra is not installed")
         seen = {}
         answer = stub_response()
@@ -552,9 +636,9 @@ class TheWire(unittest.TestCase):
         def handler(request):
             seen["beta"] = request.headers.get("anthropic-beta")
             seen["body"] = json.loads(request.content)
-            return httpx2.Response(200, json=answer)
+            return httpx.Response(200, json=answer)
 
-        client = httpx2.Client(transport=httpx2.MockTransport(handler))
+        client = httpx.Client(transport=httpx.MockTransport(handler))
         call = relay_serve.anthropic_caller("SAMPLE_KEY_NOT_A_SECRET", http_client=client)
         body = relay.call_body([person("SAMPLE_A")], MCP_URL)
         self.assertEqual(call(body, dict(relay.CALL_HEADERS)), answer)

@@ -215,6 +215,26 @@ CALL_HEADERS = {"anthropic-beta": BETA}
 # --------------------------------------------------------------------------
 
 
+def discover_arguments(block: Mapping):
+    """A `discover_entity` call's `arguments` object, or `None` where the block
+    carries none this relay can read.
+
+    **The four dimensions sit one level below the block's `input`.**
+    `mcp-v0.1` Section 4.1 gives `discover_entity` the input schema
+    `{"arguments": {<string>: <string>}}`, required and admitting no additional
+    property, which is what `mcp/surface.py` serves and therefore what a call
+    to this deployment's `/mcp` carries: `input == {"arguments": {...}}`.
+    Section 4.5's "present in the call's `arguments`" is that inner object.
+    Reading the dimensions off the outer one would find none in any real call
+    and report every call as carrying no scope at all.
+    """
+    arguments = block.get("input")
+    if not isinstance(arguments, Mapping):
+        return None
+    arguments = arguments.get("arguments")
+    return arguments if isinstance(arguments, Mapping) else None
+
+
 def scope_checks(messages: list, content: list) -> list:
     """One entry per `discover_entity` call in `content`, in block order.
 
@@ -223,14 +243,16 @@ def scope_checks(messages: list, content: list) -> list:
     own: joining them would put two turns' words next to each other and let a
     value straddle the join. Relay turns are never read, so a scope the model
     lifted from an earlier `ambiguous` result is not the person's (`RL-010`).
+
+    Every block this runs over carries a readable `arguments` object, because
+    `_usable` refuses a response where one does not (`model_unavailable`).
     """
     person_texts = [turn["content"] for turn in messages if turn["role"] == "user"]
     checks = []
     for block in content:
         if block.get("type") != "mcp_tool_use" or block.get("name") != ENABLED_TOOL:
             continue
-        arguments = block.get("input")
-        arguments = arguments if isinstance(arguments, dict) else {}
+        arguments = discover_arguments(block) or {}
         stated, not_stated = [], []
         for dimension in SCOPE_DIMENSIONS:
             if dimension not in arguments:
@@ -392,14 +414,40 @@ def refusal(kind: str) -> starlette.responses.Response:
     return _json({"refusal": kind, "detail": DETAILS[kind]}, REFUSALS[kind])
 
 
+def _vouchable(block) -> bool:
+    """One block the relay can vouch for (Section 4.3).
+
+    The type is Section 4.3's list. On the one tool the relay enabled there is
+    a second condition, for the same stated reason -- the relay cannot vouch
+    for what it did not configure: a `discover_entity` call whose `input` is
+    not the `mcp-v0.1` Section 4.1 shape is not a call this deployment's `/mcp`
+    would have accepted, and its scope cannot be checked (Section 4.5).
+
+    **It fails closed rather than emitting an empty scope entry**, because an
+    empty entry is indistinguishable, to Section 4.7 P5, from "the person wrote
+    every dimension" -- and P5 would then offer the candidates as clickable.
+
+    **For the owner:** this reads onto Section 4.6's `model_unavailable` by
+    Section 4.3's reason rather than by its words, which name a block *type*
+    outside the list. It cannot fire on a well-formed response from this
+    deployment's `/mcp`, whose served schema makes the shape mandatory, and it
+    adds no refusal kind. If the reading is unwanted, the alternative is not "no
+    check": it is a Section 4.5 sentence saying what an unreadable `arguments`
+    yields, and that is a minor version (Section 10).
+    """
+    if not isinstance(block, dict) or block.get("type") not in BLOCK_TYPES:
+        return False
+    if block.get("type") == "mcp_tool_use" and block.get("name") == ENABLED_TOOL:
+        return discover_arguments(block) is not None
+    return True
+
+
 def _usable(response) -> bool:
     """Section 4.3: a response the relay can vouch for, block by block."""
     if not isinstance(response, dict):
         return False
     content = response.get("content")
-    return isinstance(content, list) and all(
-        isinstance(block, dict) and block.get("type") in BLOCK_TYPES for block in content
-    )
+    return isinstance(content, list) and all(_vouchable(block) for block in content)
 
 
 # The Messages API client: called with the body and the headers, returning the
