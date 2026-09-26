@@ -12,7 +12,9 @@ What it does, in order:
    billing meters `deploy-v0.1` Section 4.1 creates: the App Service plan, the
    Flexible Server's compute and its storage, and the container registry. Each
    is fetched from the public Retail Prices API in JPY, and each match is
-   printed so the owner can see which meter was read.
+   printed so the owner can see which meter was read. A meter that matches no
+   item, matches two, or is priced per a unit other than the one the monthly
+   arithmetic assumes stops the run.
 2. **The per-call upper bound** (`relay-v0.1` Section 8.3). The input tokens of
    a registered maximal request -- 128 KiB of conversation, the Section 4.9
    text and the `discover_entity` definition -- are **counted by the API's
@@ -72,13 +74,16 @@ DAYS_PER_MONTH = 30
 
 # `deploy-v0.1` Section 4.1's billing meters, each as the Retail Prices API
 # filter that selects it. Every one must match exactly one item, or the run
-# stops: a guessed meter would be a remembered price.
+# stops: a guessed meter would be a remembered price. `unit_of_measure` is the
+# unit the monthly arithmetic below assumes the match is priced in, and it is
+# checked against the item for the same reason: see `matched_item`.
 METERS = {
     "app_service_plan_b1_linux": {
         "filter": (
             "serviceName eq 'Azure App Service' and skuName eq 'B1'"
             " and contains(productName, 'Linux') and priceType eq 'Consumption'"
         ),
+        "unit_of_measure": "1 Hour",
         "per": "hour",
         "quantity": 1,
     },
@@ -87,6 +92,7 @@ METERS = {
             "serviceName eq 'Azure Database for PostgreSQL' and skuName eq 'B1ms'"
             " and contains(productName, 'Flexible Server') and priceType eq 'Consumption'"
         ),
+        "unit_of_measure": "1 Hour",
         "per": "hour",
         "quantity": 1,
     },
@@ -96,6 +102,7 @@ METERS = {
             " and contains(productName, 'Flexible Server Storage')"
             " and meterName eq 'Storage Data Stored' and priceType eq 'Consumption'"
         ),
+        "unit_of_measure": "1 GB/Month",
         "per": "month",
         "quantity": 32,
     },
@@ -104,6 +111,7 @@ METERS = {
             "serviceName eq 'Container Registry' and skuName eq 'Basic'"
             " and meterName eq 'Basic Registry Unit' and priceType eq 'Consumption'"
         ),
+        "unit_of_measure": "1/Day",
         "per": "day",
         "quantity": 1,
     },
@@ -258,17 +266,38 @@ def daily_ceiling(budget_jpy: float, per_call_jpy: float) -> int:
 # --------------------------------------------------------------------------
 
 
-def fetch_unit_price(meter_filter: str) -> tuple:
-    """(price, the matched item) for the one item the filter selects."""
+def matched_item(items: list, meter: dict) -> dict:
+    """The one item a meter selects, priced in the unit the table assumes.
+
+    Two readings, and each stops the run. **Exactly one item**, because a
+    guessed meter would be a remembered price. **Priced in the registered
+    `unit_of_measure`**, because `monthly_fixed_jpy` multiplies the retail
+    price by `UNITS_PER_MONTH[per] * quantity`, which is arithmetic about a
+    unit: a price quoted per `10 Hours` rather than `1 Hour` is ten times the
+    plan's real monthly cost, one quoted per TB/month rather than GB/month a
+    thousandth of the storage's, and neither shows in the total. A guessed
+    unit is a remembered price as much as a guessed meter is.
+    """
+    if len(items) != 1:
+        names = [(i.get("productName"), i.get("skuName"), i.get("meterName")) for i in items]
+        raise SystemExit(f"expected exactly one meter for {meter['filter']!r}, got {len(items)}: {names}")
+    item = items[0]
+    if item.get("unitOfMeasure") != meter["unit_of_measure"]:
+        raise SystemExit(
+            f"expected {meter['filter']!r} to be priced per {meter['unit_of_measure']!r},"
+            f" got {item.get('unitOfMeasure')!r}"
+        )
+    return item
+
+
+def fetch_unit_price(meter: dict) -> tuple:
+    """(price, the matched item) for the one item the meter selects."""
     query = urllib.parse.urlencode(
-        {"currencyCode": "JPY", "$filter": f"armRegionName eq '{REGION}' and {meter_filter}"}
+        {"currencyCode": "JPY", "$filter": f"armRegionName eq '{REGION}' and {meter['filter']}"}
     )
     with urllib.request.urlopen(f"{PRICES_API}?{query}", timeout=30) as response:
         items = json.load(response)["Items"]
-    if len(items) != 1:
-        names = [(i.get("productName"), i.get("skuName"), i.get("meterName")) for i in items]
-        raise SystemExit(f"expected exactly one meter for {meter_filter!r}, got {len(items)}: {names}")
-    item = items[0]
+    item = matched_item(items, meter)
     return item["retailPrice"], {
         key: item.get(key)
         for key in ("productName", "skuName", "meterName", "unitOfMeasure", "retailPrice", "effectiveStartDate")
@@ -320,7 +349,7 @@ def main(argv=None) -> int:
 
     unit_prices, meters = {}, {}
     for name, meter in METERS.items():
-        unit_prices[name], meters[name] = fetch_unit_price(meter["filter"])
+        unit_prices[name], meters[name] = fetch_unit_price(meter)
     fixed = monthly_fixed_jpy(unit_prices)
 
     client = anthropic.Anthropic()

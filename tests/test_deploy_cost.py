@@ -128,5 +128,54 @@ class TheArithmetic(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
+class TheMeterReading(unittest.TestCase):
+    """`matched_item` is the whole of the read that does not need the network:
+    the item list stands in for what the Retail Prices API returns."""
+
+    def priced(self, meter, unit=None, price=1.0):
+        return {
+            "productName": "P", "skuName": "S", "meterName": "M",
+            "unitOfMeasure": meter["unit_of_measure"] if unit is None else unit,
+            "retailPrice": price,
+        }
+
+    def test_the_one_match_at_the_registered_unit_is_returned(self):
+        meter = cost.METERS["postgresql_storage_gb"]
+        item = self.priced(meter, price=2.5)
+        self.assertEqual(cost.matched_item([item], meter), item)
+
+    def test_no_match_and_two_matches_stop_the_run(self):
+        meter = cost.METERS["container_registry_basic"]
+        item = self.priced(meter)
+        for items in ([], [item, dict(item)]):
+            with self.assertRaises(SystemExit):
+                cost.matched_item(items, meter)
+
+    def test_a_price_quoted_per_another_unit_stops_the_run(self):
+        """The filter still matches one item, so only the unit catches it: a
+        plan quoted per 10 Hours would be ten times the fixed cost, and
+        storage quoted per TB/Month a thousandth of it."""
+        for name, wrong in (("app_service_plan_b1_linux", "10 Hours"), ("postgresql_storage_gb", "1 TB/Month")):
+            meter = cost.METERS[name]
+            with self.assertRaises(SystemExit):
+                cost.matched_item([self.priced(meter, unit=wrong)], meter)
+
+    def test_a_missing_unit_stops_the_run(self):
+        meter = cost.METERS["postgresql_b1ms_compute"]
+        with self.assertRaises(SystemExit):
+            cost.matched_item([{"retailPrice": 1.0}], meter)
+
+    def test_every_registered_unit_is_the_one_the_arithmetic_multiplies(self):
+        """`monthly_fixed_jpy` multiplies by `UNITS_PER_MONTH[per]`, so each
+        registered unit must be one of that period and one unit of it."""
+        for name, meter in cost.METERS.items():
+            unit = meter["unit_of_measure"]
+            period = unit.split("/")[-1].split()[-1].lower()
+            self.assertEqual(period, meter["per"], name)
+            self.assertTrue(unit.startswith("1"), name)
+            self.assertIn(meter["per"], cost.UNITS_PER_MONTH, name)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
