@@ -69,6 +69,19 @@ class TheStart(unittest.TestCase):
             # The guard is the job's first condition: nothing runs before it.
             self.assertLess(job.index("    if: "), job.index("    steps:"))
 
+    def test_no_other_workflow_logs_in_to_azure(self):
+        """DP-013 covers every file: a job anywhere that logs in must carry the
+        guard, and the only such job is this file's (#235 N3)."""
+        for path in WORKFLOWS.glob("*.y*ml"):
+            if path == DEPLOY:
+                continue
+            with self.subTest(path=path.name):
+                self.assertFalse(logs_in(code(path.read_text(encoding="utf-8"))))
+
+    def test_a_stale_runner_rule_is_removed_before_a_new_one_opens(self):
+        opened = step("Open the database firewall to this runner")
+        self.assertLess(opened.index("firewall-rule delete"), opened.index("firewall-rule create"))
+
     def test_no_other_workflow_names_the_production_environment(self):
         for path in WORKFLOWS.glob("*.y*ml"):
             if path == DEPLOY:
@@ -126,6 +139,13 @@ class TheSecrets(unittest.TestCase):
         self.assertLess(create.index("secret show"), create.index("continue"))
         self.assertLess(create.index("continue"), create.index("secret set"))
         self.assertIn("--file", create)
+        # "Found nothing" is the not-found answer, not any failure (#235 B1):
+        # every other failure exits before the write.
+        self.assertIn('2>"$error" || status=$?', create)
+        self.assertIn('if [ "$status" -eq 0 ]; then', create)
+        self.assertLess(create.index("if ! grep -q 'SecretNotFound'"), create.index("exit 1"))
+        self.assertLess(create.index("exit 1"), create.index("secret set"))
+        self.assertNotIn("2>/dev/null", create)
         self.assertNotRegex(create, r"secret set[^\n]*--value")
 
     def test_every_secret_read_into_the_shell_is_masked(self):

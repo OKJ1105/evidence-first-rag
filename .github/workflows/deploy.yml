@@ -75,10 +75,22 @@ jobs:
           set -euo pipefail
           umask 077
           for name in postgres-admin-password mvp-provisioning-password mvp-runtime-password; do
-            if az keyvault secret show --vault-name "$KEY_VAULT" --name "$name" --query id --output none 2>/dev/null; then
+            # Only a not-found answer leads to a new value. Any other failure
+            # (throttling, an expired token, a role not yet effective) stops
+            # the run, so an existing password is never overwritten (#235 B1).
+            error="$(mktemp)"
+            status=0
+            az keyvault secret show --vault-name "$KEY_VAULT" --name "$name" --query id --output none 2>"$error" || status=$?
+            if [ "$status" -eq 0 ]; then
+              rm -f "$error"
               echo "$name exists; not regenerated"
               continue
             fi
+            if ! grep -q 'SecretNotFound' "$error"; then
+              cat "$error" >&2
+              exit 1
+            fi
+            rm -f "$error"
             file="$(mktemp)"
             # 43 URL-safe characters, plus one of each class the server's
             # administrator password policy asks for.
@@ -129,9 +141,18 @@ jobs:
         run: |
           set -euo pipefail
           image="${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$COMMIT"
-          az acr login --name "${{ steps.infra.outputs.registryName }}"
           docker build --tag "$image" .
-          docker push "$image"
+          # The AcrPush assignment the template just created can take minutes
+          # to take effect, so the login and push are retried (#235 N4).
+          for attempt in 1 2 3 4 5; do
+            if az acr login --name "${{ steps.infra.outputs.registryName }}" && docker push "$image"; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              exit 1
+            fi
+            sleep 60
+          done
           echo "digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image")" >> "$GITHUB_OUTPUT"
 
       - name: Restart both apps on the pushed image
@@ -146,6 +167,15 @@ jobs:
         id: firewall
         run: |
           set -euo pipefail
+          # A rule an earlier run failed to close is removed first, so no
+          # runner address stays admitted past its own run (#235 N1).
+          for stale in $(az postgres flexible-server firewall-rule list \
+              --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.serverName }}" \
+              --query "[?starts_with(name, 'deploy-runner-')].name" --output tsv); do
+            az postgres flexible-server firewall-rule delete \
+              --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.serverName }}" \
+              --rule-name "$stale" --yes --output none
+          done
           address="$(curl --silent --show-error --fail https://api.ipify.org)"
           az postgres flexible-server firewall-rule create \
             --resource-group "$RESOURCE_GROUP" \
