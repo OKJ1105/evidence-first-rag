@@ -18,7 +18,7 @@ def answering(table):
     """A `fetch` that answers from `(method, url-suffix) -> callable(headers, body)`."""
     calls = []
 
-    def fetch(method, url, headers=None, body=None):
+    def fetch(method, url, headers=None, body=None, timeout=None):
         calls.append((method, url, dict(headers or {}), body))
         for (want_method, suffix), answer in table.items():
             if method == want_method and url.endswith(suffix):
@@ -257,7 +257,7 @@ class TheOrder(unittest.TestCase):
     def test_the_model_call_comes_before_the_rate_limit_is_spent(self):
         order = []
 
-        def fetch(method, url, headers=None, body=None):
+        def fetch(method, url, headers=None, body=None, timeout=None):
             order.append((method, url))
             if url.endswith("/chat") and method == "POST" and body != b"{}":
                 return 503, {}, b"{}"
@@ -273,7 +273,7 @@ class TheOrder(unittest.TestCase):
     def test_the_surface_preflight_is_aimed_at_a_route_that_carries_cors(self):
         order = []
 
-        def fetch(method, url, headers=None, body=None):
+        def fetch(method, url, headers=None, body=None, timeout=None):
             order.append((method, url))
             return 400, {}, b""
 
@@ -329,7 +329,7 @@ class AFaultInOneCase(unittest.TestCase):
         return connecting(require=Refused("unreachable"), disable=Refused("unreachable"))
 
     def test_a_case_that_raises_fails_and_the_rest_still_run(self):
-        def fetch(method, url, headers=None, body=None):
+        def fetch(method, url, headers=None, body=None, timeout=None):
             if url.endswith("/mcp"):
                 raise RuntimeError("a defect in the check")
             return 400, {}, b""
@@ -345,7 +345,7 @@ class AFaultInOneCase(unittest.TestCase):
         # Not a case failing -- the process being stopped. `main` writes the
         # artifact from this dictionary in a `finally`, so what it holds when
         # the run does not finish is what the deploy record gets.
-        def fetch(method, url, headers=None, body=None):
+        def fetch(method, url, headers=None, body=None, timeout=None):
             return 400, {}, b""
 
         def interrupted(seconds):
@@ -364,6 +364,55 @@ class AFaultInOneCase(unittest.TestCase):
             )
         self.assertIn("DP-012", recorded)
         self.assertNotIn("DP-009", recorded)
+
+
+
+class TheRecordedDetail(unittest.TestCase):
+    """Nothing the record carries names a host or an address (#239 B4)."""
+
+    def test_a_passing_tls_refusal_records_a_fixed_sentence(self):
+        class Refused(Exception):
+            pass
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def cursor(self):
+                return self
+
+            def execute(self, statement):
+                pass
+
+            def fetchone(self):
+                return (1,)
+
+        def connect(sslmode):
+            if sslmode == "disable":
+                raise Refused('connection to server at "psql-efr-x.postgres.database.azure.com" (20.1.2.3), port 5432 failed: SSL connection is required')
+            return Connection()
+
+        passed, detail = checks.dp005_database_requires_tls(connect, Refused)
+        self.assertTrue(passed)
+        self.assertNotIn("azure.com", detail)
+        self.assertNotIn("20.1.2.3", detail)
+
+    def test_redact_removes_host_names_and_addresses(self):
+        text = 'server at "psql-efr-x.postgres.database.azure.com" (20.1.2.3) and fe80::1:2'
+        redacted = checks.redact(text)
+        for secret in ("psql-efr-x", "azure.com", "20.1.2.3", "fe80::1:2"):
+            self.assertNotIn(secret, redacted)
+
+
+class TheEmptyAnswer(unittest.TestCase):
+    def test_a_chat_answer_with_no_content_fails(self):
+        def fetch(method, url, headers=None, body=None, timeout=None):
+            return 200, {}, json.dumps({"content": [], "scope_checks": [], "relay": {"model": checks.RELAY_MODEL}}).encode()
+
+        self.assertFalse(checks.dp012(fetch, "relay")[0])
 
 
 if __name__ == "__main__":

@@ -233,6 +233,21 @@ jobs:
             echo "surface did not become healthy within 10 minutes"
             exit 1
           fi
+          # relay has no health route: any JSON answer from it, even the
+          # refusal of an empty GET, shows the process is serving (#239 N5).
+          ready=""
+          for attempt in $(seq 1 30); do
+            if curl --silent --max-time 10 "https://${{ steps.infra.outputs.relayHost }}/chat" \
+                | python -c 'import json, sys; json.load(sys.stdin)' 2>/dev/null; then
+              ready=yes
+              break
+            fi
+            sleep 20
+          done
+          if [ -z "$ready" ]; then
+            echo "relay did not start serving within 10 minutes"
+            exit 1
+          fi
           read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
           # A vault read that fails stops here, before any check runs, so it is
           # never recorded as a failed check (#237 B6).

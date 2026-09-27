@@ -23,6 +23,7 @@ them, so it reaches no model.
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -99,6 +100,17 @@ def _header(headers, name):
     return None
 
 
+# Host names and addresses never reach a recorded detail: the record is
+# committed, and the database's host is not public (#239 B4).
+_HOSTNAME = re.compile(r"\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\.[a-z]{2,}\b", re.IGNORECASE)
+_ADDRESS = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b|\b[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}\b", re.IGNORECASE)
+
+
+def redact(text):
+    """`text` with every host name and IP address replaced by a placeholder."""
+    return _ADDRESS.sub("<address>", _HOSTNAME.sub("<host>", text))
+
+
 def _reason(error):
     """An exception as one line of detail: its type and its first line.
 
@@ -106,7 +118,7 @@ def _reason(error):
     rule that has not propagated, and that is the distinction the reader of a
     failed database check needs.
     """
-    first = (str(error).strip().splitlines() or [""])[0]
+    first = redact((str(error).strip().splitlines() or [""])[0])
     return f"{type(error).__name__}: {first[:200]}" if first else type(error).__name__
 
 
@@ -127,7 +139,7 @@ def _answer(status, raw):
     """
     if status != UNREACHABLE:
         return str(status)
-    return f"{UNREACHABLE} ({raw.decode(errors='replace')[:200]})"
+    return f"{UNREACHABLE} ({redact(raw.decode(errors='replace'))[:200]})"
 
 
 def dp005_https(fetch, host):
@@ -200,8 +212,10 @@ def dp005_database_requires_tls(connect, operational_error):
         with connect(sslmode="disable"):
             pass
     except operational_error as refused:
-        if any(term in str(refused).lower() for term in TLS_REQUIRED_TERMS):
-            return True, f"refused: {_reason(refused)}"
+        matched = [term for term in TLS_REQUIRED_TERMS if term in str(refused).lower()]
+        if matched:
+            # A fixed sentence: the driver's message names the server.
+            return True, f"refused for want of TLS (matched {matched[0]!r})"
         return False, f"refused, but not for want of TLS: {_reason(refused)}"
     except Exception as other:  # noqa: BLE001 - not the server refusing
         return False, f"the plaintext attempt failed before any refusal: {_reason(other)}"
@@ -246,7 +260,8 @@ def dp009(fetch, relay_host):
         headers = {"Content-Type": "application/json"}
         if index % 2 == 0:
             headers["X-Forwarded-For"] = FORGED_ADDRESS
-        status, _, _ = fetch("POST", f"https://{relay_host}/chat", headers, b"{}")
+        # Short, so seven requests stay inside the 60-second window (#239 N9).
+        status, _, _ = fetch("POST", f"https://{relay_host}/chat", headers, b"{}", timeout=5)
         statuses.append(status)
     passed = statuses[:RATE_WINDOW_LIMIT] == [400] * RATE_WINDOW_LIMIT and statuses[-1] == 429
     return passed, f"statuses {statuses}"
@@ -264,6 +279,8 @@ def dp012(fetch, relay_host):
         return False, "the answer is not JSON"
     content = document.get("content")
     problems = []
+    if not content:
+        problems.append("no content was passed through")
     if not isinstance(content, list) or not all(
         isinstance(block, dict) and block.get("type") in RELAY_BLOCK_TYPES for block in content
     ):
