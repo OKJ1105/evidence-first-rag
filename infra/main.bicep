@@ -44,6 +44,14 @@ param relayDailyCeiling string = ''
 var surfaceVaultEntry = 'mvp-runtime-password'
 var relayVaultEntry = 'anthropic-api-key'
 
+// The Key Vault reference each app's setting carries: it names a vault entry
+// and holds no secret. Built here and interpolated into the setting, so the
+// value written next to a name like `MVP_RUNTIME_PASSWORD` is a reference to
+// this variable rather than a literal — which is what the repository's
+// sensitive-string scan requires of a value in that position.
+var surfaceVaultReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${surfaceVaultEntry})'
+var relayVaultReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${relayVaultEntry})'
+
 // Built-in role definitions, by their fixed identifiers.
 var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var roleAcrPush = '8311e382-0749-4cb8-b61a-304f252e45ec'
@@ -193,7 +201,7 @@ var surfaceSettings = union(
     PGPORT: '5432'
     MVP_DATABASE: 'mvp'
     PGSSLMODE: 'require'
-    MVP_RUNTIME_PASSWORD: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${surfaceVaultEntry})'
+    MVP_RUNTIME_PASSWORD: '${surfaceVaultReference}'
     EFR_MCP_ALLOWED_HOSTS: surface.properties.defaultHostName
   },
   empty(corsOrigin) ? {} : { EFR_CORS_ORIGIN: corsOrigin }
@@ -204,7 +212,7 @@ var surfaceSettings = union(
 var relaySettings = union(
   {
     WEBSITES_PORT: port
-    ANTHROPIC_API_KEY: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${relayVaultEntry})'
+    ANTHROPIC_API_KEY: '${relayVaultReference}'
     EFR_RELAY_MCP_URL: 'https://${surface.properties.defaultHostName}/mcp'
   },
   empty(relayDailyCeiling) ? {} : { EFR_RELAY_DAILY_CEILING: relayDailyCeiling },

@@ -195,13 +195,27 @@ class TheConfiguration(unittest.TestCase):
             self.assertNotIn(name, block("relaySettings"))
 
     def test_secrets_are_key_vault_references(self):
+        """Each app's secret arrives as a Key Vault reference to that app's own
+        entry, never as a literal. The reference is built in a variable and the
+        setting interpolates it, so the value beside a name like
+        `MVP_RUNTIME_PASSWORD` names the variable instead of carrying a value --
+        which is also what `scripts/checks/scan_sensitive_strings.py` requires
+        of a value in that position."""
         self.assertIn(
-            "@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${surfaceVaultEntry})",
-            block("surfaceSettings"),
+            "var surfaceVaultReference = "
+            "'@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${surfaceVaultEntry})'",
+            CODE,
         )
         self.assertIn(
-            "@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${relayVaultEntry})",
-            block("relaySettings"),
+            "var relayVaultReference = "
+            "'@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${relayVaultEntry})'",
+            CODE,
+        )
+        self.assertIn(
+            "MVP_RUNTIME_PASSWORD: '${surfaceVaultReference}'", block("surfaceSettings")
+        )
+        self.assertIn(
+            "ANTHROPIC_API_KEY: '${relayVaultReference}'", block("relaySettings")
         )
 
     def test_the_cors_origin_and_the_ceiling_are_absent_while_empty(self):
