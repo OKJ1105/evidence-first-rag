@@ -20,13 +20,15 @@ the way a person reaches it. So the expected values below are written out
 rather than read from the modules that produce them, which is the same reason
 `tests_database/test_api_workflows.py` pins the health document as literals.
 
-Run by the `local-stack` CI job after `docker compose up --wait`, with
-`EFR_STACK_URL` naming the surface. Nothing here provisions or tears down: the
-stack is the fixture.
+Run by the `local-stack` CI job after `docker compose up --wait`, and by the
+deploy job against the deployed surface, with `EFR_STACK_URL` naming whichever
+one it is. Nothing here provisions or tears down: the stack is the fixture, and
+`await_health` waits for it to be serving before the first row runs.
 """
 
 import json
 import os
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -34,6 +36,20 @@ import urllib.request
 # The surface `compose.yaml` publishes. Absent, there is no stack and these
 # rows were never going to run.
 STACK_URL_VARIABLE = "EFR_STACK_URL"
+
+# How long the surface is given to start answering, and how often it is asked.
+#
+# The local stack is healthy before its job reaches here (`compose.yaml`'s
+# healthcheck, and `up --wait`), so the budget is for the deployed surface:
+# `deploy.yml` restarts both apps onto a freshly pushed image and then runs
+# these rows, and nothing in that job waits for the platform to finish pulling
+# it. A budget is not a measurement of that platform. What it buys is that a
+# start-up slower than the budget fails as itself, with `await_health`'s
+# message, rather than as a WF row failing against a surface that was not
+# serving yet -- which in the deploy job is a failure that rolls a correct
+# deploy back (#236 B2).
+READY_BUDGET_SECONDS = 600
+READY_INTERVAL_SECONDS = 5
 
 POWERTRAIN = {
     "project_code": "SAMPLE_PROJECT_ALPHA",
@@ -56,19 +72,59 @@ def setUpModule():
     true. A URL that is set and unreachable is the job having started a stack
     and meant them to run: a skip there would be #101's failure, green standing
     in for rows that never executed.
+
+    Between those two sits a state that is neither: a surface that is starting.
+    `await_health` is what tells it from the second, so a stack that is coming
+    up is waited for and a stack that never comes up still fails.
     """
     global BASE_URL
     configured = os.environ.get(STACK_URL_VARIABLE)
     if not configured:
         raise unittest.SkipTest(f"{STACK_URL_VARIABLE} is not set; there is no stack to drive")
     BASE_URL = configured.rstrip("/")
-    try:
-        call("/v1/health")
-    except OSError as unreachable:
-        raise RuntimeError(
-            f"{STACK_URL_VARIABLE} is {BASE_URL} and nothing answered there:"
-            f" the stack was meant to be running. {unreachable}"
-        ) from unreachable
+    await_health()
+
+
+def await_health(
+    *,
+    budget=READY_BUDGET_SECONDS,
+    interval=READY_INTERVAL_SECONDS,
+    pause=time.sleep,
+    clock=time.monotonic,
+):
+    """Poll `/v1/health` until it answers 200 with a JSON document.
+
+    `api-v0.1` Section 4.5 makes `/v1/health` the one route that opens no
+    connection, so it answers as soon as the process is serving and says nothing
+    about the database -- the same reason `compose.yaml` probes it.
+
+    Every way a surface that is not serving yet answers is retried: a refused
+    connection, a status that is not 200, and a body that is not JSON, which is
+    how a platform's own start-up page arrives and which `call` reports as a
+    `JSONDecodeError` rather than the `OSError` a refused connection raises.
+
+    Returns the health document. Raises `RuntimeError` naming the budget and the
+    last answer when the budget runs out, which is a message no failing row
+    produces.
+    """
+    deadline = clock() + budget
+    while True:
+        try:
+            status, document, _ = call("/v1/health")
+            if status == 200 and isinstance(document, dict):
+                return document
+            answer = f"HTTP {status}"
+        except OSError as unreachable:
+            answer = f"{type(unreachable).__name__}: {unreachable}"
+        except json.JSONDecodeError as unparsable:
+            answer = f"a body that is not JSON ({unparsable})"
+        if clock() >= deadline:
+            raise RuntimeError(
+                f"{STACK_URL_VARIABLE} is {BASE_URL} and /v1/health did not answer"
+                f" 200 with a JSON document within {budget}s: the stack was meant"
+                f" to be running. Its last answer was {answer}."
+            )
+        pause(interval)
 
 
 def call(path, body=None):
