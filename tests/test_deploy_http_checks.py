@@ -55,23 +55,90 @@ class TheForeignOrigin(unittest.TestCase):
             self.assertFalse(checks.dp005_foreign_origin(fetch, "https://relay/chat")[0])
 
 
-class TheDatabaseTls(unittest.TestCase):
-    def test_a_refused_plain_connection_passes(self):
-        def connect(**kwargs):
-            self.assertEqual(kwargs, {"sslmode": "disable"})
-            raise OSError("SSL required")
+class Refused(Exception):
+    """Stands in for `psycopg.OperationalError`: the server answered and refused."""
 
-        self.assertTrue(checks.dp005_database_requires_tls(connect)[0])
+
+class FakeCursor:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, statement):
+        self.statement = statement
+
+    def fetchone(self):
+        return (1,)
+
+
+class FakeConnection:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        self.opened = FakeCursor()
+        return self.opened
+
+
+def connecting(**per_mode):
+    """A `connect` answering per `sslmode`: an exception is raised, else opened."""
+    modes = []
+
+    def connect(**kwargs):
+        modes.append(kwargs["sslmode"])
+        answer = per_mode[kwargs["sslmode"]]
+        if isinstance(answer, BaseException):
+            raise answer
+        return FakeConnection()
+
+    connect.modes = modes
+    return connect
+
+
+class TheDatabaseTls(unittest.TestCase):
+    """The TLS control comes first, and only a refusal for want of TLS passes."""
+
+    def test_a_refusal_naming_tls_after_a_good_control_passes(self):
+        connect = connecting(require=None, disable=Refused("FATAL: SSL connection is required"))
+        passed, detail = checks.dp005_database_requires_tls(connect, Refused)
+        self.assertTrue(passed, detail)
+        self.assertEqual(connect.modes, ["require", "disable"])
+
+    def test_every_wording_of_the_requirement_is_recognized(self):
+        for wording in ("SSL is required", "TLS required", "no encryption", "secure transport required"):
+            connect = connecting(require=None, disable=Refused(wording))
+            self.assertTrue(checks.dp005_database_requires_tls(connect, Refused)[0], wording)
+
+    def test_the_control_failing_fails_the_case_and_no_plaintext_is_tried(self):
+        # The server here would have accepted plaintext — `disable` opens — but
+        # the runner cannot reach it. That is not the guarantee, and passing the
+        # case on it would record the opposite of what is true.
+        connect = connecting(require=Refused("connection timeout expired"), disable=None)
+        passed, detail = checks.dp005_database_requires_tls(connect, Refused)
+        self.assertFalse(passed)
+        self.assertIn("control", detail)
+        self.assertEqual(connect.modes, ["require"])
+
+    def test_a_refusal_for_another_reason_fails(self):
+        connect = connecting(require=None, disable=Refused("connection timeout expired"))
+        passed, detail = checks.dp005_database_requires_tls(connect, Refused)
+        self.assertFalse(passed)
+        self.assertIn("timeout expired", detail)
+
+    def test_a_client_side_fault_is_not_a_refusal(self):
+        connect = connecting(require=None, disable=KeyError("MVP_RUNTIME_PASSWORD"))
+        passed, detail = checks.dp005_database_requires_tls(connect, Refused)
+        self.assertFalse(passed)
+        self.assertIn("KeyError", detail)
 
     def test_an_accepted_plain_connection_fails(self):
-        class Connection:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-        self.assertFalse(checks.dp005_database_requires_tls(lambda **kwargs: Connection())[0])
+        connect = connecting(require=None, disable=None)
+        self.assertFalse(checks.dp005_database_requires_tls(connect, Refused)[0])
 
 
 class TheMcpOrigins(unittest.TestCase):
@@ -158,7 +225,8 @@ class TheOrder(unittest.TestCase):
             return 400, {}, b""
 
         waited = []
-        checks.run(fetch, "surface", "relay", lambda **kw: (_ for _ in ()).throw(OSError()), pause=waited.append)
+        connect = connecting(require=Refused("unreachable"), disable=Refused("unreachable"))
+        checks.run(fetch, "surface", "relay", connect, Refused, pause=waited.append)
         chat = [i for i, (m, u) in enumerate(order) if m == "POST" and u.endswith("/chat")]
         self.assertEqual(len(chat), 1 + checks.RATE_WINDOW_LIMIT + 1)
         self.assertEqual(waited, [61])

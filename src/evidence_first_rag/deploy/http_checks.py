@@ -28,6 +28,11 @@ DP012_TEXT = "What is SAMPLE_ALIAS_GEARBOX_STATE?"
 RELAY_BLOCK_TYPES = {"text", "mcp_tool_use", "mcp_tool_result"}
 RELAY_MODEL = "claude-haiku-4-5"
 
+# What a refusal for want of TLS says. The server's exact wording is the
+# platform's to choose, so the terms are matched rather than the sentence: a
+# refusal that names none of them is some other refusal and fails the case.
+TLS_REQUIRED_TERMS = ("ssl", "tls", "encryption", "secure transport")
+
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -52,6 +57,17 @@ def _header(headers, name):
         if key.lower() == name.lower():
             return value
     return None
+
+
+def _reason(error):
+    """An exception as one line of detail: its type and its first line.
+
+    The type alone does not tell a name that does not resolve from a firewall
+    rule that has not propagated, and that is the distinction the reader of a
+    failed database check needs.
+    """
+    first = (str(error).strip().splitlines() or [""])[0]
+    return f"{type(error).__name__}: {first[:200]}" if first else type(error).__name__
 
 
 def dp005_https(fetch, host):
@@ -80,13 +96,38 @@ def dp005_foreign_origin(fetch, url):
     return True, f"{url} answered {status} and allowed no foreign origin"
 
 
-def dp005_database_requires_tls(connect):
-    """A connection with TLS disabled is refused by the server."""
+def dp005_database_requires_tls(connect, operational_error):
+    """A connection with TLS disabled is refused by the server, for that reason.
+
+    A control connection with `sslmode=require` runs first, the same discipline
+    `deployed.refused_writes` uses: it establishes that the host resolves, the
+    firewall rule is in place, and the database name and credential are good,
+    so that the plaintext attempt failing is attributable to the missing TLS
+    rather than to a connection that could never have been made. Without the
+    control, an unpropagated firewall rule or an exceeded `connect_timeout`
+    reads as the server refusing plaintext when it would have accepted it.
+
+    `operational_error` is `psycopg.OperationalError`: the server answering and
+    refusing. A failure of any other type is a fault in the check itself, not
+    the guarantee, and fails the case. So does a refusal whose message does not
+    name the requirement, since only that names TLS as the reason.
+    """
+    try:
+        with connect(sslmode="require") as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as unreachable:  # noqa: BLE001 - the control failing fails the case
+        return False, f"the TLS control connection failed: {_reason(unreachable)}"
+
     try:
         with connect(sslmode="disable"):
             pass
-    except Exception as refused:  # noqa: BLE001 - any refusal is the expectation
-        return True, f"refused: {type(refused).__name__}"
+    except operational_error as refused:
+        if any(term in str(refused).lower() for term in TLS_REQUIRED_TERMS):
+            return True, f"refused: {_reason(refused)}"
+        return False, f"refused, but not for want of TLS: {_reason(refused)}"
+    except Exception as other:  # noqa: BLE001 - not the server refusing
+        return False, f"the plaintext attempt failed before any refusal: {_reason(other)}"
     return False, "the server accepted a connection without TLS"
 
 
@@ -159,7 +200,7 @@ def dp012(fetch, relay_host):
     return (not problems), "; ".join(problems) or f"200 with {len(content)} blocks and {len(calls)} discover_entity calls"
 
 
-def run(fetch, surface_host, relay_host, connect, pause=time.sleep):
+def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.sleep):
     """Every case, in an order where none spends another's budget.
 
     `DP-012` goes first and `DP-009` last, after a full window, so the one
@@ -170,7 +211,7 @@ def run(fetch, surface_host, relay_host, connect, pause=time.sleep):
         "DP-005 relay redirect": dp005_https(fetch, relay_host),
         "DP-005 surface foreign origin": dp005_foreign_origin(fetch, f"https://{surface_host}/v1/ask"),
         "DP-005 relay foreign origin": dp005_foreign_origin(fetch, f"https://{relay_host}/chat"),
-        "DP-005 database TLS": dp005_database_requires_tls(connect),
+        "DP-005 database TLS": dp005_database_requires_tls(connect, operational_error),
         "DP-010": dp010(fetch, surface_host),
         "DP-012": dp012(fetch, relay_host),
     }
@@ -190,18 +231,21 @@ def main(argv=None) -> int:
     parser.add_argument("--out", default="http-checks.json")
     arguments = parser.parse_args(argv)
 
-    def connect(**extra):
-        return psycopg.connect(
-            dbname=os.environ.get("MVP_DATABASE", "mvp"),
-            user="mvp_runtime",
-            password=os.environ["MVP_RUNTIME_PASSWORD"],
-            host=os.environ["PGHOST"],
-            port=os.environ.get("PGPORT", "5432"),
-            connect_timeout=15,
-            **extra,
-        )
+    # Read before any case runs, so a step that stopped exporting a variable
+    # raises here instead of arriving inside a case as a caught exception.
+    parameters = {
+        "dbname": os.environ.get("MVP_DATABASE", "mvp"),
+        "user": "mvp_runtime",
+        "password": os.environ["MVP_RUNTIME_PASSWORD"],
+        "host": os.environ["PGHOST"],
+        "port": os.environ.get("PGPORT", "5432"),
+        "connect_timeout": 15,
+    }
 
-    results = run(fetch, arguments.surface, arguments.relay, connect)
+    def connect(**extra):
+        return psycopg.connect(**parameters, **extra)
+
+    results = run(fetch, arguments.surface, arguments.relay, connect, psycopg.OperationalError)
     with open(arguments.out, "w", encoding="utf-8") as handle:
         json.dump(results, handle, indent=2)
     for case, result in results.items():
