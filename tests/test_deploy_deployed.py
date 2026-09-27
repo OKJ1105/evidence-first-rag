@@ -84,6 +84,11 @@ class TheRollbackTarget(unittest.TestCase):
         newer_failed = {"date": "2026-03-01T00:00:00+00:00", "commit": "c" * 40, "outcome": "failure", "deployed_checks": "fail"}
         self.assertEqual(deployed.last_passing_commit(self.records(old, new, newer_failed)), "b" * 40)
 
+    def test_the_commit_being_deployed_is_never_its_own_target(self):
+        old = {"date": "2026-01-01T00:00:00+00:00", "commit": "a" * 40, "outcome": "success", "deployed_checks": "pass"}
+        same = {"date": "2026-02-01T00:00:00+00:00", "commit": "b" * 40, "outcome": "success", "deployed_checks": "pass"}
+        self.assertEqual(deployed.last_passing_commit(self.records(old, same), excluding="b" * 40), "a" * 40)
+
     def test_a_missing_records_directory_is_an_error(self):
         with self.assertRaises(FileNotFoundError):
             deployed.last_passing_commit(pathlib.Path(tempfile.mkdtemp()) / "absent")

@@ -267,10 +267,11 @@ jobs:
         if: failure() && steps.infra.outcome == 'success'
         run: |
           set -euo pipefail
-          target="$(python -m evidence_first_rag.deploy.deployed last-passing)"
+          target="$(python -m evidence_first_rag.deploy.deployed last-passing --excluding "$COMMIT")"
           if [ -z "$target" ]; then
             echo "No passing deploy is recorded; nothing to roll back to."
             echo "target=" >> "$GITHUB_OUTPUT"
+            echo "result=nothing to roll back to" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "target=$target" >> "$GITHUB_OUTPUT"
@@ -284,6 +285,7 @@ jobs:
           done
           if [ "${{ steps.firewall.outputs.rule }}" = "" ]; then
             echo "database=untouched" >> "$GITHUB_OUTPUT"
+            echo "result=rolled back" >> "$GITHUB_OUTPUT"
             echo "The firewall never opened, so the database was not changed."
             exit 0
           fi
@@ -301,6 +303,7 @@ jobs:
           # The same module, run from the previous commit's own source and files.
           (cd previous && PYTHONPATH=src python -m evidence_first_rag.db.provision --recreate)
           echo "database=restored" >> "$GITHUB_OUTPUT"
+          echo "result=rolled back" >> "$GITHUB_OUTPUT"
           # The restored state, checked by the previous commit's own runner.
           (cd previous && PYTHONPATH=src python -m evidence_first_rag.conformance.runner --artifact ../restored-conformance.json)
 
@@ -330,7 +333,9 @@ jobs:
               "provisioned": open("provision.txt").read().strip() if os.path.exists("provision.txt") else None,
               "deployed_checks": {"success": "pass", "failure": "fail"}.get(os.environ["CHECKS"], "not run"),
               "rolled_back_to": os.environ["ROLLBACK"] or None,
-              "rollback_outcome": os.environ["ROLLBACK_OUTCOME"] or None,
+              # What happened, not the step's exit status: a step that found
+              # nothing to roll back to succeeds, and says so here (#237 B3).
+              "rollback_outcome": (os.environ["ROLLBACK_RESULT"] or ("failed" if os.environ["ROLLBACK_OUTCOME"] == "failure" else None)),
               "rollback_database": os.environ["ROLLBACK_DATABASE"] or None,
           }
           with open("deploy-record.json", "w") as handle:
@@ -344,6 +349,7 @@ jobs:
           CHECKS: ${{ steps.checks.outcome }}
           ROLLBACK: ${{ steps.rollback.outputs.target }}
           ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
+          ROLLBACK_RESULT: ${{ steps.rollback.outputs.result }}
           ROLLBACK_DATABASE: ${{ steps.rollback.outputs.database }}
 
       - name: Upload the deploy record

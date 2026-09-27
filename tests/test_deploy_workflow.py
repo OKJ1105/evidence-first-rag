@@ -152,7 +152,10 @@ class TheDeployedChecks(unittest.TestCase):
         # The image half comes before, and does not depend on, the database half.
         self.assertLess(rollback.index("--linux-fx-version"), rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'))
         self.assertLess(rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'), rollback.index("db.provision"))
-        self.assertIn("deploy.deployed last-passing", rollback)
+        self.assertIn('deploy.deployed last-passing --excluding "$COMMIT"', rollback)
+        # Every exit of the step records what happened (#237 B3).
+        self.assertEqual(rollback.count('echo "result='), 3)
+        self.assertIn('echo "result=nothing to roll back to"', rollback)
         self.assertIn('--linux-fx-version "DOCKER|$image"', rollback)
         self.assertIn("evidence-first-rag:$target", rollback)
 

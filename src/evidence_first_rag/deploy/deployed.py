@@ -74,8 +74,12 @@ def refused_writes(connect, errors) -> dict:
     return outcome
 
 
-def last_passing_commit(records: pathlib.Path = RECORDS):
-    """The commit of the newest passing deploy record, or `None`."""
+def last_passing_commit(records: pathlib.Path = RECORDS, excluding: str = ""):
+    """The commit of the newest passing deploy record, or `None`.
+
+    `excluding` is the commit being deployed: re-deploying a commit that once
+    passed must not make it its own rollback target (#237 N4).
+    """
     # A missing directory is a mistake in the path, not "no passing deploy
     # yet": the directory is committed before the first deploy (#237 N2).
     if not records.is_dir():
@@ -83,6 +87,8 @@ def last_passing_commit(records: pathlib.Path = RECORDS):
     passing = []
     for path in sorted(records.glob("deploy-*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
+        if record.get("commit") == excluding:
+            continue
         if record.get("outcome") == "success" and record.get("deployed_checks") == "pass":
             passing.append((record["date"], record["commit"]))
     return max(passing)[1] if passing else None
@@ -92,11 +98,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("writes", help="DP-004 against the deployed database")
-    commands.add_parser("last-passing", help="print the rollback target, or nothing")
+    target = commands.add_parser("last-passing", help="print the rollback target, or nothing")
+    target.add_argument("--excluding", default="", help="the commit being deployed")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "last-passing":
-        commit = last_passing_commit()
+        commit = last_passing_commit(excluding=arguments.excluding)
         print(commit or "")
         return 0
 
