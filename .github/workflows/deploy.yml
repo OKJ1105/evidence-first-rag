@@ -1,0 +1,215 @@
+# `deploy-v0.1` Section 4.2: the deploy, started by the owner and by nothing else.
+#
+# The only trigger is `workflow_dispatch`. There is no deploy on push, merge,
+# schedule or any other event, and no step waits on an approval: required
+# reviewers are not available on this repository's plan (#205). The owner
+# starting a run is the recorded human decision for that deploy, and the run's
+# triggering actor and URL are written into the artifact as its evidence.
+#
+# The guard is the job's first condition. It bounds the run to the owner's
+# GitHub account, not to the owner in person, so no writer session, agent-loop
+# run or other automation dispatches this workflow (Section 4.2).
+#
+# This file is the first half of the deploy. It builds and ships one commit:
+# the three database secrets, the provisioning definitions, the image, and the
+# database provisioned from that commit inside a firewall window that is always
+# closed. The Section 4.8 deployed checks and the rollback are the next slice;
+# until they land, a run proves that the pieces deploy and nothing more.
+#
+# No secret is in this file, in a GitHub Secret, or in a log. The deploy job
+# reads the five identifiers #205 lists from the `production` environment's
+# Variables; every password lives in Key Vault (Section 4.3).
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # DP-013: the first condition, before anything logs in to Azure.
+    if: github.actor == 'OKJ1105' && github.triggering_actor == 'OKJ1105' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The environment admits `main` only (Section 4.3, #205); the federated
+    # credential trusts this environment and nothing else.
+    environment: production
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      KEY_VAULT: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      COMMIT: ${{ github.sha }}
+      # Flexible Server refuses a connection without TLS (Section 4.5).
+      PGSSLMODE: require
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install the package
+        run: python -m pip install --quiet .
+
+      - name: Log in to Azure as the deploy identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Section 4.3 and DP-015: exactly three secrets, each written only when
+      # it does not exist, so a later run never regenerates one. The value
+      # goes to Key Vault through a file that only this step can read, never
+      # on a command line and never to the log.
+      - name: Create the database passwords that do not exist yet
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in postgres-admin-password mvp-provisioning-password mvp-runtime-password; do
+            if az keyvault secret show --vault-name "$KEY_VAULT" --name "$name" --query id --output none 2>/dev/null; then
+              echo "$name exists; not regenerated"
+              continue
+            fi
+            file="$(mktemp)"
+            # 43 URL-safe characters, plus one of each class the server's
+            # administrator password policy asks for.
+            python -c 'import secrets; print(secrets.token_urlsafe(32) + "aA1", end="")' > "$file"
+            az keyvault secret set --vault-name "$KEY_VAULT" --name "$name" --file "$file" --output none
+            rm -f "$file"
+            echo "$name created"
+          done
+
+      # The template's secret-scoped grants need the secrets above to exist,
+      # which is why this step comes after them (#231 N3).
+      - name: Apply the provisioning definitions
+        id: infra
+        run: |
+          set -euo pipefail
+          admin="$(az keyvault secret show --vault-name "$KEY_VAULT" --name postgres-admin-password --query value --output tsv)"
+          echo "::add-mask::$admin"
+          parameters="$(mktemp)"
+          ADMIN="$admin" python - "$parameters" <<'PY'
+          import json, os, sys
+          document = {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                  "commit": {"value": os.environ["COMMIT"]},
+                  "keyVaultName": {"value": os.environ["KEY_VAULT"]},
+                  "adminSecret": {"value": os.environ["ADMIN"]},
+              },
+          }
+          with open(sys.argv[1], "w") as handle:
+              json.dump(document, handle)
+          PY
+          outputs="$(az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "deploy-$COMMIT" \
+            --template-file infra/main.bicep \
+            --parameters "@$parameters" \
+            --query properties.outputs --output json)"
+          rm -f "$parameters"
+          for key in registryName registryLoginServer serverName serverHost surfaceName relayName surfaceHost relayHost; do
+            echo "$key=$(jq -r ".$key.value" <<<"$outputs")" >> "$GITHUB_OUTPUT"
+          done
+
+      # Section 4.1: pushed under the commit tag only, by role. No registry
+      # credential exists (DP-014), and no image or tag is deleted.
+      - name: Build and push the image
+        id: image
+        run: |
+          set -euo pipefail
+          image="${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$COMMIT"
+          az acr login --name "${{ steps.infra.outputs.registryName }}"
+          docker build --tag "$image" .
+          docker push "$image"
+          echo "digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image")" >> "$GITHUB_OUTPUT"
+
+      - name: Restart both apps on the pushed image
+        run: |
+          set -euo pipefail
+          az webapp restart --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.surfaceName }}"
+          az webapp restart --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.relayName }}"
+
+      # Section 4.2: the firewall opens to this runner for provisioning and the
+      # deployed checks, and the final step below closes it whatever happened.
+      - name: Open the database firewall to this runner
+        id: firewall
+        run: |
+          set -euo pipefail
+          address="$(curl --silent --show-error --fail https://api.ipify.org)"
+          az postgres flexible-server firewall-rule create \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "${{ steps.infra.outputs.serverName }}" \
+            --rule-name "deploy-runner-${{ github.run_id }}" \
+            --start-ip-address "$address" --end-ip-address "$address" \
+            --output none
+          echo "rule=deploy-runner-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      # DP-001: exactly the module CI and the local stack run, from the
+      # committed `sql/` and `fixtures/`, rebuilt from empty on every deploy.
+      - name: Provision the database from this commit
+        id: provision
+        run: |
+          set -euo pipefail
+          read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
+          PGPASSWORD="$(read_secret postgres-admin-password)"
+          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)"
+          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)"
+          echo "::add-mask::$PGPASSWORD"
+          echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
+          echo "::add-mask::$MVP_RUNTIME_PASSWORD"
+          export PGPASSWORD MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
+          export PGHOST="${{ steps.infra.outputs.serverHost }}" PGPORT=5432 PGUSER=efradmin
+          python -m evidence_first_rag.db.provision --recreate | tee provision.txt
+
+      - name: Close the database firewall
+        if: always() && steps.firewall.outputs.rule != ''
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "${{ steps.infra.outputs.serverName }}" \
+            --rule-name "${{ steps.firewall.outputs.rule }}" \
+            --yes --output none
+
+      # Section 4.8: the commit, the image digest, the date, and the run's
+      # triggering actor and URL, which are the evidence of the owner's start.
+      - name: Write the deploy record
+        if: always()
+        run: |
+          python - <<'PY'
+          import datetime, json, os
+          record = {
+              "commit": os.environ["COMMIT"],
+              "image_digest": os.environ["DIGEST"] or None,
+              "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+              "triggering_actor": os.environ["TRIGGERING_ACTOR"],
+              "run_url": os.environ["RUN_URL"],
+              "outcome": os.environ["OUTCOME"],
+              "provisioned": open("provision.txt").read().strip() if os.path.exists("provision.txt") else None,
+              "deployed_checks": "not run: the Section 4.8 checks are the next slice",
+          }
+          with open("deploy-record.json", "w") as handle:
+              json.dump(record, handle, indent=2)
+          PY
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTCOME: ${{ job.status }}
+
+      - name: Upload the deploy record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-record-${{ github.sha }}
+          path: deploy-record.json

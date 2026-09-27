@@ -275,10 +275,16 @@ resource relayAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   dependsOn: [relaySecret]
 }
 
-// Section 4.7: the platform's log store, 7 days.
+// Section 4.7: the platform's log store, 7 days. `retentionInDays` is set on
+// the HTTP logs, the one file-system log this setting carries it for. How long
+// the platform keeps the apps' own standard-output lines (the per-request JSON
+// records) is its default, expected and unverified here; the first deploy
+// settles it (#231 N1).
 resource surfaceLogs 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: surface
   name: 'logs'
+  // One config write to a site at a time: a concurrent one is refused (#231 N2).
+  dependsOn: [surfaceAppSettings]
   properties: {
     applicationLogs: {
       fileSystem: {
@@ -298,6 +304,8 @@ resource surfaceLogs 'Microsoft.Web/sites/config@2023-12-01' = {
 resource relayLogs 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: relay
   name: 'logs'
+  // One config write to a site at a time: a concurrent one is refused (#231 N2).
+  dependsOn: [relayAppSettings]
   properties: {
     applicationLogs: {
       fileSystem: {
