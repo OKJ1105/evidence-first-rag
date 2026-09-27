@@ -107,6 +107,20 @@ class TheSecrets(unittest.TestCase):
         named.discard("name")
         self.assertEqual(named, DEPLOY_SECRETS)
 
+    def test_no_secret_is_reached_without_naming_it(self):
+        """A vault-wide role would let a listing read every secret, the
+        Anthropic key among them, without naming one (#233 B2)."""
+        body = code(TEXT)
+        self.assertNotRegex(body, r"keyvault secret (list|backup|download)")
+        for line in body.splitlines():
+            if "keyvault secret" in line:
+                with self.subTest(line=line.strip()):
+                    self.assertRegex(line, r"--name \"?(\$name|postgres-admin-password|mvp-provisioning-password|mvp-runtime-password|\$1)\"?( |$)")
+        # `read_secret` passes its argument through, so every call names one.
+        for name in re.findall(r"read_secret ([^\s)\"]+)", body):
+            with self.subTest(name=name):
+                self.assertIn(name, DEPLOY_SECRETS)
+
     def test_a_secret_is_written_only_when_it_does_not_exist(self):
         create = step("Create the database passwords that do not exist yet")
         self.assertLess(create.index("secret show"), create.index("continue"))
