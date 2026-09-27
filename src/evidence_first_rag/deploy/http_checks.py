@@ -9,6 +9,13 @@ body and returns `(status, headers, body)` without following redirects. The
 job passes the real one; the tests pass a stand-in, so each expectation is
 exercised without a network.
 
+**Nothing here raises its way out of the run.** A connection that produced no
+answer comes back as `UNREACHABLE` with the reason as the body, a case that
+raises anyway is recorded as that case failing, and `main` writes the artifact
+in a `finally`. `deploy-v0.1` Section 4.8 requires a failure to be recorded,
+and a case that aborted the step would leave every later case with no verdict
+at all -- which is not the same thing as a failure, and reads as neither.
+
 **`DP-012` costs one model call and is the only case here that does.**
 `DP-009` sends requests that the relay refuses as malformed after counting
 them, so it reaches no model.
@@ -33,6 +40,26 @@ RELAY_MODEL = "claude-haiku-4-5"
 # refusal that names none of them is some other refusal and fails the case.
 TLS_REQUIRED_TERMS = ("ssl", "tls", "encryption", "secure transport")
 
+# The status `fetch` reports for a request that produced no answer at all. Not
+# an HTTP code, so no case can read it as one: every expectation below wants a
+# particular status, and this is none of them.
+UNREACHABLE = 0
+
+# `api-v0.1` Section 4.5 and `relay-v0.1` Section 4.6: the refusal both apps
+# answer an `OPTIONS` with, in a JSON body. Positive evidence that the app
+# itself answered, which the platform's own error page for a container that has
+# not finished starting is not.
+METHOD_NOT_ALLOWED = 405
+METHOD_NOT_ALLOWED_REFUSAL = "method_not_allowed"
+
+# `api-v0.1` Section 4.5 puts CORS on `/v1/select`, `/v1/query` and
+# `/v1/discover`, and explicitly not on `/v1/ask`. The surface preflight is
+# aimed at one of the three, so a grant widened to a foreign origin on the
+# routes that implement CORS fails the case. `/v1/ask` is probed too, but it
+# cannot be the only probe: no grant can be carried there whatever the
+# deployment is configured with, so on its own it asserts nothing.
+SURFACE_CORS_PATH = "/v1/query"
+
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -43,13 +70,26 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def fetch(method, url, headers=None, body=None, timeout=90):
-    """One request, redirects not followed. Returns `(status, headers, bytes)`."""
+    """One request, redirects not followed. Returns `(status, headers, bytes)`.
+
+    An `HTTPError` is an answer -- the server chose that code -- so it is
+    returned like any other. A request that produced *no* answer returns
+    `UNREACHABLE` with the reason as the body instead of raising: `urllib`
+    raises `URLError`, `TimeoutError` or `ssl.SSLError` for a refused socket, a
+    handshake that failed, a name that does not resolve, and a `timeout` a
+    cold-starting container outlasts, and every one of those would otherwise
+    leave the run at whichever case happened to hit it first, costing the rest
+    of the cases their verdict. `OSError` is the one base all of them share --
+    and it is the base of `HTTPError` as well, so that clause comes first.
+    """
     request = urllib.request.Request(url, data=body, headers=headers or {}, method=method)
     try:
         with _OPENER.open(request, timeout=timeout) as response:
             return response.status, dict(response.headers), response.read()
     except urllib.error.HTTPError as answered:
         return answered.code, dict(answered.headers), answered.read()
+    except OSError as unanswered:
+        return UNREACHABLE, {}, _reason(unanswered).encode()
 
 
 def _header(headers, name):
@@ -70,22 +110,52 @@ def _reason(error):
     return f"{type(error).__name__}: {first[:200]}" if first else type(error).__name__
 
 
+def _refusal(raw):
+    """The `refusal` kind of a JSON refusal body, or `None` if it is not one."""
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        return None
+    return document.get("refusal") if isinstance(document, dict) else None
+
+
+def _answer(status, raw):
+    """A status for a detail line, carrying the reason when there was no answer.
+
+    For a case that does not otherwise read the body, `UNREACHABLE` on its own
+    would not tell a name that does not resolve from a socket that timed out.
+    """
+    if status != UNREACHABLE:
+        return str(status)
+    return f"{UNREACHABLE} ({raw.decode(errors='replace')[:200]})"
+
+
 def dp005_https(fetch, host):
     """Plain HTTP on the app's host is redirected to HTTPS."""
-    status, headers, _ = fetch("GET", f"http://{host}/")
+    status, headers, raw = fetch("GET", f"http://{host}/")
     location = _header(headers, "location") or ""
     if status in (301, 302, 307, 308) and location.startswith(f"https://{host}"):
         return True, f"{status} to {location}"
-    return False, f"plain HTTP answered {status}, location {location!r}"
+    return False, f"plain HTTP answered {_answer(status, raw)}, location {location!r}"
 
 
 def dp005_foreign_origin(fetch, url):
     """A preflight from an origin other than the registered one is not allowed.
 
-    Refused means the answer grants that origin nothing: no
-    `Access-Control-Allow-Origin` naming it or `*`.
+    Two things have to hold, and the second is why a missing
+    `Access-Control-Allow-Origin` is not enough by itself. The answer must
+    grant that origin nothing -- no header naming it or `*` -- **and** it must
+    be the app's own answer: the 405 `method_not_allowed` refusal both apps give
+    an `OPTIONS`, or, where a preflight is admitted at all, a 204 whose grant
+    names some other origin.
+
+    Anything else fails the case. The platform's 502 or 503 for a container that
+    has not finished starting carries no `Access-Control-Allow-Origin` either,
+    and so does a host that answered nothing; reading that silence as a refusal
+    would record the Section 4.5 guarantee for a process that never ran. Only
+    the app's own vocabulary tells a refusal from an absence.
     """
-    status, headers, _ = fetch(
+    status, headers, raw = fetch(
         "OPTIONS",
         url,
         {"Origin": FOREIGN_ORIGIN, "Access-Control-Request-Method": "POST"},
@@ -93,7 +163,14 @@ def dp005_foreign_origin(fetch, url):
     allowed = _header(headers, "access-control-allow-origin")
     if allowed in (FOREIGN_ORIGIN, "*"):
         return False, f"{url} allowed {FOREIGN_ORIGIN} ({status})"
-    return True, f"{url} answered {status} and allowed no foreign origin"
+    if status == METHOD_NOT_ALLOWED and _refusal(raw) == METHOD_NOT_ALLOWED_REFUSAL:
+        return True, f"{url} refused the preflight as {METHOD_NOT_ALLOWED_REFUSAL}"
+    if status == 204 and allowed:
+        return True, f"{url} admitted the preflight for {allowed!r}, not {FOREIGN_ORIGIN}"
+    return False, (
+        f"{url} answered {status}, which is neither the app's own refusal nor a"
+        f" grant to another origin: {raw[:200]!r}"
+    )
 
 
 def dp005_database_requires_tls(connect, operational_error):
@@ -147,10 +224,13 @@ def _initialize(origin=None):
 def dp010(fetch, surface_host):
     """`/mcp` serves a call with no `Origin` and refuses a foreign one."""
     url = f"https://{surface_host}/mcp"
-    plain_status, _, _ = fetch("POST", url, *_initialize())
-    foreign_status, _, _ = fetch("POST", url, *_initialize(FOREIGN_ORIGIN))
+    plain_status, _, plain_raw = fetch("POST", url, *_initialize())
+    foreign_status, _, foreign_raw = fetch("POST", url, *_initialize(FOREIGN_ORIGIN))
     passed = plain_status == 200 and foreign_status >= 400
-    return passed, f"no Origin: {plain_status}; foreign Origin: {foreign_status}"
+    return passed, (
+        f"no Origin: {_answer(plain_status, plain_raw)};"
+        f" foreign Origin: {_answer(foreign_status, foreign_raw)}"
+    )
 
 
 def dp009(fetch, relay_host):
@@ -200,24 +280,56 @@ def dp012(fetch, relay_host):
     return (not problems), "; ".join(problems) or f"200 with {len(content)} blocks and {len(calls)} discover_entity calls"
 
 
-def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.sleep):
+def _guarded(case, *arguments):
+    """One case, with an exception it did not expect recorded as it failing.
+
+    Every expectation above fails without raising, so reaching this is a fault
+    in the check rather than an unmet guarantee -- but a fault in one case must
+    not cost the other cases their verdict.
+    """
+    try:
+        return case(*arguments)
+    except Exception as fault:  # noqa: BLE001 - one case's fault is one case's failure
+        return False, f"the check itself raised: {_reason(fault)}"
+
+
+def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.sleep, into=None):
     """Every case, in an order where none spends another's budget.
 
     `DP-012` goes first and `DP-009` last, after a full window, so the one
     model call is not refused by the rate limit `DP-009` then exhausts.
+
+    `into`, when given, is the dictionary the verdicts are written to, filled
+    case by case as they are reached. That is what lets `main` record a partial
+    result set: something that stops the run outright -- not a case failing, but
+    the process being interrupted -- still leaves every verdict reached before
+    it where the artifact is written from.
     """
-    results = {
-        "DP-005 surface redirect": dp005_https(fetch, surface_host),
-        "DP-005 relay redirect": dp005_https(fetch, relay_host),
-        "DP-005 surface foreign origin": dp005_foreign_origin(fetch, f"https://{surface_host}/v1/ask"),
-        "DP-005 relay foreign origin": dp005_foreign_origin(fetch, f"https://{relay_host}/chat"),
-        "DP-005 database TLS": dp005_database_requires_tls(connect, operational_error),
-        "DP-010": dp010(fetch, surface_host),
-        "DP-012": dp012(fetch, relay_host),
-    }
+    results = {} if into is None else into
+
+    def record(case, passed, detail):
+        results[case] = {"passed": passed, "detail": detail}
+
+    record("DP-005 surface redirect", *_guarded(dp005_https, fetch, surface_host))
+    record("DP-005 relay redirect", *_guarded(dp005_https, fetch, relay_host))
+    record(
+        f"DP-005 surface foreign origin on {SURFACE_CORS_PATH}",
+        *_guarded(dp005_foreign_origin, fetch, f"https://{surface_host}{SURFACE_CORS_PATH}"),
+    )
+    record(
+        "DP-005 surface foreign origin on /v1/ask",
+        *_guarded(dp005_foreign_origin, fetch, f"https://{surface_host}/v1/ask"),
+    )
+    record(
+        "DP-005 relay foreign origin",
+        *_guarded(dp005_foreign_origin, fetch, f"https://{relay_host}/chat"),
+    )
+    record("DP-005 database TLS", *_guarded(dp005_database_requires_tls, connect, operational_error))
+    record("DP-010", *_guarded(dp010, fetch, surface_host))
+    record("DP-012", *_guarded(dp012, fetch, relay_host))
     pause(61)
-    results["DP-009"] = dp009(fetch, relay_host)
-    return {case: {"passed": passed, "detail": detail} for case, (passed, detail) in results.items()}
+    record("DP-009", *_guarded(dp009, fetch, relay_host))
+    return results
 
 
 def main(argv=None) -> int:
@@ -245,9 +357,23 @@ def main(argv=None) -> int:
     def connect(**extra):
         return psycopg.connect(**parameters, **extra)
 
-    results = run(fetch, arguments.surface, arguments.relay, connect, psycopg.OperationalError)
-    with open(arguments.out, "w", encoding="utf-8") as handle:
-        json.dump(results, handle, indent=2)
+    # In a `finally`, because the artifact is the deploy record's evidence for
+    # these cases (Section 8.2) and a run that stopped partway has more to
+    # record than nothing: what it did establish, and which cases never ran.
+    results = {}
+    try:
+        run(
+            fetch,
+            arguments.surface,
+            arguments.relay,
+            connect,
+            psycopg.OperationalError,
+            into=results,
+        )
+    finally:
+        with open(arguments.out, "w", encoding="utf-8") as handle:
+            json.dump(results, handle, indent=2)
+
     for case, result in results.items():
         print(("ok  " if result["passed"] else "FAIL"), case, "-", result["detail"])
     return 0 if all(result["passed"] for result in results.values()) else 1

@@ -5,8 +5,11 @@ refuses is exercised here; that the deployed apps answer this way is the
 first deploy's to show.
 """
 
+import io
 import json
+import ssl
 import unittest
+import urllib.error
 
 from evidence_first_rag.deploy import http_checks as checks
 
@@ -44,15 +47,51 @@ class TheRedirect(unittest.TestCase):
         self.assertFalse(checks.dp005_https(fetch, "host")[0])
 
 
+def refusal_body(kind=checks.METHOD_NOT_ALLOWED_REFUSAL):
+    """What both apps answer an `OPTIONS` with: a Section 4.5 refusal document."""
+    return json.dumps({"refusal": kind, "detail": "This route accepts POST only."}).encode()
+
+
 class TheForeignOrigin(unittest.TestCase):
-    def test_no_grant_passes(self):
-        fetch = answering({("OPTIONS", "/chat"): lambda h, b: (405, {}, b"")})
-        self.assertTrue(checks.dp005_foreign_origin(fetch, "https://relay/chat")[0])
+    """No grant to the foreign origin, and the app itself the one refusing."""
+
+    def probe(self, status, headers=None, body=b""):
+        fetch = answering({("OPTIONS", "/chat"): lambda h, b: (status, headers or {}, body)})
+        return checks.dp005_foreign_origin(fetch, "https://relay/chat")
+
+    def test_the_apps_own_refusal_passes(self):
+        passed, detail = self.probe(405, body=refusal_body())
+        self.assertTrue(passed, detail)
 
     def test_a_grant_to_the_foreign_origin_or_any_fails(self):
         for granted in (checks.FOREIGN_ORIGIN, "*"):
-            fetch = answering({("OPTIONS", "/chat"): lambda h, b, g=granted: (200, {"Access-Control-Allow-Origin": g}, b"")})
-            self.assertFalse(checks.dp005_foreign_origin(fetch, "https://relay/chat")[0])
+            passed, detail = self.probe(204, {"Access-Control-Allow-Origin": granted})
+            self.assertFalse(passed, granted)
+            self.assertIn(checks.FOREIGN_ORIGIN, detail)
+
+    def test_an_admitted_preflight_granting_another_origin_passes(self):
+        passed, detail = self.probe(204, {"Access-Control-Allow-Origin": "https://registered.invalid"})
+        self.assertTrue(passed, detail)
+
+    def test_a_platform_error_from_an_app_that_never_ran_fails(self):
+        # No `Access-Control-Allow-Origin` here either, and that is the point:
+        # App Service's own answer for a container still starting says nothing
+        # about the grant, and recording it as a refusal would report the
+        # Section 4.5 guarantee for a process that answered nothing.
+        for status in (502, 503, 404):
+            passed, detail = self.probe(status, body=b"<html>Service Unavailable</html>")
+            self.assertFalse(passed, status)
+            self.assertIn(str(status), detail)
+
+    def test_an_unreachable_host_fails(self):
+        passed, _ = self.probe(checks.UNREACHABLE, body=b"URLError: connection refused")
+        self.assertFalse(passed)
+
+    def test_a_405_that_is_not_the_apps_refusal_fails(self):
+        # The framework's plain-text 405, or a gateway's: the status alone is
+        # not the app's vocabulary.
+        self.assertFalse(self.probe(405, body=b"Method Not Allowed")[0])
+        self.assertFalse(self.probe(405, body=refusal_body("something_else"))[0])
 
 
 class Refused(Exception):
@@ -230,6 +269,101 @@ class TheOrder(unittest.TestCase):
         chat = [i for i, (m, u) in enumerate(order) if m == "POST" and u.endswith("/chat")]
         self.assertEqual(len(chat), 1 + checks.RATE_WINDOW_LIMIT + 1)
         self.assertEqual(waited, [61])
+
+    def test_the_surface_preflight_is_aimed_at_a_route_that_carries_cors(self):
+        order = []
+
+        def fetch(method, url, headers=None, body=None):
+            order.append((method, url))
+            return 400, {}, b""
+
+        connect = connecting(require=Refused("unreachable"), disable=Refused("unreachable"))
+        checks.run(fetch, "surface", "relay", connect, Refused, pause=lambda seconds: None)
+        preflights = [url for method, url in order if method == "OPTIONS"]
+        self.assertIn(f"https://surface{checks.SURFACE_CORS_PATH}", preflights)
+        self.assertIn("https://surface/v1/ask", preflights)
+
+
+class TheTransport(unittest.TestCase):
+    """A request that produced no answer is a status, not an exception."""
+
+    def fetch_through(self, error):
+        class Opener:
+            def open(self, request, timeout=None):
+                raise error
+
+        original = checks._OPENER
+        checks._OPENER = Opener()
+        try:
+            return checks.fetch("GET", "https://host/")
+        finally:
+            checks._OPENER = original
+
+    def test_no_answer_is_reported_as_unreachable_with_the_reason(self):
+        for error in (
+            urllib.error.URLError("connection refused"),
+            TimeoutError("timed out"),
+            ssl.SSLError("handshake failure"),
+        ):
+            status, headers, raw = self.fetch_through(error)
+            self.assertEqual(status, checks.UNREACHABLE)
+            self.assertEqual(headers, {})
+            self.assertIn(type(error).__name__, raw.decode())
+
+    def test_an_http_error_is_still_the_servers_answer(self):
+        # `HTTPError` is an `OSError` too, so this is what fixes the order of
+        # the two clauses: a 503 the server chose must not be recorded as a
+        # request that never got there.
+        error = urllib.error.HTTPError(
+            "https://host/", 503, "Service Unavailable", {"Retry-After": "1"}, io.BytesIO(b"body")
+        )
+        status, headers, raw = self.fetch_through(error)
+        self.assertEqual((status, raw), (503, b"body"))
+        self.assertEqual(checks._header(headers, "retry-after"), "1")
+
+
+class AFaultInOneCase(unittest.TestCase):
+    """One case cannot cost the others their verdict, or the artifact its rows."""
+
+    def unreachable(self):
+        return connecting(require=Refused("unreachable"), disable=Refused("unreachable"))
+
+    def test_a_case_that_raises_fails_and_the_rest_still_run(self):
+        def fetch(method, url, headers=None, body=None):
+            if url.endswith("/mcp"):
+                raise RuntimeError("a defect in the check")
+            return 400, {}, b""
+
+        results = checks.run(
+            fetch, "surface", "relay", self.unreachable(), Refused, pause=lambda seconds: None
+        )
+        self.assertFalse(results["DP-010"]["passed"])
+        self.assertIn("RuntimeError", results["DP-010"]["detail"])
+        self.assertIn("DP-009", results)
+
+    def test_into_holds_the_verdicts_reached_before_a_run_that_stops(self):
+        # Not a case failing -- the process being stopped. `main` writes the
+        # artifact from this dictionary in a `finally`, so what it holds when
+        # the run does not finish is what the deploy record gets.
+        def fetch(method, url, headers=None, body=None):
+            return 400, {}, b""
+
+        def interrupted(seconds):
+            raise KeyboardInterrupt
+
+        recorded = {}
+        with self.assertRaises(KeyboardInterrupt):
+            checks.run(
+                fetch,
+                "surface",
+                "relay",
+                self.unreachable(),
+                Refused,
+                pause=interrupted,
+                into=recorded,
+            )
+        self.assertIn("DP-012", recorded)
+        self.assertNotIn("DP-009", recorded)
 
 
 if __name__ == "__main__":
