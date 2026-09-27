@@ -111,7 +111,7 @@ class TheSecrets(unittest.TestCase):
         """A vault-wide role would let a listing read every secret, the
         Anthropic key among them, without naming one (#233 B2)."""
         body = code(TEXT)
-        self.assertNotRegex(body, r"keyvault secret (list|backup|download)")
+        self.assertNotRegex(body, r"keyvault secret (list|backup|download|delete|purge|recover)")
         for line in body.splitlines():
             if "keyvault secret" in line:
                 with self.subTest(line=line.strip()):
