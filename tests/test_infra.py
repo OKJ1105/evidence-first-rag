@@ -276,6 +276,13 @@ class TheConfiguration(unittest.TestCase):
 class TheLogs(unittest.TestCase):
     """Section 4.7: the platform's log store, 7 days."""
 
+    def test_each_sites_config_writes_run_one_after_the_other(self):
+        """App Service refuses a second config write to a site while one is in
+        flight, so the logs wait for the settings (#231 N2)."""
+        for logs, settings in (("surfaceLogs", "surfaceAppSettings"), ("relayLogs", "relayAppSettings")):
+            with self.subTest(logs=logs):
+                self.assertIn(f"dependsOn: [{settings}]", block(logs))
+
     def test_seven_days(self):
         for logs in ("surfaceLogs", "relayLogs"):
             with self.subTest(logs=logs):
