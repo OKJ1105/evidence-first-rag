@@ -99,8 +99,12 @@ class TheProvisioning(unittest.TestCase):
 
     def test_provisioning_is_the_committed_module_and_nothing_else(self):
         body = code(TEXT)
+        # This commit's provisioning, and the rollback's, which runs the same
+        # module from the last passing commit's own checkout.
         self.assertEqual(re.findall(r"python -m evidence_first_rag\.db\.provision[^\n]*", body),
-                         ["python -m evidence_first_rag.db.provision --recreate | tee provision.txt"])
+                         ["python -m evidence_first_rag.db.provision --recreate | tee provision.txt",
+                          "python -m evidence_first_rag.db.provision --recreate)"])
+        self.assertIn("(cd previous && PYTHONPATH=src python -m evidence_first_rag.db.provision --recreate)", body)
         self.assertNotRegex(body, r"\bpsql\b")
         self.assertNotRegex(body, r"--(sql|fixtures)\b")
 
@@ -108,6 +112,40 @@ class TheProvisioning(unittest.TestCase):
         close = step("Close the database firewall")
         self.assertRegex(close, r"(?m)^        if: always\(\)")
         self.assertIn("firewall-rule delete", close)
+
+
+class TheDeployedChecks(unittest.TestCase):
+    """Section 4.8: the checks run inside the window, and a failure rolls back."""
+
+    def test_the_checks_run_before_the_window_closes(self):
+        names = [body.splitlines()[0] for body in steps(jobs()["deploy"])]
+        order = [names.index(f"name: {name}") for name in (
+            "Provision the database from this commit",
+            "Run the deployed checks",
+            "Roll back to the last passing commit",
+            "Close the database firewall",
+        )]
+        self.assertEqual(order, sorted(order))
+
+    def test_every_check_runs_and_any_failure_fails_the_step(self):
+        checks = step("Run the deployed checks")
+        for command in (
+            "python -m evidence_first_rag.conformance.runner",
+            "python -m evidence_first_rag.deploy.deployed writes",
+            "--start-directory tests_stack",
+        ):
+            self.assertIn(command, checks)
+        # No `-e`: one failed check does not stop the next from running.
+        self.assertIn("set -uo pipefail", checks)
+        self.assertIn('if [ -n "$failed" ]; then', checks)
+        self.assertIn("exit 1", checks)
+
+    def test_the_rollback_runs_only_on_failure_and_restores_both_halves(self):
+        rollback = step("Roll back to the last passing commit")
+        self.assertRegex(rollback, r"(?m)^        if: failure\(\)")
+        self.assertIn("deploy.deployed last-passing", rollback)
+        self.assertIn('--linux-fx-version "DOCKER|$image"', rollback)
+        self.assertIn("evidence-first-rag:$target", rollback)
 
 
 class TheSecrets(unittest.TestCase):

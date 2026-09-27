@@ -13,8 +13,10 @@
 # This file is the first half of the deploy. It builds and ships one commit:
 # the three database secrets, the provisioning definitions, the image, and the
 # database provisioned from that commit inside a firewall window that is always
-# closed. The Section 4.8 deployed checks and the rollback are the next slice;
-# until they land, a run proves that the pieces deploy and nothing more.
+# closed; then the Section 4.8 deployed checks that need no model (DP-004,
+# DP-007 and the WF rows) and, on a failure, the rollback to the last passing
+# commit. The remaining deployed cases (DP-003, DP-005, DP-006, DP-008 to
+# DP-010, DP-012, DP-014, and DP-011's digest comparison) are the next slice.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
 # reads the five identifiers #205 lists from the `production` environment's
@@ -208,6 +210,74 @@ jobs:
           export PGHOST="${{ steps.infra.outputs.serverHost }}" PGPORT=5432 PGUSER=efradmin
           python -m evidence_first_rag.db.provision --recreate | tee provision.txt
 
+      # Section 4.8: the deployed checks, from this runner, inside the firewall
+      # window. Each check runs whatever the others did, and the step fails if
+      # any failed, which is what starts the rollback below.
+      - name: Run the deployed checks
+        id: checks
+        run: |
+          set -uo pipefail
+          read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
+          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)"
+          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)"
+          echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
+          echo "::add-mask::$MVP_RUNTIME_PASSWORD"
+          export MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
+          export PGHOST="${{ steps.infra.outputs.serverHost }}" PGPORT=5432
+          failed=""
+          # DP-007: the mvp-v0.1 Section 4.9 runner, as the runtime identity,
+          # and as mvp_provisioning for its Group C invariants only.
+          python -m evidence_first_rag.conformance.runner --artifact conformance.json || failed="$failed DP-007"
+          # DP-004: the runtime identity cannot write.
+          python -m evidence_first_rag.deploy.deployed writes | tee writes.json || failed="$failed DP-004"
+          # The api-v0.1 WF rows that need no model, over HTTPS against surface.
+          EFR_STACK_URL="https://${{ steps.infra.outputs.surfaceHost }}" \
+            python -m unittest discover --start-directory tests_stack --top-level-directory . --verbose \
+            || failed="$failed WF"
+          if [ -n "$failed" ]; then
+            echo "failed:$failed"
+            exit 1
+          fi
+
+      # Section 4.8: a failed deploy is rolled back in both halves to the last
+      # passing commit: its database, provisioned by the same module from that
+      # commit's files, and its image, by that commit's tag. Before the first
+      # passing deploy there is nothing to roll back to, and the record says so.
+      - name: Roll back to the last passing commit
+        id: rollback
+        if: failure() && steps.provision.outcome != 'skipped'
+        run: |
+          set -euo pipefail
+          target="$(python -m evidence_first_rag.deploy.deployed last-passing)"
+          if [ -z "$target" ]; then
+            echo "No passing deploy is recorded; nothing to roll back to."
+            echo "target=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          git fetch --quiet origin "$target"
+          git worktree add --detach previous "$target"
+          read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
+          PGPASSWORD="$(read_secret postgres-admin-password)"
+          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)"
+          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)"
+          echo "::add-mask::$PGPASSWORD"
+          echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
+          echo "::add-mask::$MVP_RUNTIME_PASSWORD"
+          export PGPASSWORD MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
+          export PGHOST="${{ steps.infra.outputs.serverHost }}" PGPORT=5432 PGUSER=efradmin
+          # The same module, run from the previous commit's own source and files.
+          (cd previous && PYTHONPATH=src python -m evidence_first_rag.db.provision --recreate)
+          # That commit's image is still in the registry: no image is deleted.
+          image="${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$target"
+          for app in "${{ steps.infra.outputs.surfaceName }}" "${{ steps.infra.outputs.relayName }}"; do
+            az webapp config set --resource-group "$RESOURCE_GROUP" --name "$app" \
+              --linux-fx-version "DOCKER|$image" --output none
+            az webapp restart --resource-group "$RESOURCE_GROUP" --name "$app"
+          done
+          # The restored state, checked by the previous commit's own runner.
+          (cd previous && PYTHONPATH=src python -m evidence_first_rag.conformance.runner --artifact ../restored-conformance.json)
+
       - name: Close the database firewall
         if: always() && steps.firewall.outputs.rule != ''
         run: |
@@ -232,7 +302,9 @@ jobs:
               "run_url": os.environ["RUN_URL"],
               "outcome": os.environ["OUTCOME"],
               "provisioned": open("provision.txt").read().strip() if os.path.exists("provision.txt") else None,
-              "deployed_checks": "not run: the Section 4.8 checks are the next slice",
+              "deployed_checks": {"success": "pass", "failure": "fail"}.get(os.environ["CHECKS"], "not run"),
+              "rolled_back_to": os.environ["ROLLBACK"] or None,
+              "rollback_outcome": os.environ["ROLLBACK_OUTCOME"] or None,
           }
           with open("deploy-record.json", "w") as handle:
               json.dump(record, handle, indent=2)
@@ -242,10 +314,17 @@ jobs:
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OUTCOME: ${{ job.status }}
+          CHECKS: ${{ steps.checks.outcome }}
+          ROLLBACK: ${{ steps.rollback.outputs.target }}
+          ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
 
       - name: Upload the deploy record
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deploy-record-${{ github.sha }}
-          path: deploy-record.json
+          path: |
+            deploy-record.json
+            conformance.json
+            restored-conformance.json
+          if-no-files-found: warn
