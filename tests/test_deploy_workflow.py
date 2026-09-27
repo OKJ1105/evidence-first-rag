@@ -132,6 +132,12 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertLess(checks.index("/v1/health"), checks.index("conformance.runner"))
         self.assertIn("for attempt in $(seq 1 30)", checks)
 
+    def test_a_vault_read_failure_stops_before_any_check(self):
+        checks = step("Run the deployed checks")
+        for name in ("MVP_PROVISIONING_PASSWORD", "MVP_RUNTIME_PASSWORD"):
+            self.assertRegex(checks, rf'{name}="\$\(read_secret [a-z-]+\)" \|\| \{{ echo "Key Vault read failed"; exit 2; \}}')
+        self.assertLess(checks.index("Key Vault returned an empty value"), checks.index("conformance.runner"))
+
     def test_every_check_runs_and_any_failure_fails_the_step(self):
         checks = step("Run the deployed checks")
         for command in (

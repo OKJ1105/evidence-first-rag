@@ -234,8 +234,14 @@ jobs:
             exit 1
           fi
           read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
-          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)"
-          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)"
+          # A vault read that fails stops here, before any check runs, so it is
+          # never recorded as a failed check (#237 B6).
+          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)" || { echo "Key Vault read failed"; exit 2; }
+          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)" || { echo "Key Vault read failed"; exit 2; }
+          if [ -z "$MVP_PROVISIONING_PASSWORD" ] || [ -z "$MVP_RUNTIME_PASSWORD" ]; then
+            echo "Key Vault returned an empty value"
+            exit 2
+          fi
           echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
           echo "::add-mask::$MVP_RUNTIME_PASSWORD"
           export MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
