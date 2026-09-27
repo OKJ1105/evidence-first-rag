@@ -76,6 +76,10 @@ def refused_writes(connect, errors) -> dict:
 
 def last_passing_commit(records: pathlib.Path = RECORDS):
     """The commit of the newest passing deploy record, or `None`."""
+    # A missing directory is a mistake in the path, not "no passing deploy
+    # yet": the directory is committed before the first deploy (#237 N2).
+    if not records.is_dir():
+        raise FileNotFoundError(f"no deploy records directory at {records}")
     passing = []
     for path in sorted(records.glob("deploy-*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))

@@ -127,6 +127,11 @@ class TheDeployedChecks(unittest.TestCase):
         )]
         self.assertEqual(order, sorted(order))
 
+    def test_the_checks_wait_for_surface_to_serve_first(self):
+        checks = step("Run the deployed checks")
+        self.assertLess(checks.index("/v1/health"), checks.index("conformance.runner"))
+        self.assertIn("for attempt in $(seq 1 30)", checks)
+
     def test_every_check_runs_and_any_failure_fails_the_step(self):
         checks = step("Run the deployed checks")
         for command in (
@@ -142,7 +147,11 @@ class TheDeployedChecks(unittest.TestCase):
 
     def test_the_rollback_runs_only_on_failure_and_restores_both_halves(self):
         rollback = step("Roll back to the last passing commit")
-        self.assertRegex(rollback, r"(?m)^        if: failure\(\)")
+        # Any failure after the template repointed the apps (#237 B1).
+        self.assertRegex(rollback, r"(?m)^        if: failure\(\) && steps\.infra\.outcome == 'success'$")
+        # The image half comes before, and does not depend on, the database half.
+        self.assertLess(rollback.index("--linux-fx-version"), rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'))
+        self.assertLess(rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'), rollback.index("db.provision"))
         self.assertIn("deploy.deployed last-passing", rollback)
         self.assertIn('--linux-fx-version "DOCKER|$image"', rollback)
         self.assertIn("evidence-first-rag:$target", rollback)

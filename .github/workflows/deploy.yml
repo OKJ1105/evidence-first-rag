@@ -217,6 +217,22 @@ jobs:
         id: checks
         run: |
           set -uo pipefail
+          # The restarted apps pull a fresh image before they serve. Wait,
+          # bounded, until surface answers its health route with JSON, so a
+          # slow start is not read as a failed deploy (#237 B2).
+          ready=""
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail --max-time 10 "https://${{ steps.infra.outputs.surfaceHost }}/v1/health" \
+                | python -c 'import json, sys; json.load(sys.stdin)' 2>/dev/null; then
+              ready=yes
+              break
+            fi
+            sleep 20
+          done
+          if [ -z "$ready" ]; then
+            echo "surface did not become healthy within 10 minutes"
+            exit 1
+          fi
           read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
           MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)"
           MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)"
@@ -245,7 +261,10 @@ jobs:
       # passing deploy there is nothing to roll back to, and the record says so.
       - name: Roll back to the last passing commit
         id: rollback
-        if: failure() && steps.provision.outcome != 'skipped'
+        # From the moment the template has repointed the apps, any failure is
+        # rolled back (#237 B1). The image half always; the database half only
+        # when the firewall window opened, since otherwise it was not touched.
+        if: failure() && steps.infra.outcome == 'success'
         run: |
           set -euo pipefail
           target="$(python -m evidence_first_rag.deploy.deployed last-passing)"
@@ -255,6 +274,19 @@ jobs:
             exit 0
           fi
           echo "target=$target" >> "$GITHUB_OUTPUT"
+          # The image half first: that commit's image is still in the
+          # registry, because no image is deleted.
+          image="${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$target"
+          for app in "${{ steps.infra.outputs.surfaceName }}" "${{ steps.infra.outputs.relayName }}"; do
+            az webapp config set --resource-group "$RESOURCE_GROUP" --name "$app" \
+              --linux-fx-version "DOCKER|$image" --output none
+            az webapp restart --resource-group "$RESOURCE_GROUP" --name "$app"
+          done
+          if [ "${{ steps.firewall.outputs.rule }}" = "" ]; then
+            echo "database=untouched" >> "$GITHUB_OUTPUT"
+            echo "The firewall never opened, so the database was not changed."
+            exit 0
+          fi
           git fetch --quiet origin "$target"
           git worktree add --detach previous "$target"
           read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
@@ -268,13 +300,7 @@ jobs:
           export PGHOST="${{ steps.infra.outputs.serverHost }}" PGPORT=5432 PGUSER=efradmin
           # The same module, run from the previous commit's own source and files.
           (cd previous && PYTHONPATH=src python -m evidence_first_rag.db.provision --recreate)
-          # That commit's image is still in the registry: no image is deleted.
-          image="${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$target"
-          for app in "${{ steps.infra.outputs.surfaceName }}" "${{ steps.infra.outputs.relayName }}"; do
-            az webapp config set --resource-group "$RESOURCE_GROUP" --name "$app" \
-              --linux-fx-version "DOCKER|$image" --output none
-            az webapp restart --resource-group "$RESOURCE_GROUP" --name "$app"
-          done
+          echo "database=restored" >> "$GITHUB_OUTPUT"
           # The restored state, checked by the previous commit's own runner.
           (cd previous && PYTHONPATH=src python -m evidence_first_rag.conformance.runner --artifact ../restored-conformance.json)
 
@@ -305,6 +331,7 @@ jobs:
               "deployed_checks": {"success": "pass", "failure": "fail"}.get(os.environ["CHECKS"], "not run"),
               "rolled_back_to": os.environ["ROLLBACK"] or None,
               "rollback_outcome": os.environ["ROLLBACK_OUTCOME"] or None,
+              "rollback_database": os.environ["ROLLBACK_DATABASE"] or None,
           }
           with open("deploy-record.json", "w") as handle:
               json.dump(record, handle, indent=2)
@@ -317,6 +344,7 @@ jobs:
           CHECKS: ${{ steps.checks.outcome }}
           ROLLBACK: ${{ steps.rollback.outputs.target }}
           ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
+          ROLLBACK_DATABASE: ${{ steps.rollback.outputs.database }}
 
       - name: Upload the deploy record
         if: always()
@@ -326,5 +354,6 @@ jobs:
           path: |
             deploy-record.json
             conformance.json
+            writes.json
             restored-conformance.json
           if-no-files-found: warn
