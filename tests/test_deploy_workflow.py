@@ -78,6 +78,10 @@ class TheStart(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertFalse(logs_in(code(path.read_text(encoding="utf-8"))))
 
+    def test_the_close_step_does_not_depend_on_the_create_succeeding(self):
+        opened = step("Open the database firewall to this runner")
+        self.assertLess(opened.index('echo "rule='), opened.index("firewall-rule create"))
+
     def test_a_stale_runner_rule_is_removed_before_a_new_one_opens(self):
         opened = step("Open the database firewall to this runner")
         self.assertLess(opened.index("firewall-rule delete"), opened.index("firewall-rule create"))

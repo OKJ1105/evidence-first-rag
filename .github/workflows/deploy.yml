@@ -74,11 +74,14 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          # A password file never outlives the step, whatever fails (#235 N8).
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
           for name in postgres-admin-password mvp-provisioning-password mvp-runtime-password; do
             # Only a not-found answer leads to a new value. Any other failure
             # (throttling, an expired token, a role not yet effective) stops
             # the run, so an existing password is never overwritten (#235 B1).
-            error="$(mktemp)"
+            error="$scratch/error"
             status=0
             az keyvault secret show --vault-name "$KEY_VAULT" --name "$name" --query id --output none 2>"$error" || status=$?
             if [ "$status" -eq 0 ]; then
@@ -91,7 +94,7 @@ jobs:
               exit 1
             fi
             rm -f "$error"
-            file="$(mktemp)"
+            file="$scratch/value"
             # 43 URL-safe characters, plus one of each class the server's
             # administrator password policy asks for.
             python -c 'import secrets; print(secrets.token_urlsafe(32) + "aA1", end="")' > "$file"
@@ -109,6 +112,7 @@ jobs:
           admin="$(az keyvault secret show --vault-name "$KEY_VAULT" --name postgres-admin-password --query value --output tsv)"
           echo "::add-mask::$admin"
           parameters="$(mktemp)"
+          trap 'rm -f "$parameters"' EXIT
           ADMIN="$admin" python - "$parameters" <<'PY'
           import json, os, sys
           document = {
@@ -176,6 +180,9 @@ jobs:
               --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.serverName }}" \
               --rule-name "$stale" --yes --output none
           done
+          # Recorded before the create, so the close step runs whatever the
+          # create's exit status (#235 N5).
+          echo "rule=deploy-runner-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
           address="$(curl --silent --show-error --fail https://api.ipify.org)"
           az postgres flexible-server firewall-rule create \
             --resource-group "$RESOURCE_GROUP" \
@@ -183,7 +190,6 @@ jobs:
             --rule-name "deploy-runner-${{ github.run_id }}" \
             --start-ip-address "$address" --end-ip-address "$address" \
             --output none
-          echo "rule=deploy-runner-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
 
       # DP-001: exactly the module CI and the local stack run, from the
       # committed `sql/` and `fixtures/`, rebuilt from empty on every deploy.
@@ -209,7 +215,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --name "${{ steps.infra.outputs.serverName }}" \
             --rule-name "${{ steps.firewall.outputs.rule }}" \
-            --yes --output none
+            --yes --output none || echo "no rule to remove"
 
       # Section 4.8: the commit, the image digest, the date, and the run's
       # triggering actor and URL, which are the evidence of the owner's start.
