@@ -13,10 +13,10 @@
 # This file is the first half of the deploy. It builds and ships one commit:
 # the three database secrets, the provisioning definitions, the image, and the
 # database provisioned from that commit inside a firewall window that is always
-# closed; then the Section 4.8 deployed checks that need no model (DP-004,
-# DP-007 and the WF rows) and, on a failure, the rollback to the last passing
-# commit. The remaining deployed cases (DP-003, DP-005, DP-006, DP-008 to
-# DP-010, DP-012, DP-014, and DP-011's digest comparison) are the next slice.
+# closed; then the Section 4.8 deployed checks (DP-004, DP-005, DP-007, DP-009,
+# DP-010, DP-012 and the WF rows) and, on a failure, the rollback to the last
+# passing commit. DP-003, DP-006, DP-008, DP-014, the MC rows and DP-011's
+# digest comparison are the next slice.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
 # reads the five identifiers #205 lists from the `production` environment's
@@ -256,6 +256,12 @@ jobs:
           EFR_STACK_URL="https://${{ steps.infra.outputs.surfaceHost }}" \
             python -m unittest discover --start-directory tests_stack --top-level-directory . --verbose \
             || failed="$failed WF"
+          # DP-005, DP-009, DP-010 and DP-012 over the network. DP-012 is the
+          # one model call a deploy makes.
+          python -m evidence_first_rag.deploy.http_checks \
+            --surface "${{ steps.infra.outputs.surfaceHost }}" \
+            --relay "${{ steps.infra.outputs.relayHost }}" \
+            || failed="$failed HTTP"
           if [ -n "$failed" ]; then
             echo "failed:$failed"
             exit 1
@@ -367,5 +373,6 @@ jobs:
             deploy-record.json
             conformance.json
             writes.json
+            http-checks.json
             restored-conformance.json
           if-no-files-found: warn
