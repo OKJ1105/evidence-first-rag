@@ -55,7 +55,6 @@ var serverName = 'psql-efr-${suffix}'
 var planName = 'plan-efr-${suffix}'
 var surfaceName = 'app-efr-surface-${suffix}'
 var relayName = 'app-efr-relay-${suffix}'
-var surfaceHost = '${surfaceName}.azurewebsites.net'
 var image = '${registry.properties.loginServer}/evidence-first-rag:${commit}'
 var port = '8000'
 
@@ -181,34 +180,35 @@ var commonSiteConfig = {
 }
 
 // Section 4.6, `surface`'s column, and nothing else.
-var surfaceSettings = concat(
-  [
-    { name: 'WEBSITES_PORT', value: port }
-    { name: 'PGHOST', value: server.properties.fullyQualifiedDomainName }
-    { name: 'PGPORT', value: '5432' }
-    { name: 'MVP_DATABASE', value: 'mvp' }
-    { name: 'PGSSLMODE', value: 'require' }
-    {
-      name: 'MVP_RUNTIME_PASSWORD'
-      value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${surfaceVaultEntry})'
-    }
-    { name: 'EFR_MCP_ALLOWED_HOSTS', value: surfaceHost }
-  ],
-  empty(corsOrigin) ? [] : [{ name: 'EFR_CORS_ORIGIN', value: corsOrigin }]
+//
+// The allowed host is the host name the platform assigned the app, read from
+// the app itself. It is not a name this file can compute: Azure gives an app a
+// default host name that may carry a subscription-specific part, and `/mcp`
+// matches the request's `Host` header against this value exactly
+// (`mcp-v0.1` Section 4.5), so a constructed name refuses every call.
+var surfaceSettings = union(
+  {
+    WEBSITES_PORT: port
+    PGHOST: server.properties.fullyQualifiedDomainName
+    PGPORT: '5432'
+    MVP_DATABASE: 'mvp'
+    PGSSLMODE: 'require'
+    MVP_RUNTIME_PASSWORD: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${surfaceVaultEntry})'
+    EFR_MCP_ALLOWED_HOSTS: surface.properties.defaultHostName
+  },
+  empty(corsOrigin) ? {} : { EFR_CORS_ORIGIN: corsOrigin }
 )
 
-// Section 4.6, `relay`'s column, and nothing else.
-var relaySettings = concat(
-  [
-    { name: 'WEBSITES_PORT', value: port }
-    {
-      name: 'ANTHROPIC_API_KEY'
-      value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${relayVaultEntry})'
-    }
-    { name: 'EFR_RELAY_MCP_URL', value: 'https://${surfaceHost}/mcp' }
-  ],
-  empty(relayDailyCeiling) ? [] : [{ name: 'EFR_RELAY_DAILY_CEILING', value: relayDailyCeiling }],
-  empty(corsOrigin) ? [] : [{ name: 'EFR_CORS_ORIGIN', value: corsOrigin }]
+// Section 4.6, `relay`'s column, and nothing else. The MCP URL addresses the
+// same assigned host name.
+var relaySettings = union(
+  {
+    WEBSITES_PORT: port
+    ANTHROPIC_API_KEY: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${relayVaultEntry})'
+    EFR_RELAY_MCP_URL: 'https://${surface.properties.defaultHostName}/mcp'
+  },
+  empty(relayDailyCeiling) ? {} : { EFR_RELAY_DAILY_CEILING: relayDailyCeiling },
+  empty(corsOrigin) ? {} : { EFR_CORS_ORIGIN: corsOrigin }
 )
 
 resource surface 'Microsoft.Web/sites@2023-12-01' = {
@@ -224,7 +224,6 @@ resource surface 'Microsoft.Web/sites@2023-12-01' = {
     keyVaultReferenceIdentity: 'SystemAssigned'
     siteConfig: union(commonSiteConfig, {
       appCommandLine: 'uvicorn --factory evidence_first_rag.api.serve:build --host 0.0.0.0 --port ${port}'
-      appSettings: surfaceSettings
     })
   }
 }
@@ -242,9 +241,24 @@ resource relay 'Microsoft.Web/sites@2023-12-01' = {
     keyVaultReferenceIdentity: 'SystemAssigned'
     siteConfig: union(commonSiteConfig, {
       appCommandLine: 'uvicorn --factory evidence_first_rag.relay.serve:build --host 0.0.0.0 --port ${port}'
-      appSettings: relaySettings
     })
   }
+}
+
+// Section 4.6: each app's settings, as a child resource rather than inside its
+// `siteConfig`. A site's own `siteConfig` cannot read the host name the
+// platform assigns that site, and a child resource can read its parent's. The
+// settings are declared here only, so nothing overwrites them.
+resource surfaceAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
+  parent: surface
+  name: 'appsettings'
+  properties: surfaceSettings
+}
+
+resource relayAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
+  parent: relay
+  name: 'appsettings'
+  properties: relaySettings
 }
 
 // Section 4.7: the platform's log store, 7 days.
@@ -338,5 +352,5 @@ output serverName string = server.name
 output serverHost string = server.properties.fullyQualifiedDomainName
 output surfaceName string = surface.name
 output relayName string = relay.name
-output surfaceHost string = surfaceHost
-output relayHost string = '${relayName}.azurewebsites.net'
+output surfaceHost string = surface.properties.defaultHostName
+output relayHost string = relay.properties.defaultHostName

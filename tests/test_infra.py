@@ -23,8 +23,12 @@ ROLE_KV_SECRETS_USER = "4633458b-17de-408a-b874-0445c86b69e6"
 
 
 def code(source: str) -> str:
-    """The source with `//` comments removed, so prose cannot satisfy a check."""
-    return "\n".join(line.split("//", 1)[0] for line in source.splitlines())
+    """The source with `//` comments removed, so prose cannot satisfy a check.
+
+    A comment's `//` opens a line or follows whitespace. The `//` of a URL in a
+    setting's value follows `:`, so the value survives and is asserted on.
+    """
+    return "\n".join(re.split(r"(?:^|(?<=\s))//", line, maxsplit=1)[0] for line in source.splitlines())
 
 
 CODE = code(BICEP)
@@ -40,7 +44,9 @@ def block(symbol: str) -> str:
 
 
 def setting_names(symbol: str) -> set:
-    return set(re.findall(r"name: '([A-Z_]+)'", block(symbol)))
+    """The keys of a settings object, which the app settings resource takes as
+    a map of name to value."""
+    return set(re.findall(r"\b([A-Z][A-Z_]+): ", block(symbol)))
 
 
 class TheTopology(unittest.TestCase):
@@ -169,7 +175,7 @@ class TheConfiguration(unittest.TestCase):
                 "EFR_CORS_ORIGIN",
             },
         )
-        self.assertIn("value: 'require'", block("surfaceSettings"))
+        self.assertIn("PGSSLMODE: 'require'", block("surfaceSettings"))
 
     def test_relay_reads_its_column(self):
         self.assertEqual(
@@ -203,9 +209,44 @@ class TheConfiguration(unittest.TestCase):
         refuses every request: neither is ever defaulted to a value."""
         self.assertIn("param corsOrigin string = ''", CODE)
         self.assertIn("param relayDailyCeiling string = ''", CODE)
-        self.assertIn("empty(corsOrigin) ? [] :", block("surfaceSettings"))
-        self.assertIn("empty(relayDailyCeiling) ? [] :", block("relaySettings"))
+        self.assertIn("empty(corsOrigin) ? {} :", block("surfaceSettings"))
+        self.assertIn("empty(relayDailyCeiling) ? {} :", block("relaySettings"))
         self.assertNotIn("'*'", CODE)
+
+    def test_the_host_name_is_read_from_the_app_and_never_constructed(self):
+        """The platform assigns each app its default host name, and a name this
+        file builds from the app's name can address a host that does not
+        resolve. `/mcp` matches the request's `Host` header against
+        `EFR_MCP_ALLOWED_HOSTS` exactly, so a wrong host refuses every call
+        (`DP-010`, `DP-012`), and the relay's URL and the two outputs would
+        address that host too. Every one of them reads `defaultHostName`.
+        """
+        self.assertNotIn("azurewebsites.net", BICEP)
+        self.assertIn(
+            "EFR_MCP_ALLOWED_HOSTS: surface.properties.defaultHostName",
+            block("surfaceSettings"),
+        )
+        self.assertIn(
+            "EFR_RELAY_MCP_URL: 'https://${surface.properties.defaultHostName}/mcp'",
+            block("relaySettings"),
+        )
+        self.assertIn("output surfaceHost string = surface.properties.defaultHostName", CODE)
+        self.assertIn("output relayHost string = relay.properties.defaultHostName", CODE)
+
+    def test_each_apps_settings_are_a_child_resource_declared_once(self):
+        """A site's own `siteConfig` cannot read the host name the platform
+        assigned that site, so the settings are a child `appsettings` resource,
+        which can read its parent's. `siteConfig` carries none, so the two
+        cannot fight over them."""
+        self.assertNotIn("appSettings", CODE)
+        for resource, settings in (
+            ("surfaceAppSettings", "surfaceSettings"),
+            ("relayAppSettings", "relaySettings"),
+        ):
+            with self.subTest(resource=resource):
+                child = block(resource)
+                self.assertIn("name: 'appsettings'", child)
+                self.assertIn(f"properties: {settings}", child)
 
 
 class TheLogs(unittest.TestCase):
