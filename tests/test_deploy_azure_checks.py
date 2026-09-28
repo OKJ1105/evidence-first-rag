@@ -191,5 +191,60 @@ class TheTokenReadFailing(unittest.TestCase):
         self.assertFalse(outcome["DP-014 credential"]["passed"])
 
 
+
+class TheTier(unittest.TestCase):
+    def test_a_tier_without_tokens_has_none(self):
+        """Where the tier offers no tokens, none can exist (#241 N7)."""
+        real = stand_in(good_state())
+
+        def az(*arguments):
+            if arguments[:3] == ("acr", "token", "list"):
+                raise checks.AzError("az acr token failed", "The operation is not supported for the registry SKU Basic.")
+            return real(*arguments)
+
+        outcome = checks.run(az, "g", "r", "surface", "relay", "id-deploy", COMMIT)
+        self.assertTrue(outcome["DP-014 credential"]["passed"], outcome["DP-014 credential"])
+
+    def test_any_other_az_failure_still_fails(self):
+        real = stand_in(good_state())
+
+        def az(*arguments):
+            if arguments[:3] == ("acr", "token", "list"):
+                raise checks.AzError("az acr token failed", "Too many requests")
+            return real(*arguments)
+
+        outcome = checks.run(az, "g", "r", "surface", "relay", "id-deploy", COMMIT)
+        self.assertFalse(outcome["DP-014 credential"]["passed"])
+
+
+class TheRoleScopes(unittest.TestCase):
+    def test_a_scope_differing_only_in_case_is_the_same_scope(self):
+        """ARM identifiers compare without case (#241 N5)."""
+        state = copy.deepcopy(good_state())
+        for entry in state["assignments"]:
+            entry["scope"] = entry["scope"].replace("resourceGroups", "resourcegroups")
+        self.assertTrue(results(state)["DP-014 roles"]["passed"], results(state)["DP-014 roles"])
+
+    def test_an_inherited_push_capable_role_on_an_app_fails(self):
+        """Contributor on the group lets an app push (#241 N6)."""
+        state = copy.deepcopy(good_state())
+        state["assignments"].append({"scope": "/subscriptions/s/resourceGroups/g", "principalId": "p-surface", "roleDefinitionName": "Contributor"})
+        outcome = results(state)["DP-014 roles"]
+        self.assertFalse(outcome["passed"])
+        self.assertNotIn("p-surface", outcome["detail"])
+
+    def test_inherited_assignments_are_read(self):
+        calls = []
+        real = stand_in(good_state())
+
+        def az(*arguments):
+            calls.append(arguments)
+            return real(*arguments)
+
+        checks.run(az, "g", "r", "surface", "relay", "id-deploy", COMMIT)
+        listing = [call for call in calls if call[:3] == ("role", "assignment", "list")]
+        self.assertTrue(listing and all("--include-inherited" in call for call in listing))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -30,13 +30,28 @@ KEY_VAULT_REFERENCE = re.compile(r"^@Microsoft\.KeyVault\(", re.IGNORECASE)
 MUTABLE_TAGS = {"latest"}
 
 
+class AzError(RuntimeError):
+    """An `az` call that failed. `output` is its error text, read only to
+    classify the failure and never written to a record."""
+
+    def __init__(self, message, output=""):
+        super().__init__(message)
+        self.output = output or ""
+
+
+# How Azure answers a feature the registry's tier does not offer. Where tokens
+# cannot exist, none does (#241 N7); the wording is unverified until the first
+# deploy, which is why any other failure still fails the case.
+UNSUPPORTED_ON_TIER = ("sku", "not supported", "premium")
+
+
 def run_az(*arguments):
     """The real `az`: one call, JSON out, an error raised with its message."""
     completed = subprocess.run(
         ["az", *arguments, "--output", "json"], capture_output=True, text=True, check=False
     )
     if completed.returncode != 0:
-        raise RuntimeError(f"az {arguments[0]} {arguments[1] if len(arguments) > 1 else ''} failed")
+        raise AzError(f"az {arguments[0]} {arguments[1] if len(arguments) > 1 else ''} failed", completed.stderr)
     return json.loads(completed.stdout or "null")
 
 
@@ -70,10 +85,14 @@ def dp014_credential(az, group, registry):
     has no second reader, so a failure there fails this case closed.
     The detail names token names only, never a user name or a password.
     """
-    tokens = sorted(
-        entry.get("name") or "(unnamed)"
-        for entry in az("acr", "token", "list", "--registry", registry) or []
-    )
+    try:
+        listed = az("acr", "token", "list", "--registry", registry) or []
+        tier_note = ""
+    except AzError as error:
+        if not any(term in error.output.lower() for term in UNSUPPORTED_ON_TIER):
+            raise
+        listed, tier_note = [], " (tokens are not offered on this tier)"
+    tokens = sorted(entry.get("name") or "(unnamed)" for entry in listed)
     try:
         az("acr", "credential", "show", "--resource-group", group, "--name", registry)
     except Exception:  # noqa: BLE001 - a refusal is the expected, passing answer
@@ -82,7 +101,7 @@ def dp014_credential(az, group, registry):
         admin_credential = True
     passed = not tokens and not admin_credential
     return passed, (
-        f"tokens: {tokens or 'none'}; "
+        f"tokens: {tokens or 'none'}{tier_note}; "
         f"admin credential: {'readable' if admin_credential else 'none'}"
     )
 
@@ -96,16 +115,28 @@ def dp014_roles(az, group, registry, surface, relay, deploy_identity):
         "deploy": az("identity", "show", "--resource-group", group, "--name", deploy_identity)["principalId"],
     }
     names = {principal: name for name, principal in principals.items()}
-    assignments = az("role", "assignment", "list", "--scope", scope)
+    # ARM identifiers compare without case (#241 N5).
+    scope_key = scope.lower()
+    assignments = az("role", "assignment", "list", "--scope", scope, "--include-inherited")
     found = sorted(
         (names.get(entry.get("principalId"), "another principal"), entry.get("roleDefinitionName"))
         for entry in assignments
-        if entry.get("scope") == scope
+        if (entry.get("scope") or "").lower() == scope_key
     )
     expected = sorted([("deploy", ACR_PUSH), ("relay", ACR_PULL), ("surface", ACR_PULL)])
-    pushing_apps = [name for name, role in found if name in ("surface", "relay") and role in PUSH_CAPABLE]
+    # A push-capable role an app inherits from any scope above the registry
+    # counts as one on it (#241 N6).
+    pushing_apps = sorted(
+        (names[entry.get("principalId")], entry.get("roleDefinitionName"))
+        for entry in assignments
+        if names.get(entry.get("principalId")) in ("surface", "relay")
+        and entry.get("roleDefinitionName") in PUSH_CAPABLE
+    )
     passed = found == expected and not pushing_apps
-    return passed, f"assignments on the registry: {found}"
+    detail = f"assignments on the registry: {found}"
+    if pushing_apps:
+        detail += f"; push-capable roles held by an app: {pushing_apps}"
+    return passed, detail
 
 
 def _setting_entries(az, group, app):
@@ -201,12 +232,16 @@ def main(argv=None) -> int:
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--out", default="azure-checks.json")
     arguments = parser.parse_args(argv)
-    results = run(
-        run_az, arguments.group, arguments.registry, arguments.surface,
-        arguments.relay, arguments.deploy_identity, arguments.commit,
-    )
-    with open(arguments.out, "w", encoding="utf-8") as handle:
-        json.dump(results, handle, indent=2)
+    results = {}
+    try:
+        results.update(run(
+            run_az, arguments.group, arguments.registry, arguments.surface,
+            arguments.relay, arguments.deploy_identity, arguments.commit,
+        ))
+    finally:
+        # The record is the evidence, so it is written however the run ended.
+        with open(arguments.out, "w", encoding="utf-8") as handle:
+            json.dump(results, handle, indent=2)
     for case, result in results.items():
         print(("ok  " if result["passed"] else "FAIL"), case, "-", result["detail"])
     return 0 if all(result["passed"] for result in results.values()) else 1
