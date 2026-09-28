@@ -145,6 +145,7 @@ class TheDeployedChecks(unittest.TestCase):
             "python -m evidence_first_rag.deploy.deployed writes",
             "--start-directory tests_stack",
             "python -m evidence_first_rag.deploy.http_checks",
+            "python -m evidence_first_rag.deploy.azure_checks",
         ):
             self.assertIn(command, checks)
         # No `-e`: one failed check does not stop the next from running.
