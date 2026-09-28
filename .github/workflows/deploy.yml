@@ -15,8 +15,9 @@
 # database provisioned from that commit inside a firewall window that is always
 # closed; then the Section 4.8 deployed checks (DP-003's settings half, DP-004,
 # DP-005, DP-007, DP-009, DP-010, DP-012, DP-014 and the WF rows) and, on a
-# failure, the rollback to the last passing commit. DP-003's image and artifact
-# scan, DP-006, DP-008, the MC rows and DP-011's digest comparison remain.
+# failure, the rollback to the last passing commit, with DP-006, DP-007's
+# comparison and DP-011. DP-003's image and artifact scan, DP-008 and the MC
+# rows remain.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
 # reads the five identifiers #205 lists from the `production` environment's
@@ -41,6 +42,20 @@ jobs:
     # The environment admits `main` only (Section 4.3, #205); the federated
     # credential trusts this environment and nothing else.
     environment: production
+    # DP-006 and DP-007's local side: the same commit, provisioned by the same
+    # module into a job-scoped PostgreSQL that exists only for this run.
+    services:
+      local:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: local_superuser_not_a_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     timeout-minutes: 60
     permissions:
       contents: read
@@ -286,6 +301,25 @@ jobs:
             --deploy-identity id-efr-github-deploy \
             --commit "$COMMIT" \
             || failed="$failed AZURE"
+          # DP-006 and DP-007: the same commit provisioned locally, its runner
+          # run there, and the two stable digests and verdicts compared.
+          python -m evidence_first_rag.deploy.digests record --conformance conformance.json --out stable-digest.json \
+            || failed="$failed DP-006"
+          (
+            export PGHOST=localhost PGPORT=5432 PGSSLMODE=disable PGUSER=postgres
+            export PGPASSWORD=local_superuser_not_a_secret
+            export MVP_PROVISIONING_PASSWORD=local_provisioning_not_a_secret
+            export MVP_RUNTIME_PASSWORD=local_runtime_not_a_secret
+            python -m evidence_first_rag.db.provision --recreate > /dev/null &&
+            # A failing local verdict is DP-007's to report, so the digest is
+            # recorded and compared whatever the local run concluded (#243 N5).
+            { python -m evidence_first_rag.conformance.runner --artifact local-conformance.json > /dev/null || true; } &&
+            python -m evidence_first_rag.deploy.digests record --conformance local-conformance.json --out local-stable-digest.json
+          ) || failed="$failed LOCAL"
+          python -m evidence_first_rag.deploy.digests compare \
+            --deployed-digest stable-digest.json --local-digest local-stable-digest.json \
+            --deployed-conformance conformance.json --local-conformance local-conformance.json \
+            | tee compare.json || failed="$failed DP-006/DP-007"
           if [ -n "$failed" ]; then
             echo "failed:$failed"
             exit 1
@@ -339,9 +373,23 @@ jobs:
           # The same module, run from the previous commit's own source and files.
           (cd previous && PYTHONPATH=src python -m evidence_first_rag.db.provision --recreate)
           echo "database=restored" >> "$GITHUB_OUTPUT"
-          echo "result=rolled back" >> "$GITHUB_OUTPUT"
           # The restored state, checked by the previous commit's own runner.
           (cd previous && PYTHONPATH=src python -m evidence_first_rag.conformance.runner --artifact ../restored-conformance.json)
+          # DP-011: the restored stable digest equals the last passing run's.
+          python -m evidence_first_rag.deploy.digests record --conformance restored-conformance.json --out restored-digest.json
+          python -m evidence_first_rag.deploy.deployed expected-digest --commit "$target" --out expected-digest.json
+          # The result is recorded only once DP-011 has answered, so a restored
+          # state that differs is never recorded as a clean rollback (#243 B1, B2).
+          compared=0
+          python -m evidence_first_rag.deploy.digests restored --digest restored-digest.json --expected expected-digest.json \
+            > restored-compare.json || compared=$?
+          cat restored-compare.json
+          if [ "$compared" -eq 0 ]; then
+            echo "result=rolled back" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=rolled back; restored state differs from the last passing run" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$compared"
 
       - name: Close the database firewall
         if: always() && steps.firewall.outputs.rule != ''
@@ -367,12 +415,20 @@ jobs:
               "run_url": os.environ["RUN_URL"],
               "outcome": os.environ["OUTCOME"],
               "provisioned": open("provision.txt").read().strip() if os.path.exists("provision.txt") else None,
+              # DP-011's reference for any later rollback to this commit.
+              "stable_digest": json.load(open("stable-digest.json")) if os.path.exists("stable-digest.json") else None,
               "deployed_checks": {"success": "pass", "failure": "fail"}.get(os.environ["CHECKS"], "not run"),
               "rolled_back_to": os.environ["ROLLBACK"] or None,
               # What happened, not the step's exit status: a step that found
               # nothing to roll back to succeeds, and says so here (#237 B3).
               "rollback_outcome": (os.environ["ROLLBACK_RESULT"] or ("failed" if os.environ["ROLLBACK_OUTCOME"] == "failure" else None)),
               "rollback_database": os.environ["ROLLBACK_DATABASE"] or None,
+              # The comparisons themselves, so the committed record carries
+              # the evidence and not only a verdict (#243 B2, N4).
+              "restored_digest": json.load(open("restored-digest.json")) if os.path.exists("restored-digest.json") and os.path.getsize("restored-digest.json") else None,
+              "dp_011": json.load(open("restored-compare.json")) if os.path.exists("restored-compare.json") and os.path.getsize("restored-compare.json") else None,
+              "digest_comparison": json.load(open("compare.json")) if os.path.exists("compare.json") and os.path.getsize("compare.json") else None,
+              "local_stable_digest": json.load(open("local-stable-digest.json")) if os.path.exists("local-stable-digest.json") and os.path.getsize("local-stable-digest.json") else None,
           }
           with open("deploy-record.json", "w") as handle:
               json.dump(record, handle, indent=2)
@@ -400,4 +456,11 @@ jobs:
             http-checks.json
             azure-checks.json
             restored-conformance.json
+            local-conformance.json
+            compare.json
+            restored-compare.json
+            restored-digest.json
+            expected-digest.json
+            stable-digest.json
+            local-stable-digest.json
           if-no-files-found: warn

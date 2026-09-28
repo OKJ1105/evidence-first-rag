@@ -94,13 +94,36 @@ def last_passing_commit(records: pathlib.Path = RECORDS, excluding: str = ""):
     return max(passing)[1] if passing else None
 
 
+def stable_digest_of(commit: str, records: pathlib.Path = RECORDS):
+    """The stable digest the passing record for `commit` holds (`DP-011`)."""
+    if not records.is_dir():
+        raise FileNotFoundError(f"no deploy records directory at {records}")
+    for path in sorted(records.glob("deploy-*.json")):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        # The same predicate `last_passing_commit` chose the target by (#243 N6).
+        if record.get("commit") == commit and record.get("outcome") == "success" and record.get("deployed_checks") == "pass":
+            digest = record.get("stable_digest")
+            if digest is None:
+                raise ValueError(f"the passing record for {commit} holds no stable digest")
+            return digest
+    raise ValueError(f"no passing record for {commit}")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("writes", help="DP-004 against the deployed database")
     target = commands.add_parser("last-passing", help="print the rollback target, or nothing")
     target.add_argument("--excluding", default="", help="the commit being deployed")
+    expected = commands.add_parser("expected-digest", help="write the stable digest a passing record holds")
+    expected.add_argument("--commit", required=True)
+    expected.add_argument("--out", required=True)
     arguments = parser.parse_args(argv)
+
+    if arguments.command == "expected-digest":
+        with open(arguments.out, "w", encoding="utf-8") as handle:
+            json.dump(stable_digest_of(arguments.commit), handle, indent=2)
+        return 0
 
     if arguments.command == "last-passing":
         commit = last_passing_commit(excluding=arguments.excluding)

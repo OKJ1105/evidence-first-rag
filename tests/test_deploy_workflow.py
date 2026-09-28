@@ -101,8 +101,11 @@ class TheProvisioning(unittest.TestCase):
         body = code(TEXT)
         # This commit's provisioning, and the rollback's, which runs the same
         # module from the last passing commit's own checkout.
+        # This commit's deployed provisioning, the local one DP-006 compares
+        # it with, and the rollback's from the last passing commit.
         self.assertEqual(re.findall(r"python -m evidence_first_rag\.db\.provision[^\n]*", body),
                          ["python -m evidence_first_rag.db.provision --recreate | tee provision.txt",
+                          "python -m evidence_first_rag.db.provision --recreate > /dev/null &&",
                           "python -m evidence_first_rag.db.provision --recreate)"])
         self.assertIn("(cd previous && PYTHONPATH=src python -m evidence_first_rag.db.provision --recreate)", body)
         self.assertNotRegex(body, r"\bpsql\b")
@@ -153,6 +156,25 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertIn('if [ -n "$failed" ]; then', checks)
         self.assertIn("exit 1", checks)
 
+    def test_the_local_side_is_provisioned_into_the_job_scoped_database(self):
+        """DP-006: the local provisioning never reaches the deployed server."""
+        checks = step("Run the deployed checks")
+        local = checks[checks.index("export PGHOST=localhost"):checks.index("digests compare")]
+        self.assertIn("PGSSLMODE=disable", local)
+        self.assertIn("db.provision --recreate", local)
+        self.assertNotIn("steps.infra.outputs.serverHost", local)
+        self.assertRegex(jobs()["deploy"], r"(?m)^    services:\n      local:\n        image: postgres:17$")
+
+    def test_the_comparison_fails_the_step(self):
+        checks = step("Run the deployed checks")
+        self.assertIn('digests compare', checks)
+        self.assertIn('|| failed="$failed DP-006/DP-007"', checks)
+
+    def test_the_rollback_compares_the_restored_state(self):
+        rollback = step("Roll back to the last passing commit")
+        self.assertIn('expected-digest --commit "$target"', rollback)
+        self.assertLess(rollback.index("restored-conformance.json"), rollback.index("digests restored"))
+
     def test_the_rollback_runs_only_on_failure_and_restores_both_halves(self):
         rollback = step("Roll back to the last passing commit")
         # Any failure after the template repointed the apps (#237 B1).
@@ -162,7 +184,9 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertLess(rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'), rollback.index("db.provision"))
         self.assertIn('deploy.deployed last-passing --excluding "$COMMIT"', rollback)
         # Every exit of the step records what happened (#237 B3).
-        self.assertEqual(rollback.count('echo "result='), 3)
+        self.assertEqual(rollback.count('echo "result='), 4)
+        # "rolled back" is written only after DP-011 has answered (#243 B1).
+        self.assertLess(rollback.index("digests restored"), rollback.index('echo "result=rolled back" >> "$GITHUB_OUTPUT"\n          else'))
         self.assertIn('echo "result=nothing to roll back to"', rollback)
         self.assertIn('--linux-fx-version "DOCKER|$image"', rollback)
         self.assertIn("evidence-first-rag:$target", rollback)

@@ -89,6 +89,20 @@ class TheRollbackTarget(unittest.TestCase):
         same = {"date": "2026-02-01T00:00:00+00:00", "commit": "b" * 40, "outcome": "success", "deployed_checks": "pass"}
         self.assertEqual(deployed.last_passing_commit(self.records(old, same), excluding="b" * 40), "a" * 40)
 
+    def test_the_expected_digest_is_the_passing_records(self):
+        digest = {"row_counts": {"a": 1}, "registry_digest": "r", "templates": []}
+        passing = {"date": "2026-01-01T00:00:00+00:00", "commit": "a" * 40, "outcome": "success", "deployed_checks": "pass", "stable_digest": digest}
+        failed = {"date": "2026-02-01T00:00:00+00:00", "commit": "b" * 40, "outcome": "failure", "deployed_checks": "fail", "stable_digest": {}}
+        records = self.records(passing, failed)
+        self.assertEqual(deployed.stable_digest_of("a" * 40, records), digest)
+        with self.assertRaises(ValueError):
+            deployed.stable_digest_of("b" * 40, records)
+
+    def test_a_passing_record_without_a_digest_is_an_error(self):
+        bare = {"date": "2026-01-01T00:00:00+00:00", "commit": "a" * 40, "outcome": "success", "deployed_checks": "pass"}
+        with self.assertRaises(ValueError):
+            deployed.stable_digest_of("a" * 40, self.records(bare))
+
     def test_a_missing_records_directory_is_an_error(self):
         with self.assertRaises(FileNotFoundError):
             deployed.last_passing_commit(pathlib.Path(tempfile.mkdtemp()) / "absent")
