@@ -6,12 +6,13 @@ through `az`, which takes the Azure CLI's arguments and returns its parsed JSON
 output; the job passes the real one and the tests a stand-in.
 
 Each case returns `(passed, detail)` and never raises for a failed expectation.
-A detail names roles, setting names and tags, never a setting's value, a
-principal's identifier or a host.
+A detail names roles, setting names, token names and tags, never a setting's
+value, a registry user name or password, a principal's identifier or a host.
 """
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 
@@ -22,6 +23,10 @@ REGISTRY_CREDENTIAL_SETTINGS = {
     "DOCKER_REGISTRY_SERVER_USERNAME",
     "DOCKER_REGISTRY_SERVER_PASSWORD",
 }
+# A registry credential is a credential whatever it is named, so a setting is
+# matched on what it carries as well as on the two platform names above.
+REGISTRY_SHAPED_NAME = re.compile(r"REGISTRY|ACR|DOCKER", re.IGNORECASE)
+KEY_VAULT_REFERENCE = re.compile(r"^@Microsoft\.KeyVault\(", re.IGNORECASE)
 MUTABLE_TAGS = {"latest"}
 
 
@@ -51,6 +56,37 @@ def dp014_registry(az, group, registry):
     return passed, f"adminUserEnabled={admin}, anonymousPullEnabled={anonymous}"
 
 
+def dp014_credential(az, group, registry):
+    """No credential exists for the registry: no token, and no admin credential.
+
+    A repository-scoped token is available on the Basic tier and carries a
+    generated push password, so a disabled admin user does not on its own settle
+    Section 4.3's "no password or token exists". Both are read here. `az acr
+    credential show` refuses while the admin user is disabled; a refusal is
+    therefore the passing answer, and success means a credential is readable.
+    A refusal for some other reason — throttling, a role not yet effective —
+    reads the same way, which is why it is not the only evidence for that
+    clause: `dp014_registry` reads `adminUserEnabled` directly. The token read
+    has no second reader, so a failure there fails this case closed.
+    The detail names token names only, never a user name or a password.
+    """
+    tokens = sorted(
+        entry.get("name") or "(unnamed)"
+        for entry in az("acr", "token", "list", "--registry", registry) or []
+    )
+    try:
+        az("acr", "credential", "show", "--resource-group", group, "--name", registry)
+    except Exception:  # noqa: BLE001 - a refusal is the expected, passing answer
+        admin_credential = False
+    else:
+        admin_credential = True
+    passed = not tokens and not admin_credential
+    return passed, (
+        f"tokens: {tokens or 'none'}; "
+        f"admin credential: {'readable' if admin_credential else 'none'}"
+    )
+
+
 def dp014_roles(az, group, registry, surface, relay, deploy_identity):
     """The only assignments on the registry are the three registered ones."""
     scope = az("acr", "show", "--resource-group", group, "--name", registry)["id"]
@@ -72,25 +108,62 @@ def dp014_roles(az, group, registry, surface, relay, deploy_identity):
     return passed, f"assignments on the registry: {found}"
 
 
+def _setting_entries(az, group, app):
+    return az("webapp", "config", "appsettings", "list", "--resource-group", group, "--name", app)
+
+
 def _settings(az, group, app):
-    return {entry["name"] for entry in az("webapp", "config", "appsettings", "list", "--resource-group", group, "--name", app)}
+    return {entry["name"] for entry in _setting_entries(az, group, app)}
 
 
-def dp014_settings(az, group, surface, relay):
-    """No app setting carries a registry user name, password or token."""
-    carried = {
-        app: sorted(_settings(az, group, app) & REGISTRY_CREDENTIAL_SETTINGS) for app in (surface, relay)
-    }
-    passed = not any(carried.values())
+def dp014_settings(az, group, registry, surface, relay):
+    """No app setting carries a registry user name, password or token.
+
+    Matched on what a setting carries, not only on the two platform names: a
+    value naming the registry's login server, and a registry-shaped name whose
+    value is not a Key Vault reference, are both a registry credential under
+    whatever name they were written. Only the setting's name reaches the detail.
+    """
+    login_server = (
+        az("acr", "show", "--resource-group", group, "--name", registry).get("loginServer") or ""
+    ).lower()
+    if not login_server:
+        # Without it one of the three clauses cannot be decided, so the case
+        # fails rather than reporting what the other two found.
+        return False, "the registry's login server could not be read"
+    carried = {}
+    for app in (surface, relay):
+        names = []
+        for entry in _setting_entries(az, group, app):
+            name = entry["name"]
+            value = entry.get("value") or ""
+            if name in REGISTRY_CREDENTIAL_SETTINGS:
+                names.append(name)
+            elif login_server in value.lower():
+                names.append(name)
+            elif REGISTRY_SHAPED_NAME.search(name) and not KEY_VAULT_REFERENCE.match(value):
+                names.append(name)
+        if names:
+            carried[app] = sorted(names)
+    passed = not carried
     return passed, "no registry credential setting" if passed else f"registry credential settings: {carried}"
 
 
 def dp014_image(az, group, app, commit):
-    """The app's configured image names this commit's tag, not a mutable one."""
-    fx = az("webapp", "config", "show", "--resource-group", group, "--name", app).get("linuxFxVersion") or ""
+    """The app's configured image names this commit's tag, pulled by identity.
+
+    The same payload carries `acrUseManagedIdentityCreds`, which is how the
+    platform records that the pull is by role rather than by a stored registry
+    credential, so it is asserted here rather than read a second time.
+    """
+    configuration = az("webapp", "config", "show", "--resource-group", group, "--name", app)
+    fx = configuration.get("linuxFxVersion") or ""
+    managed = configuration.get("acrUseManagedIdentityCreds")
     tag = fx.rsplit(":", 1)[-1] if ":" in fx else ""
-    passed = fx.startswith("DOCKER|") and tag == commit and tag not in MUTABLE_TAGS
-    return passed, f"tag {tag or '(none)'}"
+    passed = (
+        fx.startswith("DOCKER|") and tag == commit and tag not in MUTABLE_TAGS and managed is True
+    )
+    return passed, f"tag {tag or '(none)'}, acrUseManagedIdentityCreds={managed}"
 
 
 def dp003_settings(az, group, surface, relay):
@@ -108,8 +181,9 @@ def dp003_settings(az, group, surface, relay):
 def run(az, group, registry, surface, relay, deploy_identity, commit):
     cases = {
         "DP-014 registry": (dp014_registry, az, group, registry),
+        "DP-014 credential": (dp014_credential, az, group, registry),
         "DP-014 roles": (dp014_roles, az, group, registry, surface, relay, deploy_identity),
-        "DP-014 settings": (dp014_settings, az, group, surface, relay),
+        "DP-014 settings": (dp014_settings, az, group, registry, surface, relay),
         "DP-014 surface image": (dp014_image, az, group, surface, commit),
         "DP-014 relay image": (dp014_image, az, group, relay, commit),
         "DP-003 settings": (dp003_settings, az, group, surface, relay),

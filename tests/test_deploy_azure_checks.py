@@ -7,11 +7,25 @@ from evidence_first_rag.deploy import azure_checks as checks
 
 COMMIT = "a" * 40
 SCOPE = "/subscriptions/s/resourceGroups/g/providers/Microsoft.ContainerRegistry/registries/r"
+LOGIN_SERVER = "acr.example"
+SURFACE_HOST = "surface-host.example"
+
+
+def vault_reference(secret):
+    return f"@Microsoft.KeyVault(SecretUri=https://vault.example/secrets/{secret}/)"
 
 
 def good_state():
     return {
-        "registry": {"id": SCOPE, "adminUserEnabled": False, "anonymousPullEnabled": False},
+        "registry": {
+            "id": SCOPE,
+            "loginServer": LOGIN_SERVER,
+            "adminUserEnabled": False,
+            "anonymousPullEnabled": False,
+        },
+        # `az acr token list` answers with an empty list when no repository-scoped
+        # token exists, which is the passing state.
+        "tokens": [],
         "principals": {"surface": "p-surface", "relay": "p-relay", "deploy": "p-deploy"},
         "assignments": [
             {"scope": SCOPE, "principalId": "p-surface", "roleDefinitionName": "AcrPull"},
@@ -19,10 +33,21 @@ def good_state():
             {"scope": SCOPE, "principalId": "p-deploy", "roleDefinitionName": "AcrPush"},
         ],
         "settings": {
-            "surface": ["WEBSITES_PORT", "MVP_RUNTIME_PASSWORD", "EFR_MCP_ALLOWED_HOSTS"],
-            "relay": ["WEBSITES_PORT", "ANTHROPIC_API_KEY", "EFR_RELAY_MCP_URL"],
+            "surface": {
+                "WEBSITES_PORT": "8000",
+                "MVP_RUNTIME_PASSWORD": vault_reference("mvp-runtime-password"),
+                "EFR_MCP_ALLOWED_HOSTS": SURFACE_HOST,
+            },
+            "relay": {
+                "WEBSITES_PORT": "8000",
+                "ANTHROPIC_API_KEY": vault_reference("anthropic-api-key"),
+                "EFR_RELAY_MCP_URL": f"https://{SURFACE_HOST}/mcp",
+            },
         },
-        "image": {"surface": f"DOCKER|acr.example/evidence-first-rag:{COMMIT}", "relay": f"DOCKER|acr.example/evidence-first-rag:{COMMIT}"},
+        "image": {
+            "surface": {"linuxFxVersion": f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:{COMMIT}", "acrUseManagedIdentityCreds": True},
+            "relay": {"linuxFxVersion": f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:{COMMIT}", "acrUseManagedIdentityCreds": True},
+        },
     }
 
 
@@ -31,6 +56,14 @@ def stand_in(state):
         name = arguments[arguments.index("--name") + 1] if "--name" in arguments else None
         if arguments[:2] == ("acr", "show"):
             return state["registry"]
+        if arguments[:3] == ("acr", "token", "list"):
+            return state["tokens"]
+        if arguments[:3] == ("acr", "credential", "show"):
+            # The real `az` refuses while the admin user is disabled.
+            if not state["registry"]["adminUserEnabled"]:
+                raise RuntimeError("admin user is disabled for this registry")
+            # The payload is never read by the case, only its existence.
+            return {"username": "example-user", "passwords": [{"name": "example", "value": "example-value"}]}
         if arguments[:3] == ("webapp", "identity", "show"):
             return {"principalId": state["principals"][name]}
         if arguments[:2] == ("identity", "show"):
@@ -38,9 +71,9 @@ def stand_in(state):
         if arguments[:3] == ("role", "assignment", "list"):
             return state["assignments"]
         if arguments[:4] == ("webapp", "config", "appsettings", "list"):
-            return [{"name": setting, "value": "not read"} for setting in state["settings"][name]]
+            return [{"name": setting, "value": value} for setting, value in state["settings"][name].items()]
         if arguments[:3] == ("webapp", "config", "show"):
-            return {"linuxFxVersion": state["image"][name]}
+            return state["image"][name]
         raise AssertionError(arguments)
 
     return az
@@ -56,8 +89,16 @@ class TheGoodState(unittest.TestCase):
 
     def test_no_detail_carries_a_value_or_a_principal(self):
         text = repr(results(good_state()))
-        for leaked in ("p-surface", "p-relay", "p-deploy", "not read", "acr.example"):
+        leaks = ["p-surface", "p-relay", "p-deploy", LOGIN_SERVER, SURFACE_HOST, "vault.example"]
+        for app in good_state()["settings"].values():
+            leaks.extend(app.values())
+        for leaked in leaks:
             self.assertNotIn(leaked, text)
+
+    def test_a_registry_shaped_name_holding_a_key_vault_reference_passes(self):
+        state = good_state()
+        state["settings"]["surface"]["EFR_ACR_NOTE"] = vault_reference("some-secret")
+        self.assertTrue(results(state)["DP-014 settings"]["passed"], results(state)["DP-014 settings"])
 
 
 class EachDeviationFails(unittest.TestCase):
@@ -75,6 +116,14 @@ class EachDeviationFails(unittest.TestCase):
     def test_anonymous_pull_enabled(self):
         self.failing(lambda s: s["registry"].update(anonymousPullEnabled=True), "DP-014 registry")
 
+    def test_a_repository_scoped_token(self):
+        self.failing(lambda s: s["tokens"].append({"name": "push-token"}), "DP-014 credential")
+
+    def test_a_readable_admin_credential(self):
+        # The admin user enabled is what makes `az acr credential show` answer.
+        others = self.failing(lambda s: s["registry"].update(adminUserEnabled=True), "DP-014 credential")
+        self.assertIn("DP-014 registry", others)
+
     def test_an_app_given_push(self):
         self.failing(lambda s: s["assignments"][0].update(roleDefinitionName="AcrPush"), "DP-014 roles")
 
@@ -85,19 +134,32 @@ class EachDeviationFails(unittest.TestCase):
         self.failing(lambda s: s["assignments"].pop(1), "DP-014 roles")
 
     def test_a_registry_password_setting(self):
-        self.failing(lambda s: s["settings"]["relay"].append("DOCKER_REGISTRY_SERVER_PASSWORD"), "DP-014 settings")
+        self.failing(lambda s: s["settings"]["relay"].update(DOCKER_REGISTRY_SERVER_PASSWORD="written"), "DP-014 settings")
+
+    def test_a_setting_carrying_the_registry_under_another_name(self):
+        self.failing(lambda s: s["settings"]["relay"].update(EFR_PULL_FROM=f"{LOGIN_SERVER}/evidence-first-rag"), "DP-014 settings")
+
+    def test_a_registry_shaped_name_holding_its_own_value(self):
+        self.failing(lambda s: s["settings"]["surface"].update(EFR_ACR_TOKEN="written"), "DP-014 settings")
+
+    def test_an_unreadable_login_server(self):
+        # One of the three setting clauses cannot be decided without it.
+        self.failing(lambda s: s["registry"].pop("loginServer"), "DP-014 settings")
 
     def test_a_latest_tag(self):
-        self.failing(lambda s: s["image"].update(surface="DOCKER|acr.example/evidence-first-rag:latest"), "DP-014 surface image")
+        self.failing(lambda s: s["image"]["surface"].update(linuxFxVersion=f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:latest"), "DP-014 surface image")
 
     def test_another_commit(self):
-        self.failing(lambda s: s["image"].update(relay="DOCKER|acr.example/evidence-first-rag:" + "b" * 40), "DP-014 relay image")
+        self.failing(lambda s: s["image"]["relay"].update(linuxFxVersion=f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:" + "b" * 40), "DP-014 relay image")
+
+    def test_the_image_pulled_with_a_stored_credential(self):
+        self.failing(lambda s: s["image"]["surface"].update(acrUseManagedIdentityCreds=False), "DP-014 surface image")
 
     def test_surface_holding_the_anthropic_key(self):
-        self.failing(lambda s: s["settings"]["surface"].append("ANTHROPIC_API_KEY"), "DP-003 settings")
+        self.failing(lambda s: s["settings"]["surface"].update(ANTHROPIC_API_KEY=vault_reference("anthropic-api-key")), "DP-003 settings")
 
     def test_relay_holding_a_database_credential(self):
-        self.failing(lambda s: s["settings"]["relay"].append("MVP_RUNTIME_PASSWORD"), "DP-003 settings")
+        self.failing(lambda s: s["settings"]["relay"].update(MVP_RUNTIME_PASSWORD=vault_reference("mvp-runtime-password")), "DP-003 settings")
 
 
 class AFaultInOneCase(unittest.TestCase):
@@ -113,6 +175,20 @@ class AFaultInOneCase(unittest.TestCase):
         outcome = checks.run(az, "g", "r", "surface", "relay", "id-deploy", COMMIT)
         self.assertFalse(outcome["DP-014 roles"]["passed"])
         self.assertTrue(outcome["DP-014 registry"]["passed"])
+
+
+class TheTokenReadFailing(unittest.TestCase):
+    def test_fails_closed(self):
+        """A registry whose token list cannot be read is not recorded as clean."""
+        real = stand_in(good_state())
+
+        def az(*arguments):
+            if arguments[:3] == ("acr", "token", "list"):
+                raise RuntimeError("throttled")
+            return real(*arguments)
+
+        outcome = checks.run(az, "g", "r", "surface", "relay", "id-deploy", COMMIT)
+        self.assertFalse(outcome["DP-014 credential"]["passed"])
 
 
 if __name__ == "__main__":
