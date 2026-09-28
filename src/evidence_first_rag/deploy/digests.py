@@ -8,7 +8,7 @@ instances number their transactions independently.
 
 Row counts and template digests are read from a conformance artifact (the
 runner records both); `registry_digest` is read from the database, as the
-provisioning identity, because the artifact does not carry it.
+runtime identity, because the artifact does not carry it.
 
 - `DP-006`: the deployed and the local stable digests of one commit are equal.
 - `DP-007`: the deployed and the local runs give every registered case the
@@ -89,8 +89,10 @@ def main(argv=None) -> int:
 
         with psycopg.connect(
             dbname=os.environ.get("MVP_DATABASE", "mvp"),
-            user="mvp_provisioning",
-            password=os.environ["MVP_PROVISIONING_PASSWORD"],
+            # The runtime identity can read the table and cannot write
+            # (#243 N1): nothing here needs the provisioning identity.
+            user="mvp_runtime",
+            password=os.environ["MVP_RUNTIME_PASSWORD"],
             host=os.environ["PGHOST"],
             port=os.environ.get("PGPORT", "5432"),
         ) as connection:

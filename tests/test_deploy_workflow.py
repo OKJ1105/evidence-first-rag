@@ -184,7 +184,9 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertLess(rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'), rollback.index("db.provision"))
         self.assertIn('deploy.deployed last-passing --excluding "$COMMIT"', rollback)
         # Every exit of the step records what happened (#237 B3).
-        self.assertEqual(rollback.count('echo "result='), 3)
+        self.assertEqual(rollback.count('echo "result='), 4)
+        # "rolled back" is written only after DP-011 has answered (#243 B1).
+        self.assertLess(rollback.index("digests restored"), rollback.index('echo "result=rolled back" >> "$GITHUB_OUTPUT"\n          else'))
         self.assertIn('echo "result=nothing to roll back to"', rollback)
         self.assertIn('--linux-fx-version "DOCKER|$image"', rollback)
         self.assertIn("evidence-first-rag:$target", rollback)
