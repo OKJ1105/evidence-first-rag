@@ -13,10 +13,10 @@
 # This file is the first half of the deploy. It builds and ships one commit:
 # the three database secrets, the provisioning definitions, the image, and the
 # database provisioned from that commit inside a firewall window that is always
-# closed; then the Section 4.8 deployed checks (DP-004, DP-005, DP-007, DP-009,
-# DP-010, DP-012 and the WF rows) and, on a failure, the rollback to the last
-# passing commit. DP-003, DP-006, DP-008, DP-014, the MC rows and DP-011's
-# digest comparison are the next slice.
+# closed; then the Section 4.8 deployed checks (DP-003's settings half, DP-004,
+# DP-005, DP-007, DP-009, DP-010, DP-012, DP-014 and the WF rows) and, on a
+# failure, the rollback to the last passing commit. DP-003's image and artifact
+# scan, DP-006, DP-008, the MC rows and DP-011's digest comparison remain.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
 # reads the five identifiers #205 lists from the `production` environment's
@@ -277,6 +277,15 @@ jobs:
             --surface "${{ steps.infra.outputs.surfaceHost }}" \
             --relay "${{ steps.infra.outputs.relayHost }}" \
             || failed="$failed HTTP"
+          # DP-014 and DP-003's settings half, read off Azure's resource state.
+          python -m evidence_first_rag.deploy.azure_checks \
+            --group "$RESOURCE_GROUP" \
+            --registry "${{ steps.infra.outputs.registryName }}" \
+            --surface "${{ steps.infra.outputs.surfaceName }}" \
+            --relay "${{ steps.infra.outputs.relayName }}" \
+            --deploy-identity id-efr-github-deploy \
+            --commit "$COMMIT" \
+            || failed="$failed AZURE"
           if [ -n "$failed" ]; then
             echo "failed:$failed"
             exit 1
@@ -389,5 +398,6 @@ jobs:
             conformance.json
             writes.json
             http-checks.json
+            azure-checks.json
             restored-conformance.json
           if-no-files-found: warn
