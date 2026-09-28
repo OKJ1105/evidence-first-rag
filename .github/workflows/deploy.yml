@@ -460,6 +460,7 @@ jobs:
             compare.json
             restored-compare.json
             restored-digest.json
+            expected-digest.json
             stable-digest.json
             local-stable-digest.json
           if-no-files-found: warn
