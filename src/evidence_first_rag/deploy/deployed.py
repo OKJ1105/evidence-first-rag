@@ -96,6 +96,8 @@ def last_passing_commit(records: pathlib.Path = RECORDS, excluding: str = ""):
 
 def stable_digest_of(commit: str, records: pathlib.Path = RECORDS):
     """The stable digest the passing record for `commit` holds (`DP-011`)."""
+    if not records.is_dir():
+        raise FileNotFoundError(f"no deploy records directory at {records}")
     for path in sorted(records.glob("deploy-*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
         # The same predicate `last_passing_commit` chose the target by (#243 N6).
