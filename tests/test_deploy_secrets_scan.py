@@ -4,8 +4,10 @@ The exported filesystem is a tar stream and the image configuration a
 dictionary, so each is built here from `SAMPLE_*` values.
 """
 
+import importlib.util
 import io
 import json
+import os
 import pathlib
 import tarfile
 import tempfile
@@ -13,9 +15,17 @@ import unittest
 
 from evidence_first_rag.deploy import secrets_scan
 
+REPOSITORY = pathlib.Path(__file__).resolve().parents[1]
+# Named from this file so the suite does not depend on the working directory;
+# what the deploy job does with the module's own default is its own test below.
+SCANNER = REPOSITORY / "scripts" / "checks" / "scan_sensitive_strings.py"
+
 VALUE = "SAMPLE_KNOWN_SECRET_VALUE_7Q2"
 # Assembled at run time, so the repository scan does not read this file as holding one.
 SHAPED = "-----BEGIN " + "PRIVATE KEY-----"
+ASSIGNED_VALUE = "Q" * 43
+# Same reason: the name and the operator never meet in this file's own text.
+ASSIGNED = "sample_admin_password" + ": " + '"' + ASSIGNED_VALUE + '"'
 
 
 def tar_of(files: dict) -> io.BytesIO:
@@ -33,7 +43,7 @@ def tar_of(files: dict) -> io.BytesIO:
 class TheImageFilesystem(unittest.TestCase):
     def scan(self, files):
         findings = []
-        secrets_scan.scan_image_filesystem(tar_of(files), [VALUE], findings, secrets_scan._shape_rules())
+        secrets_scan.scan_image_filesystem(tar_of(files), [VALUE], findings, secrets_scan._shape_rules(SCANNER))
         return findings
 
     def test_a_known_value_is_found_anywhere(self):
@@ -55,7 +65,7 @@ class TheImageFilesystem(unittest.TestCase):
 class TheImageConfig(unittest.TestCase):
     def scan(self, config):
         findings = []
-        secrets_scan.scan_image_config(config, [VALUE], findings, secrets_scan._shape_rules())
+        secrets_scan.scan_image_config(config, [VALUE], findings, secrets_scan._shape_rules(SCANNER))
         return findings
 
     def test_a_secret_setting_in_the_image_is_found_whatever_its_value(self):
@@ -88,7 +98,9 @@ class TheReport(unittest.TestCase):
             secrets_scan.scan_image = lambda *arguments: None
             try:
                 status = secrets_scan.main(
-                    ["--image", "SAMPLE_IMAGE", "--workflows", directory, "--out", str(out)], environment={}
+                    ["--image", "SAMPLE_IMAGE", "--workflows", directory, "--out", str(out),
+                     "--scanner", str(SCANNER)],
+                    environment={},
                 )
             finally:
                 secrets_scan.scan_image = original
@@ -106,7 +118,8 @@ class TheReport(unittest.TestCase):
             secrets_scan.scan_image = broken
             try:
                 status = secrets_scan.main(
-                    ["--image", "SAMPLE_IMAGE", "--workflows", directory, "--out", str(out)],
+                    ["--image", "SAMPLE_IMAGE", "--workflows", directory, "--out", str(out),
+                     "--scanner", str(SCANNER)],
                     environment={"MVP_RUNTIME_PASSWORD": VALUE},
                 )
             finally:
@@ -114,6 +127,64 @@ class TheReport(unittest.TestCase):
             record = json.loads(out.read_text())["DP-003 image, workflows, artifact"]
             self.assertEqual(status, 1)
             self.assertEqual(record["error"], "the scan itself failed: OSError")
+
+    def test_a_scanner_that_cannot_be_loaded_is_recorded_rather_than_raised(self):
+        """The rules are loaded inside the scan, so a scanner that is not
+        where the job looked leaves a record instead of a traceback (#253 B1)."""
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory) / "scan.json"
+            status = secrets_scan.main(
+                ["--image", "SAMPLE_IMAGE", "--workflows", directory, "--out", str(out),
+                 "--scanner", str(pathlib.Path(directory) / "absent.py")],
+                environment={"MVP_RUNTIME_PASSWORD": VALUE},
+            )
+            record = json.loads(out.read_text())["DP-003 image, workflows, artifact"]
+            self.assertEqual(status, 1)
+            self.assertFalse(record["passed"])
+            self.assertEqual(record["error"], "the scan itself failed: FileNotFoundError")
+
+
+class TheScannerLocation(unittest.TestCase):
+    """The deploy job installs the package (`pip install .`), so the module
+    runs from site-packages while the job's working directory is the checkout.
+    The scanner is found from the second, never from the first (#253 B1)."""
+
+    def test_the_default_is_read_from_the_working_directory(self):
+        self.assertFalse(secrets_scan.SCANNER.is_absolute())
+        self.assertTrue((REPOSITORY / secrets_scan.SCANNER).is_file())
+
+    def test_the_rules_load_when_the_module_sits_outside_the_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            installed = pathlib.Path(directory) / "secrets_scan.py"
+            installed.write_bytes(pathlib.Path(secrets_scan.__file__).read_bytes())
+            specification = importlib.util.spec_from_file_location("installed_scan", installed)
+            module = importlib.util.module_from_spec(specification)
+            specification.loader.exec_module(module)
+            here = os.getcwd()
+            os.chdir(REPOSITORY)
+            try:
+                loaded = [name for name, _find in module._shape_rules()]
+            finally:
+                os.chdir(here)
+            self.assertEqual(loaded, list(secrets_scan.SHAPE_RULES))
+
+
+class TheCredentialRules(unittest.TestCase):
+    def test_every_credential_rule_the_scanner_defines_is_applied(self):
+        """`deploy-v0.1` Section 8 asks `DP-003` for every secret pattern the
+        sensitive-string scan defines (#253 B2)."""
+        scanner = secrets_scan._scanner(SCANNER)
+        defined = [name for name, clause, _find in scanner.RULES if "credentials or secrets" in clause]
+        self.assertEqual(sorted(secrets_scan.SHAPE_RULES), sorted(defined))
+
+    def test_a_secret_assigned_under_a_secret_name_is_found(self):
+        findings = []
+        secrets_scan.scan_text(
+            ASSIGNED, "workflow:.github/workflows/sample.yml", [VALUE], findings,
+            secrets_scan._shape_rules(SCANNER), ".github/workflows/sample.yml",
+        )
+        self.assertEqual([f["test"] for f in findings], ["assigned-secret"])
+        self.assertNotIn(ASSIGNED_VALUE, json.dumps(findings))
 
 
 if __name__ == "__main__":  # pragma: no cover

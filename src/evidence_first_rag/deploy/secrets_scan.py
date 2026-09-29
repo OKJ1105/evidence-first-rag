@@ -8,11 +8,12 @@ reads the other three with two tests:
   passwords it read from Key Vault. Each is looked for, as an exact substring,
   in every file of the image, every workflow file and every artifact file. No
   pattern can miss a value the job actually knows.
-- **Credential-shaped strings**, by the repository scanner's `private-key`,
-  `issued-credential` and `url-credentials` rules
-  (`scripts/checks/scan_sensitive_strings.py`). These catch a secret the job
-  does not hold, such as an Anthropic key, which `DP-015` keeps the job from
-  ever reading. In the image they are applied to this repository's own files
+- **Credential-shaped strings**, by every credential rule the repository
+  scanner defines — `private-key`, `issued-credential`, `assigned-secret` and
+  `url-credentials`, the four it files under "never add credentials or
+  secrets" (`scripts/checks/scan_sensitive_strings.py`). These catch a secret
+  the job does not hold, such as an Anthropic key, which `DP-015` keeps the job
+  from ever reading. In the image they are applied to this repository's own files
   under `/app` and to the image's configuration only. A base image and its
   installed packages ship test vectors and certificate bundles that have the
   shape without being a secret, and a scan that always fails decides nothing.
@@ -34,8 +35,10 @@ import subprocess
 import sys
 import tarfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[3]
-SCANNER = ROOT / "scripts" / "checks" / "scan_sensitive_strings.py"
+# Relative to the working directory, like the sibling module's `RECORDS`: the
+# deploy job installs this package, so `__file__` is under site-packages and
+# says nothing about where the checkout is, while the job runs from its root.
+SCANNER = pathlib.Path("scripts/checks/scan_sensitive_strings.py")
 
 # The secrets the checks step holds, by the environment variables it exports.
 KNOWN_VALUE_VARIABLES = ("MVP_PROVISIONING_PASSWORD", "MVP_RUNTIME_PASSWORD")
@@ -51,21 +54,25 @@ SECRET_SETTINGS = frozenset(
     }
 )
 
-SHAPE_RULES = ("private-key", "issued-credential", "url-credentials")
+# The scanner's credential rules, all four of them. `assigned-secret` is the
+# only one that catches a password value written under a password-shaped name,
+# which is the shape of a secret this job does not hold and so cannot look for
+# by value.
+SHAPE_RULES = ("private-key", "issued-credential", "assigned-secret", "url-credentials")
 
 # This repository's files in the image (Dockerfile `WORKDIR /app`).
 OWN_PREFIX = "app/"
 
 
-def _scanner():
-    spec = importlib.util.spec_from_file_location("scan_sensitive_strings", SCANNER)
+def _scanner(path=None):
+    spec = importlib.util.spec_from_file_location("scan_sensitive_strings", path or SCANNER)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def _shape_rules():
-    return [(name, find) for name, _clause, find in _scanner().RULES if name in SHAPE_RULES]
+def _shape_rules(path=None):
+    return [(name, find) for name, _clause, find in _scanner(path).RULES if name in SHAPE_RULES]
 
 
 def known_values(environment) -> list:
@@ -152,16 +159,19 @@ def main(argv=None, environment=None) -> int:
     parser.add_argument("--image", required=True)
     parser.add_argument("--workflows", default=".github/workflows")
     parser.add_argument("--artifacts", nargs="*", default=[])
+    parser.add_argument("--scanner", default=str(SCANNER))
     parser.add_argument("--out", default="secret-scan.json")
     arguments = parser.parse_args(argv)
 
     values = known_values(os.environ if environment is None else environment)
-    shapes = _shape_rules()
     findings, error = [], None
     if not values:
         # Without the job's secrets the known-value test would pass vacuously.
         error = "none of the job's secrets was provided"
     try:
+        # Inside the try: a scanner that cannot be loaded is a scan that did
+        # not run, which is a failed case with a record, not a traceback.
+        shapes = _shape_rules(arguments.scanner)
         scan_files(sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes)
         scan_files(arguments.artifacts, "artifact", values, findings, shapes)
         scan_image(arguments.image, values, findings, shapes)
