@@ -24,6 +24,12 @@ The image's configuration must also set none of the secret settings
 Key Vault references at run time, never from the image.
 
 A finding names where it is and which test found it, never the value.
+
+The record names what it read — the image, each workflow file, each artifact
+file — and states what it does not cover. The scan runs at one point in the
+deploy, so a file a later step writes into the uploaded artifact is not among
+its targets; `passed` is a verdict over `scanned` and over nothing else
+(#253 B3).
 """
 
 import argparse
@@ -62,6 +68,16 @@ SHAPE_RULES = ("private-key", "issued-credential", "assigned-secret", "url-crede
 
 # This repository's files in the image (Dockerfile `WORKDIR /app`).
 OWN_PREFIX = "app/"
+
+# What a passing record does not stand for. The scan reads its targets when it
+# runs; a file written into the uploaded artifact by a later step — the deploy
+# record, the rollback records — was not there to be read (#253 B3).
+LIMITATIONS = (
+    "Only the targets named in `scanned` were read. A file the deploy writes"
+    " after this scan and uploads with the artifact — the deploy record and the"
+    " rollback records — is outside this record, and `passed` says nothing"
+    " about it.",
+)
 
 
 def _scanner(path=None):
@@ -123,13 +139,18 @@ def scan_image_config(config, values, findings, shapes):
         scan_text(" ".join(config.get(field) or []), f"image config {field}", values, findings, shapes)
 
 
-def scan_files(paths, label, values, findings, shapes):
+def scan_files(paths, label, values, findings, shapes) -> list:
+    """Scan each path that exists, and return the ones actually read, so the
+    record names its targets rather than implying them (#253 B3)."""
+    read = []
     for path in paths:
         path = pathlib.Path(path)
         if not path.is_file():
             continue
         text = path.read_bytes().decode("utf-8", errors="replace")
         scan_text(text, f"{label}:{path.as_posix()}", values, findings, shapes, path.as_posix())
+        read.append(path.as_posix())
+    return read
 
 
 def _docker(*arguments, **options):
@@ -165,6 +186,9 @@ def main(argv=None, environment=None) -> int:
 
     values = known_values(os.environ if environment is None else environment)
     findings, error = [], None
+    # Each target is entered only once it has been read, so a scan that stops
+    # partway names what it covered and not what it was asked to cover.
+    scanned = {"image": None, "workflows": [], "artifacts": []}
     if not values:
         # Without the job's secrets the known-value test would pass vacuously.
         error = "none of the job's secrets was provided"
@@ -172,9 +196,12 @@ def main(argv=None, environment=None) -> int:
         # Inside the try: a scanner that cannot be loaded is a scan that did
         # not run, which is a failed case with a record, not a traceback.
         shapes = _shape_rules(arguments.scanner)
-        scan_files(sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes)
-        scan_files(arguments.artifacts, "artifact", values, findings, shapes)
+        scanned["workflows"] = scan_files(
+            sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes
+        )
+        scanned["artifacts"] = scan_files(arguments.artifacts, "artifact", values, findings, shapes)
         scan_image(arguments.image, values, findings, shapes)
+        scanned["image"] = arguments.image
     except Exception as failure:  # noqa: BLE001 - an unfinished scan is a failed case, recorded
         error = f"the scan itself failed: {type(failure).__name__}"
     finally:
@@ -182,7 +209,9 @@ def main(argv=None, environment=None) -> int:
             "DP-003 image, workflows, artifact": {
                 "passed": not findings and error is None,
                 "known_values": len(values),
+                "scanned": scanned,
                 "findings": findings,
+                "limitations": list(LIMITATIONS),
                 "error": error,
             }
         }

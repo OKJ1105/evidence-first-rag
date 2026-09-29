@@ -144,6 +144,66 @@ class TheReport(unittest.TestCase):
             self.assertEqual(record["error"], "the scan itself failed: FileNotFoundError")
 
 
+class TheScopeOfTheRecord(unittest.TestCase):
+    """`passed` is a verdict over what the scan read. The record names those
+    targets and states what it leaves out, so a file a later deploy step writes
+    into the uploaded artifact is never covered by implication (#253 B3)."""
+
+    def run_over(self, directory, artifacts, image=None):
+        out = pathlib.Path(directory) / "scan.json"
+        original = secrets_scan.scan_image
+        secrets_scan.scan_image = image or (lambda *arguments: None)
+        try:
+            status = secrets_scan.main(
+                ["--image", "SAMPLE_IMAGE", "--workflows", str(pathlib.Path(directory) / "workflows"),
+                 "--artifacts", *artifacts, "--out", str(out), "--scanner", str(SCANNER)],
+                environment={"MVP_RUNTIME_PASSWORD": VALUE},
+            )
+        finally:
+            secrets_scan.scan_image = original
+        return status, json.loads(out.read_text())["DP-003 image, workflows, artifact"]
+
+    def test_the_record_names_every_target_it_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "workflows").mkdir()
+            (root / "workflows" / "sample.yml").write_text("name: Sample\n", encoding="utf-8")
+            (root / "kept.json").write_text("{}\n", encoding="utf-8")
+            status, record = self.run_over(directory, [str(root / "kept.json")])
+            self.assertEqual(status, 0)
+            self.assertTrue(record["passed"])
+            self.assertEqual(record["scanned"]["image"], "SAMPLE_IMAGE")
+            self.assertEqual(record["scanned"]["workflows"], [(root / "workflows" / "sample.yml").as_posix()])
+            self.assertEqual(record["scanned"]["artifacts"], [(root / "kept.json").as_posix()])
+
+    def test_a_file_that_was_not_there_is_not_named_as_read(self):
+        """An artifact a failed step never wrote is absent from `scanned`,
+        rather than counted as a target that passed."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "workflows").mkdir()
+            _status, record = self.run_over(directory, [str(root / "absent.json")])
+            self.assertEqual(record["scanned"]["artifacts"], [])
+
+    def test_a_passing_record_states_what_it_does_not_cover(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "workflows").mkdir()
+            _status, record = self.run_over(directory, [])
+            self.assertEqual(record["limitations"], list(secrets_scan.LIMITATIONS))
+            self.assertTrue(record["limitations"])
+
+    def test_an_image_the_scan_did_not_finish_is_not_named_as_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "workflows").mkdir()
+
+            def broken(*arguments):
+                raise OSError("SAMPLE")
+
+            status, record = self.run_over(directory, [], image=broken)
+            self.assertEqual(status, 1)
+            self.assertIsNone(record["scanned"]["image"])
+
+
 class TheScannerLocation(unittest.TestCase):
     """The deploy job installs the package (`pip install .`), so the module
     runs from site-packages while the job's working directory is the checkout.
