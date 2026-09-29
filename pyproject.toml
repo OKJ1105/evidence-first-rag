@@ -57,7 +57,9 @@ adapter = ["anthropic>=1.4"]
 # extra run `tests/test_mcp_surface.py` without a workflow change.
 api = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
+    # `mcp` 2.2 itself requires uvicorn >= 0.31.1; stating the same floor here
+    # keeps the two from being resolved against each other.
+    "uvicorn[standard]>=0.31.1",
     "httpx>=0.27",
     "mcp>=2.2,<3",
 ]

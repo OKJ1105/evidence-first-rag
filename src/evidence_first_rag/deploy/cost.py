@@ -89,7 +89,7 @@ METERS = {
     },
     "postgresql_b1ms_compute": {
         "filter": (
-            "serviceName eq 'Azure Database for PostgreSQL' and skuName eq 'B1ms'"
+            "serviceName eq 'Azure Database for PostgreSQL' and skuName eq 'B1MS'"
             " and contains(productName, 'Flexible Server') and priceType eq 'Consumption'"
         ),
         "unit_of_measure": "1 Hour",
@@ -99,7 +99,7 @@ METERS = {
     "postgresql_storage_gb": {
         "filter": (
             "serviceName eq 'Azure Database for PostgreSQL'"
-            " and contains(productName, 'Flexible Server Storage')"
+            " and contains(productName, 'Flex Server Storage')"
             " and meterName eq 'Storage Data Stored' and priceType eq 'Consumption'"
         ),
         "unit_of_measure": "1 GB/Month",
@@ -405,6 +405,7 @@ def main(argv=None) -> int:
                 "ceiling_after_fixed_cost": daily_ceiling(remaining, per_call) if remaining > 0 else 0,
             }
         )
+    remaining = args.budget_jpy - fixed
 
     json.dump(
         {
@@ -433,6 +434,19 @@ def main(argv=None) -> int:
                 "max_tokens_output": MAX_TOKENS,
             },
             "ceilings": rows,
+            # The arithmetic behind `ceiling_after_fixed_cost`, so a zero reads
+            # as what it is: the day's remaining budget does not cover one
+            # worst-case call, not an error in the computation.
+            "after_fixed_cost": {
+                "monthly_remaining_jpy": round(remaining, 2),
+                "daily_remaining_jpy": round(remaining / DAYS_PER_MONTH, 4),
+                "formula": "floor((monthly_budget - monthly_fixed) / 30 / cost_per_call_upper_bound)",
+                "note": (
+                    "cost_per_call_upper_bound is the worst case Section 8.3 registers: a request at the"
+                    " relay's full body limit, every tool round billed. A ceiling of 0 means that worst"
+                    " case exceeds one day's share of what the fixed cost leaves."
+                ),
+            },
         },
         sys.stdout,
         indent=2,
