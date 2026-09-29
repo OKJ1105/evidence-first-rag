@@ -266,7 +266,9 @@ def cost_per_call_jpy(*, input_tokens, tool_result_tokens, tool_calls, input_usd
 
 
 def daily_ceiling(budget_jpy: float, per_call_jpy: float) -> int:
-    """`floor((monthly_budget / 30) / cost_per_call_upper_bound)`."""
+    """`floor((monthly_budget / 30) / cost_per_call_upper_bound)`: the worst-case
+    count a daily share allows. Reported, not registered, since `relay-v0.1`
+    `0.3.0` (ADR-0006)."""
     return math.floor((budget_jpy / DAYS_PER_MONTH) / per_call_jpy)
 
 
