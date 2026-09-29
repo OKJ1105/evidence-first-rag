@@ -222,7 +222,7 @@ class TheRequestShape(RelayCase):
             "an extra key on a turn": json.dumps(
                 {"messages": [{"role": "user", "content": "SAMPLE_A", "name": "SAMPLE_B"}]}
             ),
-            "a body over 16 KiB": json.dumps({"messages": [person("S")], "pad": "S" * (16 * 1024)}),
+            "a body over 32 KiB": json.dumps({"messages": [person("S")], "pad": "S" * (32 * 1024)}),
         }
         for name, raw in cases.items():
             with self.subTest(case=name):
@@ -230,7 +230,7 @@ class TheRequestShape(RelayCase):
                 self.assert_refused(self.post(client, raw=raw), "malformed_request", 400)
         self.assertEqual(self.stub.calls, [])
 
-    def test_RL_019_a_relay_turn_of_32_KiB_plus_one_byte(self):
+    def test_RL_019_a_relay_turn_of_16_KiB_plus_one_byte(self):
         client = self.relay()
 
         def turn_of(size):
@@ -241,9 +241,31 @@ class TheRequestShape(RelayCase):
             self.assertEqual(len(relay._serialized(content)), size)
             return [person("SAMPLE_A"), {"role": "assistant", "content": content}, person("SAMPLE_B")]
 
-        self.assert_refused(self.post(client, turn_of(12 * 1024 + 1)), "malformed_request", 400)
+        self.assert_refused(self.post(client, turn_of(16 * 1024 + 1)), "malformed_request", 400)
         self.assertEqual(self.stub.calls, [])
-        self.assertEqual(self.post(client, turn_of(12 * 1024)).status_code, 200)
+        self.assertEqual(self.post(client, turn_of(16 * 1024)).status_code, 200)
+
+    def test_RL_021_a_relay_turn_carrying_a_maximal_result_is_accepted(self):
+        """The relay-turn bound admits a turn carrying one `discover_entity`
+        result at `k` = 10, so a candidate can be chosen from it (#248 B1)."""
+        from evidence_first_rag.deploy import cost
+
+        text = cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json")
+        content = [
+            discover_use({}),
+            {
+                "type": "mcp_tool_result",
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "is_error": False,
+                "content": [{"type": "text", "text": text}],
+            },
+            {"type": "text", "text": "SAMPLE_REPLY"},
+        ]
+        self.assertGreater(len(relay._serialized(content)), 12 * 1024)
+        self.assertLessEqual(len(relay._serialized(content)), relay.RELAY_TURN_MAX_BYTES)
+        messages = [person("SAMPLE_A"), {"role": "assistant", "content": content}, person("SAMPLE_B")]
+        self.assertEqual(self.post(self.relay(), messages).status_code, 200)
+        self.assertEqual(len(self.stub.calls), 1)
 
 
 class TheCall(RelayCase):
@@ -644,8 +666,8 @@ class TheMemoryBounds(RelayCase):
         with self.assertRaises(relay.Refused) as raised:
             asyncio.run(relay.bounded_body(Streaming()))
         self.assertEqual(raised.exception.kind, "malformed_request")
-        # 16 KiB is 16 chunks; the 17th crosses the bound and reading stops.
-        self.assertEqual(len(consumed), 17)
+        # 32 KiB is 32 chunks; the 33rd crosses the bound and reading stops.
+        self.assertEqual(len(consumed), 33)
 
     def test_a_declared_length_over_the_bound_is_refused_unread(self):
         import asyncio
@@ -653,7 +675,7 @@ class TheMemoryBounds(RelayCase):
         read = []
 
         class Declared:
-            headers = {"content-length": str(16 * 1024 + 1)}
+            headers = {"content-length": str(32 * 1024 + 1)}
 
             async def stream(self):
                 read.append(1)

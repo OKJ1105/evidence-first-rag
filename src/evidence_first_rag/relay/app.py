@@ -76,8 +76,8 @@ BLOCK_TYPES = frozenset({"text", "mcp_tool_use", "mcp_tool_result"})
 
 # Section 4.2.
 PERSON_TURN_MAX_CHARACTERS = 500
-BODY_MAX_BYTES = 16 * 1024
-RELAY_TURN_MAX_BYTES = 12 * 1024
+BODY_MAX_BYTES = 32 * 1024
+RELAY_TURN_MAX_BYTES = 16 * 1024
 
 # Section 4.6.
 PERSON_TURN_LIMIT = 10
