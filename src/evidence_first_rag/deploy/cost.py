@@ -22,7 +22,7 @@ What it does, in order:
    is counted the same way. Output is `max_tokens`. The model's per-token
    prices and the exchange rate are the owner's to read and pass in, with
    where and when they were read: no API publishes them.
-3. **The daily ceiling**, by Section 8.3's formula, for each number of tool
+3. **The worst-case count** a budget share would allow, for each number of tool
    calls per model call from 1 to `--max-tool-calls` (see below).
 
 **Maximal in tokens, not only in bytes.** Section 4.2 admits *any* body up to
