@@ -88,6 +88,58 @@ class TheMaximalRequest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
+class OneFullDiscoveryResultAsARelayTurn(unittest.TestCase):
+    """What `relay-v0.1` Section 4.2's relay-turn bound does to a conversation
+    carrying one `discover_entity` result at `entity-discovery-v0.1` Section
+    4.6's `k` = 10.
+
+    Registered because nothing else measured it. `RL-019` builds its oversized
+    turn from filler text and `RL-010` from a two-candidate stub, so both are
+    silent about the size of a full result -- and `maximal_messages` above
+    measures the body bound, not what one real tool result costs inside it. The
+    connector puts the whole `entity-discovery-v0.1` envelope into the result's
+    `content` as `mcp-v0.1` Section 4.2's canonical JSON, the relay returns that
+    `content` unchanged (Section 4.4), and the page echoes it back verbatim as
+    the next request's relay turn (Section 4.2), so the size below is what the
+    deployed surface has to carry.
+
+    **As the bounds stand it cannot.** One such result is over 13 KiB once it is
+    escaped into a relay turn, above `RELAY_TURN_MAX_BYTES`, so a conversation
+    that carries one admits no further turn at all -- sharper than Section 4.2's
+    "reaches the bound in a few exchanges", and it makes `RL-010`'s
+    across-turns scope check unreachable at full result size on that surface.
+    The two figures are the repository owner's to set under Section 10; this
+    case records the measurement that decision needs. If the owner raises
+    `RELAY_TURN_MAX_BYTES` above the measured size, both cases below become
+    their opposite: the turn is admitted, and the body bound is what such a
+    conversation then runs out of.
+    """
+
+    def relay_turn(self) -> dict:
+        text = cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json")
+        return {
+            "role": "assistant",
+            "content": [{"type": "mcp_tool_result", "content": [{"type": "text", "text": text}]}],
+        }
+
+    def test_it_is_over_the_relay_turn_bound_and_under_the_body_bound(self):
+        size = len(relay._serialized(self.relay_turn()["content"]))
+        # The measured magnitude, so it stays visible whatever the bounds become.
+        self.assertGreater(size, 13 * 1024)
+        self.assertGreater(size, relay.RELAY_TURN_MAX_BYTES)
+        self.assertLess(size, relay.BODY_MAX_BYTES)
+
+    def test_the_conversation_that_carries_it_admits_no_further_turn(self):
+        """The person's next turn is refused, whichever of the two bounds the
+        conversation crosses first."""
+        person = {"role": "user", "content": "S" * relay.PERSON_TURN_MAX_CHARACTERS}
+        body = relay._serialized({"messages": [person, self.relay_turn(), person]})
+        with self.assertRaises(relay.Refused) as refused:
+            relay.parse_request(body)
+        self.assertEqual(refused.exception.kind, "malformed_request")
+
+
+@unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
 class TheArithmetic(unittest.TestCase):
     def test_the_ceiling_is_section_8_3s_formula(self):
         # 8,000 JPY a month is 266.67 a day; at 1 JPY a call, 266.
