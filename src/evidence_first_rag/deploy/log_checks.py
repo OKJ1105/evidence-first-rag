@@ -11,20 +11,30 @@ Both routes take the marker in the body, never in the URL. The platform's HTTP
 log records query strings, and Section 4.7 forbids request bodies in logs, not
 URLs.
 
-The platform's log store is then read through `az webapp log download`, for
-both apps, until each app's log shows a request to that route. That positive
-control shows the store is capturing each app's requests, so an empty or
-unwired log store cannot pass vacuously. It does not tie the line to this
-request: earlier checks call the same routes, so a lagging store may show
-theirs first. The marker is fresh per run, so what it can miss is only a line
-not yet flushed. So the store is read at least `MINIMUM_READS` times, over
-about two minutes, before a pass is concluded, even when the control is
-already met by an earlier line. The
-case passes when both apps show the path and the marker appears in no file of
-either download. A finding names the file the marker was in, never the line.
+Both requests have to be answered by the app itself, in the app's own
+vocabulary, before the log store is read at all: a request that reached no
+application code carries the marker nowhere, and the store's silence about it
+would be nothing to record (#255 B1).
 
-Each read is bounded. A log store that never shows the request fails the case,
-and the case does not wait forever.
+The platform's log store is then read through `az webapp log download`, for
+both apps, until each app's **own** record of a request to that route is in
+the download. That positive control shows the store is capturing the stream
+Section 4.7 constrains -- the container's standard output, the one place a
+request body could ever appear -- so an empty or unwired log store cannot pass
+vacuously. The route string alone would not show that: the platform's own HTTP
+log records the request line for both apps, and a download carrying only that
+log would meet a looser control while holding no line that could carry a body
+(#255 B2). So each app's control names the shape of its own record. It does not
+tie the line to this request: earlier checks call the same routes, so a lagging
+store may show theirs first. The marker is fresh per run, so what it can miss
+is only a line not yet flushed. So the store is read at least `MINIMUM_READS`
+times, over about two minutes, before a pass is concluded, even when the
+control is already met by an earlier line. The case passes when both apps'
+own records are present and the marker appears in no file of either download.
+A finding names the file the marker was in, never the line.
+
+Each read is bounded. A log store that never shows the app's own record of the
+request fails the case, and the case does not wait forever.
 """
 
 import argparse
@@ -37,6 +47,10 @@ import tempfile
 import time
 import zipfile
 
+# The sibling module's readers, used rather than copied so that a status and a
+# JSON refusal body are read the same way in both.
+from .http_checks import _answer as answer_detail
+from .http_checks import _refusal as refusal_kind
 from .http_checks import fetch as network_fetch
 
 MARKER_PREFIX = "SAMPLE_DP008_"
@@ -48,15 +62,40 @@ PAUSE_SECONDS = 30
 # `DP-009` fills the relay's per-address window just before this case runs.
 RATE_WINDOW_SECONDS = 61
 
+# What each app's own answer to its marked request is. `api-v0.1` Section 4.2
+# answers `POST /v1/discover` with the envelope carrying this contract
+# identifier; `relay-v0.1` Section 4.2 refuses a conversation ending with the
+# relay's turn as `malformed_request`, which its Section 4.6 fixes to 400.
+SURFACE_CONTRACT = "api-v0.1"
+RELAY_REFUSAL = "malformed_request"
+RELAY_REFUSAL_STATUS = 400
+
+# Each app's own record of a request to its route: the terms that have to be in
+# one line of one file of the download. Not the bare route string, which the
+# platform's HTTP log carries for both apps.
+#
+# `relay` writes the Section 4.10 record of `relay/app.py:log_line` -- one JSON
+# line per request, so `"path"`, the route and `"http_status"` are in it, and in
+# no line of the platform's HTTP log. The terms are matched rather than the
+# serialized line, so the separators `log_line` writes with are not part of this.
+#
+# `surface` writes no per-request record of its own beyond uvicorn's access
+# line, which the `infra/main.bicep` entry point does not turn off. That line is
+# not the Section 4.7 JSON line -- that gap is the surface's to close, not this
+# case's -- but it is what the deployed process emits per request, and it is
+# emitted on the stream the case has to establish is in the download.
+SURFACE_RECORD = (f'"POST {DISCOVER_PATH} HTTP/',)
+RELAY_RECORD = ('"path"', f'"{CHAT_PATH}"', '"http_status"')
+
 
 def fresh_marker() -> str:
     return MARKER_PREFIX + secrets.token_hex(8).upper()
 
 
 def send(fetch, surface_host, relay_host, marker, pause):
-    """The two marked requests. Returns their statuses."""
+    """The two marked requests, each as `(status, body)`."""
     discover = json.dumps({"arguments": {"entity_kind": "signal", "term": marker}}).encode()
-    surface_status, _, _ = fetch(
+    surface_status, _, surface_raw = fetch(
         "POST", f"https://{surface_host}{DISCOVER_PATH}", {"Content-Type": "application/json"}, discover
     )
     pause(RATE_WINDOW_SECONDS)
@@ -67,10 +106,59 @@ def send(fetch, surface_host, relay_host, marker, pause):
             {"role": "assistant", "content": [{"type": "text", "text": "SAMPLE_REPLY"}]},
         ]
     }).encode()
-    relay_status, _, _ = fetch(
+    relay_status, _, relay_raw = fetch(
         "POST", f"https://{relay_host}{CHAT_PATH}", {"Content-Type": "application/json"}, chat
     )
-    return surface_status, relay_status
+    return (surface_status, surface_raw), (relay_status, relay_raw)
+
+
+def _envelope(raw) -> bool:
+    """Whether `raw` is the `api-v0.1` Section 4.2 envelope, which only the
+    surface's own route answers with."""
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        return False
+    contract = document.get("contract") if isinstance(document, dict) else None
+    return isinstance(contract, dict) and contract.get("identifier") == SURFACE_CONTRACT
+
+
+def answered(surface, relay):
+    """Whether both marked requests were answered by the apps themselves.
+
+    Not a formality. The marker reaches an app's code only when the app
+    answers, and only the app's own vocabulary tells that from an absence:
+    `fetch` reports a request that produced no answer as `UNREACHABLE`, the
+    platform answers 502 or 503 for a container that has not finished starting,
+    and the relay refuses a request over its rate-limit window with 429 in
+    `Caps.admit_request` -- before `bounded_body` is read, so the marker is
+    never parsed. In each of those the marker never reached the app, while the
+    positive control below is still met by other lines: `DP-009`'s seven
+    requests each leave the relay's own record, and the surface's store holds
+    seven days of `/v1/discover` lines. A case that did not check this would
+    record the Section 4.7 guarantee for a request that ran no application
+    code (#255 B1).
+
+    No response body reaches the detail. The surface's own answer renders the
+    marked term back (Section 4.2) and this detail is committed, so
+    `answer_detail` carries the status alone -- or, where there was no answer at
+    all, the redacted reason, which is what tells a timed-out socket from a
+    name that does not resolve.
+    """
+    surface_status, surface_raw = surface
+    relay_status, relay_raw = relay
+    problems = []
+    if surface_status != 200 or not _envelope(surface_raw):
+        problems.append(
+            f"the surface answered {answer_detail(surface_status, surface_raw)},"
+            f" not a 200 carrying its own {SURFACE_CONTRACT} envelope"
+        )
+    if relay_status != RELAY_REFUSAL_STATUS or refusal_kind(relay_raw) != RELAY_REFUSAL:
+        problems.append(
+            f"the relay answered {answer_detail(relay_status, relay_raw)},"
+            f" not its own {RELAY_REFUSAL_STATUS} {RELAY_REFUSAL} refusal"
+        )
+    return (not problems), "; ".join(problems)
 
 
 def read_zip(data: bytes):
@@ -82,26 +170,37 @@ def read_zip(data: bytes):
             yield info.filename, archive.read(info).decode("utf-8", errors="replace")
 
 
-def inspect(files, marker, path):
-    """(files the marker is in, whether the request's path was logged)."""
+def inspect(files, marker, record):
+    """(files the marker is in, whether the app's own record of the request is
+    in one of them).
+
+    The marker is looked for in every file, including the platform's own logs.
+    The control wants every term of `record` in **one line**: a term in one file
+    and another term in another file is not a record of a request.
+    """
     marked, seen = [], False
     for name, text in files:
         if marker in text:
             marked.append(name)
-        if path in text:
-            seen = True
+        if not seen:
+            seen = any(all(term in line for term in record) for line in text.splitlines())
     return marked, seen
 
 
 def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None, pause=time.sleep):
     """`download(app)` returns that app's log download as zip bytes."""
     marker = marker or fresh_marker()
-    statuses = send(fetch, surface_host, relay_host, marker, pause)
+    surface_answer, relay_answer = send(fetch, surface_host, relay_host, marker, pause)
+    reached, problem = answered(surface_answer, relay_answer)
+    if not reached:
+        # No log store is read: there is nothing this run put in one.
+        return False, f"the marked request reached no application code, so nothing was read: {problem}"
+    statuses = f"request statuses {surface_answer[0]} and {relay_answer[0]}"
     marked, seen = {}, {surface: False, relay: False}
-    paths = {surface: DISCOVER_PATH, relay: CHAT_PATH}
+    records = {surface: SURFACE_RECORD, relay: RELAY_RECORD}
     for attempt in range(ATTEMPTS):
         for app in (surface, relay):
-            found, logged = inspect(read_zip(download(app)), marker, paths[app])
+            found, logged = inspect(read_zip(download(app)), marker, records[app])
             if found:
                 marked[app] = sorted(set(marked.get(app, [])) | set(found))
             seen[app] = seen[app] or logged
@@ -109,11 +208,14 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
             break
         pause(PAUSE_SECONDS)
     if marked:
-        return False, f"the marker is in {marked}; request statuses {statuses}"
+        return False, f"the marker is in {marked}; {statuses}"
     if not all(seen.values()):
         missing = sorted(app for app, logged in seen.items() if not logged)
-        return False, f"the request never appeared in the log store of {missing}; request statuses {statuses}"
-    return True, f"the marker is in no log file of either app; request statuses {statuses}"
+        return False, (
+            f"no file downloaded for {missing} holds that app's own record of a request to its"
+            f" route, so the stream Section 4.7 constrains was not inspected; {statuses}"
+        )
+    return True, f"the marker is in no log file of either app; {statuses}"
 
 
 def az_download(group):
