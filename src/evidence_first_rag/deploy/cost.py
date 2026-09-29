@@ -53,7 +53,9 @@ The output is one JSON document: prices, counts, dates and the arithmetic. It
 holds no secret. Since `relay-v0.1` `0.3.0` it is the worst-case evidence
 Section 8.3 cites, and it gives the fixed cost the workspace spend limit is
 computed from. It no longer sets `EFR_RELAY_DAILY_CEILING`, which Section 8.3
-registers directly (ADR-0006).
+registers directly (ADR-0006). The output key `ceiling_section_8_3` keeps its
+name so that records before and after `0.3.0` compare; it is the worst-case
+count over the whole budget, and nothing registers it.
 """
 
 import argparse
