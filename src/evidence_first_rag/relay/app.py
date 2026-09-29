@@ -40,7 +40,7 @@ import starlette.routing
 from ..adapter.revalidation import is_verbatim
 
 IDENTIFIER = "relay-v0.1"
-CONTRACT_VERSION = "0.2.0"
+CONTRACT_VERSION = "0.3.0"
 
 PATH = "/chat"
 
@@ -292,9 +292,9 @@ class Caps:
     """The per-client rate limit and the per-day ceiling on model calls.
 
     In memory, so both reset when the process restarts: `deploy-v0.1` runs one
-    `relay` instance, and the Azure budget alert and the Anthropic Console
-    usage limit are the backstops Section 4.6 names for what a restart
-    forgets. `ceiling` of `None` means none is registered, and then every
+    `relay` instance, and what a restart forgets is still bounded in money by
+    the API key's workspace spend limit (Section 8.3, ADR-0006), with the
+    Azure budget alert as the backstop. `ceiling` of `None` means none is registered, and then every
     request is refused: the relay fails closed and never runs uncapped.
     """
 

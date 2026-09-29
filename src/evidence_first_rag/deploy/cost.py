@@ -22,7 +22,7 @@ What it does, in order:
    is counted the same way. Output is `max_tokens`. The model's per-token
    prices and the exchange rate are the owner's to read and pass in, with
    where and when they were read: no API publishes them.
-3. **The daily ceiling**, by Section 8.3's formula, for each number of tool
+3. **The worst-case count** a budget share would allow, for each number of tool
    calls per model call from 1 to `--max-tool-calls` (see below).
 
 **Maximal in tokens, not only in bytes.** Section 4.2 admits *any* body up to
@@ -45,13 +45,17 @@ passes, each carrying the conversation *and the rounds already accumulated in
 it*, plus `max_tokens` of output. The owner chooses N. Section 8.3's
 single-result reading is the N = 1 row.
 
-**The fixed cost is reported beside the formula, not inside it.** Section
-8.3's formula divides the whole monthly budget by the per-call bound. The
-fixed cost comes out of the same budget, so the output also gives the ceiling
-over what remains after it. The owner decides which to register.
+**The fixed cost is reported beside the worst-case counts, not inside them.**
+The counts divide a daily share of the budget by the per-call bound, with and
+without the fixed cost taken out first.
 
 The output is one JSON document: prices, counts, dates and the arithmetic. It
-holds no secret, and it is the evidence `EFR_RELAY_DAILY_CEILING` is set from.
+holds no secret. Since `relay-v0.1` `0.3.0` it is the worst-case evidence
+Section 8.3 cites, and it gives the fixed cost the workspace spend limit is
+computed from. It no longer sets `EFR_RELAY_DAILY_CEILING`, which Section 8.3
+registers directly (ADR-0006). The output key `ceiling_section_8_3` keeps its
+name so that records before and after `0.3.0` compare; it is the worst-case
+count over the whole budget, and nothing registers it.
 """
 
 import argparse
@@ -262,7 +266,9 @@ def cost_per_call_jpy(*, input_tokens, tool_result_tokens, tool_calls, input_usd
 
 
 def daily_ceiling(budget_jpy: float, per_call_jpy: float) -> int:
-    """`floor((monthly_budget / 30) / cost_per_call_upper_bound)`."""
+    """`floor((monthly_budget / 30) / cost_per_call_upper_bound)`: the worst-case
+    count a daily share allows. Reported, not registered, since `relay-v0.1`
+    `0.3.0` (ADR-0006)."""
     return math.floor((budget_jpy / DAYS_PER_MONTH) / per_call_jpy)
 
 

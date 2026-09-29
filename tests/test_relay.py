@@ -362,7 +362,7 @@ class TheResponse(RelayCase):
         self.assertEqual(body["stop_reason"], "end_turn")
         self.assertEqual(
             body["relay"],
-            {"identifier": "relay-v0.1", "version": "0.2.0", "model": "claude-haiku-4-5"},
+            {"identifier": "relay-v0.1", "version": "0.3.0", "model": "claude-haiku-4-5"},
         )
 
     def test_RL_020_a_tool_refusal_passes_through(self):
