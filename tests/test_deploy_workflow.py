@@ -192,6 +192,22 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertIn("evidence-first-rag:$target", rollback)
 
 
+class TheSecretScan(unittest.TestCase):
+    """`DP-003`'s image, workflow and artifact half runs in the checks step,
+    after every artifact it scans is written, and its record is uploaded."""
+
+    def test_the_scan_runs_last_and_fails_the_step(self):
+        checks = step("Run the deployed checks")
+        scan = checks.index("evidence_first_rag.deploy.secrets_scan")
+        self.assertGreater(scan, checks.index("tee compare.json"))
+        self.assertIn('failed="$failed DP-003"', checks[scan:])
+        for artifact in ("conformance.json", "http-checks.json", "azure-checks.json", "compare.json"):
+            self.assertIn(artifact, checks[scan:checks.index("--out secret-scan.json")])
+
+    def test_the_scan_record_is_uploaded(self):
+        self.assertIn("secret-scan.json", step("Upload the deploy record"))
+
+
 class TheRelayCeiling(unittest.TestCase):
     """`DP-016`, `deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`
     Section 8.3 registers, so the relay never starts with none (and then

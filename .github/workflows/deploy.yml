@@ -13,11 +13,10 @@
 # This file is the first half of the deploy. It builds and ships one commit:
 # the three database secrets, the provisioning definitions, the image, and the
 # database provisioned from that commit inside a firewall window that is always
-# closed; then the Section 4.8 deployed checks (DP-003's settings half, DP-004,
-# DP-005, DP-007, DP-009, DP-010, DP-012, DP-014 and the WF rows) and, on a
-# failure, the rollback to the last passing commit, with DP-006, DP-007's
-# comparison and DP-011. DP-003's image and artifact scan, DP-008 and the MC
-# rows remain.
+# closed; then the Section 4.8 deployed checks (DP-003, DP-004, DP-005,
+# DP-007, DP-009, DP-010, DP-012, DP-014 and the WF rows) and, on a failure,
+# the rollback to the last passing commit, with DP-006, DP-007's comparison
+# and DP-011. DP-008 and the MC rows remain.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
 # reads the five identifiers #205 lists from the `production` environment's
@@ -322,6 +321,15 @@ jobs:
             --deployed-digest stable-digest.json --local-digest local-stable-digest.json \
             --deployed-conformance conformance.json --local-conformance local-conformance.json \
             | tee compare.json || failed="$failed DP-006/DP-007"
+          # DP-003's image, workflow and artifact half, last, so every artifact
+          # this step wrote is scanned for the passwords it holds (#253).
+          python -m evidence_first_rag.deploy.secrets_scan \
+            --image "${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$COMMIT" \
+            --workflows .github/workflows \
+            --artifacts conformance.json writes.json http-checks.json azure-checks.json \
+              stable-digest.json local-conformance.json local-stable-digest.json compare.json \
+            --out secret-scan.json \
+            || failed="$failed DP-003"
           if [ -n "$failed" ]; then
             echo "failed:$failed"
             exit 1
@@ -465,4 +473,5 @@ jobs:
             expected-digest.json
             stable-digest.json
             local-stable-digest.json
+            secret-scan.json
           if-no-files-found: warn
