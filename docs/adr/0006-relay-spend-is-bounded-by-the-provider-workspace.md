@@ -26,7 +26,7 @@ The worst case is also far from the typical request. A count cannot tell a short
 - Its monthly spend limit is set to at most the budget left after the fixed cost, converted at the recorded rate. On the 2026-09-29 record that is USD 8.
 - The provider refuses calls past the limit. The relay then answers `model_unavailable` until the month turns or the limit is raised.
 
-**The relay keeps every cap ADR-0005 item 5 lists:** the per-client rate limit, the turn limit, the fixed `max_tokens` and a daily ceiling past which it refuses. The daily ceiling changes role. It keeps one day from spending the month (`relay-v0.1` Section 8.3 registers 67), and no longer carries the budget arithmetic.
+**The relay keeps every cap ADR-0005 item 5 lists:** the per-client rate limit, the turn limit, the fixed `max_tokens` and a daily ceiling past which it refuses. The daily ceiling changes role: it no longer carries the budget arithmetic, and it is not a monthly guarantee. At the registered 67 (`relay-v0.1` Section 8.3), one day at the ceiling costs about 932 JPY at one tool call per model call (67 × 13.9081), which is most of the month's 1,262 JPY, and about 1,560 JPY at two (67 × 23.2859), which is more than the month holds; the relay's counters are in memory, so a restart re-arms the day. It is a brake on a runaway day. The workspace spend limit is what bounds the month, and the provider's refusal — which the relay answers as `model_unavailable` — is what stops it.
 
 **This supersedes one sentence of ADR-0005 item 5:** the Console limit is no longer only a backstop. The Azure budget alert remains a backstop.
 
@@ -41,5 +41,5 @@ The worst case is also far from the typical request. A count cannot tell a short
 
 - **What bounds spend is a setting outside this repository.** No check here can read it. `relay-v0.1` Section 8.3 therefore makes the owner's recorded statement that the limit is set its acceptance evidence, recorded before the first deployed run.
 - **A month can end early.** Once the limit is reached, every visitor sees `model_unavailable` until the month turns. The page must render it as the relay's refusal, and that obligation is unchanged.
-- **The worst-case computation stays committed.** It states what the limit buys at worst: about 91 worst-case calls a month at one tool call.
+- **The worst-case computation stays committed.** It states what the limit buys at worst: about 91 worst-case calls a month at one tool call. The daily ceiling of 67, about 2,000 calls over a 30-day month, therefore binds only traffic well short of the worst case; past that the spend limit is reached first and the ceiling is never the cap that refuses.
 - **A misconfigured key breaks the bound.** A key from a workspace without the limit, or shared with other use, voids it. The deployment's key must come from the dedicated workspace, and replacing the key repeats the owner's statement.
