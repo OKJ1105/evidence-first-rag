@@ -16,7 +16,7 @@ What it does, in order:
    item, matches two, or is priced per a unit other than the one the monthly
    arithmetic assumes stops the run.
 2. **The per-call upper bound** (`relay-v0.1` Section 8.3). The input tokens of
-   a registered maximal request -- 128 KiB of conversation, the Section 4.9
+   a registered maximal request -- a full Section 4.2 body, the Section 4.9
    text and the `discover_entity` definition -- are **counted by the API's
    token-counting endpoint**, not estimated. A registered maximal tool result
    is counted the same way. Output is `max_tokens`. The model's per-token
@@ -25,8 +25,8 @@ What it does, in order:
 3. **The daily ceiling**, by Section 8.3's formula, for each number of tool
    calls per model call from 1 to `--max-tool-calls` (see below).
 
-**Maximal in tokens, not only in bytes.** Section 4.2 admits *any* 128 KiB
-body, and a tokenizer charges two bodies of the same size very differently: a
+**Maximal in tokens, not only in bytes.** Section 4.2 admits *any* body up to
+its bound, and a tokenizer charges two bodies of the same size very differently: a
 run of one repeated character merges into multi-character tokens, while
 high-entropy text approaches one token per byte. So the conversation is filled
 with deterministic mixed-case noise rather than a repeated character, and the
@@ -168,7 +168,7 @@ def filler(size: int, seed: int) -> str:
 def maximal_messages() -> list:
     """Ten person's turns of 500 characters, nine relay turns between them,
     each relay turn as large as Section 4.2 admits while the whole body stays
-    within 128 KiB. Every turn is `filler`, so the request is maximal in
+    within the body bound. Every turn is `filler`, so the request is maximal in
     tokens and not only in bytes. Deterministic: the same list every run."""
     relays = PERSON_TURN_LIMIT - 1
     sample = {"role": "user", "content": filler(PERSON_TURN_MAX_CHARACTERS, 1)}

@@ -29,7 +29,7 @@ class TheMaximalRequest(unittest.TestCase):
         self.assertEqual(relay.parse_request(body), cost.maximal_messages())
 
     def test_it_is_within_one_relay_turn_of_the_bound(self):
-        """Maximal: the body is under 128 KiB by less than the slack the nine
+        """Maximal: the body is under the bound by less than the slack the nine
         relay turns share, so no admitted request is larger by more."""
         body = relay._serialized({"messages": cost.maximal_messages()})
         self.assertLessEqual(len(body), relay.BODY_MAX_BYTES)
@@ -85,6 +85,45 @@ class TheMaximalRequest(unittest.TestCase):
         for key in ("alias_provenance", "parent_messages"):
             for entry in widened["source_trace"][key]:
                 self.assertIn(entry, original["source_trace"][key])
+
+
+@unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
+class OneFullDiscoveryResultAsARelayTurn(unittest.TestCase):
+    """What `relay-v0.1` Section 4.2's relay-turn bound does to a conversation
+    carrying one `discover_entity` result at `entity-discovery-v0.1` Section
+    4.6's `k` = 10.
+
+    Registered because nothing else measured it (#248 B2). The connector puts
+    the whole envelope into the result's `content` as `mcp-v0.1` Section 4.2's
+    canonical JSON, the relay returns that `content` unchanged (Section 4.4),
+    and the page echoes it back verbatim as the next request's relay turn
+    (Section 4.2), so the size below is what the deployed surface has to carry.
+    The bounds were set above it on #247: such a turn is admitted, and a
+    candidate can be chosen from it (`RL-010`, `RL-021`).
+
+    One copy of the result is counted. Whether the connector also carries
+    `structuredContent` into the relay turn is unverified until the first
+    deploy (`cost.TOOL_RESULT_CARRIAGE_COPIES`).
+    """
+
+    def relay_turn(self) -> dict:
+        text = cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json")
+        return {
+            "role": "assistant",
+            "content": [{"type": "mcp_tool_result", "content": [{"type": "text", "text": text}]}],
+        }
+
+    def test_it_is_under_the_relay_turn_bound(self):
+        size = len(relay._serialized(self.relay_turn()["content"]))
+        # The measured magnitude, so it stays visible whatever the bounds become.
+        self.assertGreater(size, 13 * 1024)
+        self.assertLessEqual(size, relay.RELAY_TURN_MAX_BYTES)
+
+    def test_the_conversation_that_carries_it_admits_a_further_turn(self):
+        person = {"role": "user", "content": "S" * relay.PERSON_TURN_MAX_CHARACTERS}
+        body = relay._serialized({"messages": [person, self.relay_turn(), person]})
+        self.assertLessEqual(len(body), relay.BODY_MAX_BYTES)
+        relay.parse_request(body)
 
 
 @unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
