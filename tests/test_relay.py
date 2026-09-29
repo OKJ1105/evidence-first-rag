@@ -222,7 +222,7 @@ class TheRequestShape(RelayCase):
             "an extra key on a turn": json.dumps(
                 {"messages": [{"role": "user", "content": "SAMPLE_A", "name": "SAMPLE_B"}]}
             ),
-            "a body over 128 KiB": json.dumps({"messages": [person("S")], "pad": "S" * (128 * 1024)}),
+            "a body over 16 KiB": json.dumps({"messages": [person("S")], "pad": "S" * (16 * 1024)}),
         }
         for name, raw in cases.items():
             with self.subTest(case=name):
@@ -241,9 +241,9 @@ class TheRequestShape(RelayCase):
             self.assertEqual(len(relay._serialized(content)), size)
             return [person("SAMPLE_A"), {"role": "assistant", "content": content}, person("SAMPLE_B")]
 
-        self.assert_refused(self.post(client, turn_of(32 * 1024 + 1)), "malformed_request", 400)
+        self.assert_refused(self.post(client, turn_of(12 * 1024 + 1)), "malformed_request", 400)
         self.assertEqual(self.stub.calls, [])
-        self.assertEqual(self.post(client, turn_of(32 * 1024)).status_code, 200)
+        self.assertEqual(self.post(client, turn_of(12 * 1024)).status_code, 200)
 
 
 class TheCall(RelayCase):
@@ -309,7 +309,7 @@ class TheResponse(RelayCase):
         self.assertEqual(body["stop_reason"], "end_turn")
         self.assertEqual(
             body["relay"],
-            {"identifier": "relay-v0.1", "version": "0.1.0", "model": "claude-haiku-4-5"},
+            {"identifier": "relay-v0.1", "version": "0.2.0", "model": "claude-haiku-4-5"},
         )
 
     def test_RL_020_a_tool_refusal_passes_through(self):
@@ -644,8 +644,8 @@ class TheMemoryBounds(RelayCase):
         with self.assertRaises(relay.Refused) as raised:
             asyncio.run(relay.bounded_body(Streaming()))
         self.assertEqual(raised.exception.kind, "malformed_request")
-        # 128 KiB is 128 chunks; the 129th crosses the bound and reading stops.
-        self.assertEqual(len(consumed), 129)
+        # 16 KiB is 16 chunks; the 17th crosses the bound and reading stops.
+        self.assertEqual(len(consumed), 17)
 
     def test_a_declared_length_over_the_bound_is_refused_unread(self):
         import asyncio
@@ -653,7 +653,7 @@ class TheMemoryBounds(RelayCase):
         read = []
 
         class Declared:
-            headers = {"content-length": str(128 * 1024 + 1)}
+            headers = {"content-length": str(16 * 1024 + 1)}
 
             async def stream(self):
                 read.append(1)

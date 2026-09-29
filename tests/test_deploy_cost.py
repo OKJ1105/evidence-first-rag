@@ -29,7 +29,7 @@ class TheMaximalRequest(unittest.TestCase):
         self.assertEqual(relay.parse_request(body), cost.maximal_messages())
 
     def test_it_is_within_one_relay_turn_of_the_bound(self):
-        """Maximal: the body is under 128 KiB by less than the slack the nine
+        """Maximal: the body is under the bound by less than the slack the nine
         relay turns share, so no admitted request is larger by more."""
         body = relay._serialized({"messages": cost.maximal_messages()})
         self.assertLessEqual(len(body), relay.BODY_MAX_BYTES)

@@ -168,7 +168,7 @@ def filler(size: int, seed: int) -> str:
 def maximal_messages() -> list:
     """Ten person's turns of 500 characters, nine relay turns between them,
     each relay turn as large as Section 4.2 admits while the whole body stays
-    within 128 KiB. Every turn is `filler`, so the request is maximal in
+    within the body bound. Every turn is `filler`, so the request is maximal in
     tokens and not only in bytes. Deterministic: the same list every run."""
     relays = PERSON_TURN_LIMIT - 1
     sample = {"role": "user", "content": filler(PERSON_TURN_MAX_CHARACTERS, 1)}
