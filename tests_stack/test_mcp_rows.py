@@ -75,7 +75,10 @@ class Session:
             "clientInfo": {"name": "tests_stack", "version": "0"},
         })
         self.headers["MCP-Protocol-Version"] = self.initialization.get("protocolVersion", PROTOCOL_VERSION)
-        _post(self.url, {"jsonrpc": "2.0", "method": "notifications/initialized"}, self.headers)
+        status, _, raw = _post(self.url, {"jsonrpc": "2.0", "method": "notifications/initialized"}, self.headers)
+        # A notification is accepted with 202 or 200 and no JSON-RPC answer (#258 O1).
+        if status not in (200, 202):
+            raise AssertionError(f"the initialized notification answered HTTP {status}: {raw[:200]!r}")
 
     def request(self, method, params):
         payload = {"jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params}
@@ -129,11 +132,22 @@ class TheEqualityRows(McpCase):
             "/v1/discover", {"arguments": POWERTRAIN | {"entity_kind": "message", "term": "SAMPLE_MSG_ENGINE_STATUS"}}
         )
         self.assertEqual(found["structuredContent"]["result"]["status"], "resolved")
-        self.equal_to_v1("/v1/query", FACT)
+        # The resolved reference is what answers, as `WF-004` threads it (#258 N1).
+        key = found["structuredContent"]["result"]["resolved"]["reference"]["message_key"]
+        answered = self.equal_to_v1("/v1/query", {"route": "message_facts", "arguments": POWERTRAIN | {"message_key": key}})
+        self.assertEqual(answered["structuredContent"]["result"]["status"], "success")
 
     def test_mc_005(self):
-        body = {"arguments": POWERTRAIN | {"entity_kind": "message", "term": "SAMPLE_MSG_DIAGNOSTIC_EVENT"}}
-        self.assertEqual(self.equal_to_v1("/v1/discover", body)["structuredContent"]["result"]["status"], "not_found")
+        """Both of `WF-005`'s bodies (#258 N4)."""
+        for kind, term, scope in (
+            ("message", "SAMPLE_MSG_DIAGNOSTIC_EVENT", POWERTRAIN),
+            ("signal", "SAMPLE_SIG_WHEEL_SPEED_FR", stack.CHASSIS_A),
+        ):
+            with self.subTest(kind=kind):
+                body = {"arguments": scope | {"entity_kind": kind, "term": term}}
+                self.assertEqual(
+                    self.equal_to_v1("/v1/discover", body)["structuredContent"]["result"]["status"], "not_found"
+                )
 
     def test_mc_006(self):
         body = {"arguments": GEAR | {"candidate_set_id": "b" * 64, "selected_rank": "1", "target_route": "signal_facts"}}
@@ -204,6 +218,11 @@ class TheSurfaceRows(McpCase):
             "no arguments key": ("query_facts", {"route": "message_facts"}),
             "an extra key": ("query_facts", {"route": "message_facts", "arguments": {}, "extra": "SAMPLE_X"}),
             "a non-object arguments": ("query_facts", {"route": "message_facts", "arguments": "SAMPLE_X"}),
+            # The one non-string value inside `arguments`, on `select_candidate` (#258 N3).
+            "a numeric selected_rank": (
+                "select_candidate",
+                {"arguments": GEAR | {"candidate_set_id": "b" * 64, "selected_rank": 1, "target_route": "signal_facts"}},
+            ),
         }.items():
             with self.subTest(case=name):
                 outcome = self.session.call(tool, arguments)
@@ -219,6 +238,8 @@ class TheSurfaceRows(McpCase):
     def test_mc_023_tools_and_no_other_capability(self):
         initialization = self.session.initialization
         self.assertEqual(initialization["serverInfo"]["name"], "mcp-v0.1")
+        # A literal, as `test_workflows.py` pins the health contracts (#258 N2).
+        self.assertEqual(initialization["serverInfo"]["version"], "0.1.1")
         self.assertEqual(set(initialization["capabilities"]) - {"experimental"}, {"tools"})
 
 
