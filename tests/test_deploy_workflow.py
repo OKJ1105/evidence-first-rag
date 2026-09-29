@@ -193,7 +193,7 @@ class TheDeployedChecks(unittest.TestCase):
 
 
 class TheRelayCeiling(unittest.TestCase):
-    """`deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`
+    """`DP-016`, `deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`
     Section 8.3 registers, so the relay never starts with none (and then
     refuses every request) or with another number."""
 
@@ -201,9 +201,12 @@ class TheRelayCeiling(unittest.TestCase):
         contract = (ROOT / "docs" / "contracts" / "relay-v0.1.md").read_text(encoding="utf-8")
         section = contract[contract.index("### 8.3"):contract.index("## 9.")]
         registered = re.search(r"per UTC day, registered before the first deployed run[^*]*\*\*(\d+)\*\*", section)
-        self.assertIsNotNone(registered, "Section 8.3 registers no ceiling")
+        self.assertIsNotNone(registered, "relay-v0.1 Section 8.3: no bold ceiling after 'per UTC day, registered before the first deployed run' -- update this pattern if the sentence was reworded")
         infra = step("Apply the provisioning definitions")
         self.assertIn(f'"relayDailyCeiling": {{"value": "{registered.group(1)}"}}', infra)
+        # `DP-016`'s second half: the deployment contract names the same number.
+        deploy = (ROOT / "docs" / "contracts" / "deploy-v0.1.md").read_text(encoding="utf-8")
+        self.assertIn(f"| `EFR_RELAY_DAILY_CEILING` | — | `{registered.group(1)}`,", deploy)
 
 
 class TheSecrets(unittest.TestCase):
