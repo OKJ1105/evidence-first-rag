@@ -189,7 +189,7 @@ class TheMeterReading(unittest.TestCase):
             self.assertIn(meter["per"], cost.UNITS_PER_MONTH, name)
 
 
-
+@unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
 class TheLiveMeterNames(unittest.TestCase):
     """The names the live Retail Prices API used on 2026-09-29, in Japan East."""
 
