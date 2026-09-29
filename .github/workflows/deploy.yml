@@ -454,6 +454,28 @@ jobs:
           ROLLBACK_RESULT: ${{ steps.rollback.outputs.result }}
           ROLLBACK_DATABASE: ${{ steps.rollback.outputs.database }}
 
+      # DP-003 over what the checks step could not see: the deploy record and
+      # the rollback records are written after it, and the record embeds
+      # provision.txt, the output of a step that held all three passwords
+      # (#254 B3). A finding fails the job before anything is uploaded.
+      - name: Scan the deploy record
+        if: always() && steps.infra.outcome == 'success'
+        run: |
+          set -uo pipefail
+          read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
+          PGPASSWORD="$(read_secret postgres-admin-password)" || { echo "Key Vault read failed"; exit 1; }
+          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)" || { echo "Key Vault read failed"; exit 1; }
+          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)" || { echo "Key Vault read failed"; exit 1; }
+          echo "::add-mask::$PGPASSWORD"
+          echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
+          echo "::add-mask::$MVP_RUNTIME_PASSWORD"
+          export PGPASSWORD MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
+          python -m evidence_first_rag.deploy.secrets_scan \
+            --workflows none \
+            --artifacts deploy-record.json provision.txt restored-conformance.json \
+              restored-compare.json restored-digest.json expected-digest.json \
+            --out secret-scan-record.json
+
       - name: Upload the deploy record
         if: always()
         uses: actions/upload-artifact@v4
@@ -474,4 +496,5 @@ jobs:
             stable-digest.json
             local-stable-digest.json
             secret-scan.json
+            secret-scan-record.json
           if-no-files-found: warn

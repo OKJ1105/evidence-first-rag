@@ -247,5 +247,43 @@ class TheCredentialRules(unittest.TestCase):
         self.assertNotIn(ASSIGNED_VALUE, json.dumps(findings))
 
 
+class TheRecordRun(unittest.TestCase):
+    """#254 B3 and N3, N4: the second run over the files written after the
+    checks step, with no image and no workflows."""
+
+    def test_the_record_run_reads_only_the_named_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            record = pathlib.Path(directory) / "deploy-record.json"
+            record.write_text('{"provisioned": "SAMPLE_OK"}')
+            out = pathlib.Path(directory) / "scan.json"
+            called = []
+            original = secrets_scan.scan_image
+            secrets_scan.scan_image = lambda *arguments: called.append(arguments)
+            try:
+                status = secrets_scan.main(
+                    ["--workflows", "none", "--artifacts", str(record), "--out", str(out)],
+                    environment={"PGPASSWORD": VALUE},
+                )
+            finally:
+                secrets_scan.scan_image = original
+            document = json.loads(out.read_text())["DP-003 image, workflows, artifact"]
+        self.assertEqual(status, 0)
+        self.assertEqual(called, [])
+        self.assertEqual(document["scanned"], {"image": None, "workflows": [], "artifacts": [record.as_posix()]})
+
+    def test_the_admin_password_is_a_known_value(self):
+        self.assertEqual(secrets_scan.known_values({"PGPASSWORD": VALUE}), [VALUE])
+
+    def test_the_image_filesystem_reports_how_many_own_files_it_read(self):
+        stream = tar_of({"app/src/a.py": "x", "app/src/b.py": "y", "usr/lib/c": "z"})
+        self.assertEqual(secrets_scan.scan_image_filesystem(stream, [VALUE], [], secrets_scan._shape_rules()), 2)
+
+    def test_a_secret_under_a_secret_shaped_name_in_the_image_env_is_found(self):
+        findings = []
+        value = "S" * 20
+        secrets_scan.scan_image_config({"Env": [f"DB_PASSWORD={value}"]}, [], findings, secrets_scan._shape_rules())
+        self.assertEqual([f["test"] for f in findings], ["assigned-secret"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

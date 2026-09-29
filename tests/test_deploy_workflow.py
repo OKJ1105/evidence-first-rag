@@ -194,7 +194,8 @@ class TheDeployedChecks(unittest.TestCase):
 
 class TheSecretScan(unittest.TestCase):
     """`DP-003`'s image, workflow and artifact half runs in the checks step,
-    after every artifact it scans is written, and its record is uploaded."""
+    after every artifact that step writes; a second run after the deploy record
+    covers what is written later (#254 B3). Both records are uploaded."""
 
     def test_the_scan_runs_last_and_fails_the_step(self):
         checks = step("Run the deployed checks")
@@ -203,6 +204,17 @@ class TheSecretScan(unittest.TestCase):
         self.assertIn('failed="$failed DP-003"', checks[scan:])
         for artifact in ("conformance.json", "http-checks.json", "azure-checks.json", "compare.json"):
             self.assertIn(artifact, checks[scan:checks.index("--out secret-scan.json")])
+
+    def test_the_files_written_after_the_checks_are_scanned_before_upload(self):
+        """#254 B3: the deploy record embeds provision.txt and is committed."""
+        scan = step("Scan the deploy record")
+        for artifact in ("deploy-record.json", "provision.txt", "restored-compare.json", "expected-digest.json"):
+            self.assertIn(artifact, scan)
+        self.assertIn("--out secret-scan-record.json", scan)
+        names = [body.split("\n", 1)[0] for body in steps(jobs()["deploy"])]
+        order = [names.index(f"name: {name}") for name in ("Write the deploy record", "Scan the deploy record", "Upload the deploy record")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn("secret-scan-record.json", step("Upload the deploy record"))
 
     def test_the_scan_record_is_uploaded(self):
         self.assertIn("secret-scan.json", step("Upload the deploy record"))

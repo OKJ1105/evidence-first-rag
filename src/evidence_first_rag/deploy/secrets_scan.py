@@ -34,7 +34,6 @@ its targets; `passed` is a verdict over `scanned` and over nothing else
 
 import argparse
 import importlib.util
-import io
 import json
 import pathlib
 import subprocess
@@ -47,7 +46,7 @@ import tarfile
 SCANNER = pathlib.Path("scripts/checks/scan_sensitive_strings.py")
 
 # The secrets the checks step holds, by the environment variables it exports.
-KNOWN_VALUE_VARIABLES = ("MVP_PROVISIONING_PASSWORD", "MVP_RUNTIME_PASSWORD")
+KNOWN_VALUE_VARIABLES = ("PGPASSWORD", "MVP_PROVISIONING_PASSWORD", "MVP_RUNTIME_PASSWORD")
 
 # Settings an image must never carry: each is a Key Vault reference at run time.
 SECRET_SETTINGS = frozenset(
@@ -76,7 +75,8 @@ LIMITATIONS = (
     "Only the targets named in `scanned` were read. A file the deploy writes"
     " after this scan and uploads with the artifact — the deploy record and the"
     " rollback records — is outside this record, and `passed` says nothing"
-    " about it.",
+    " about it. The deploy job scans those in a second run, recorded as"
+    " `secret-scan-record.json`.",
 )
 
 
@@ -111,8 +111,10 @@ def scan_text(text, where, values, findings, shapes=None, path=None):
                     findings.append({"where": f"{where}:{number}", "test": name})
 
 
-def scan_image_filesystem(tar_stream, values, findings, shapes):
-    """Every regular file of an exported container filesystem."""
+def scan_image_filesystem(tar_stream, values, findings, shapes) -> int:
+    """Every regular file of an exported container filesystem. Returns how
+    many of this repository's own files the shape rules read."""
+    own_files = 0
     with tarfile.open(fileobj=tar_stream, mode="r|*") as archive:
         for member in archive:
             if not member.isfile():
@@ -123,7 +125,9 @@ def scan_image_filesystem(tar_stream, values, findings, shapes):
             text = handle.read().decode("utf-8", errors="replace")
             name = member.name.lstrip("./")
             own = name.startswith(OWN_PREFIX)
+            own_files += own
             scan_text(text, f"image:/{name}", values, findings, shapes if own else None, name)
+    return own_files
 
 
 def scan_image_config(config, values, findings, shapes):
@@ -132,7 +136,9 @@ def scan_image_config(config, values, findings, shapes):
         name, _, value = entry.partition("=")
         if name in SECRET_SETTINGS:
             findings.append({"where": f"image config Env {name}", "test": "secret setting in image"})
-        scan_text(value, f"image config Env {name}", values, findings, shapes)
+        # The whole entry, so a secret under a secret-shaped name is seen as
+        # one (#254 N4).
+        scan_text(entry, f"image config Env {name}", values, findings, shapes)
     for key, value in (config.get("Labels") or {}).items():
         scan_text(str(value), f"image config Label {key}", values, findings, shapes)
     for field in ("Entrypoint", "Cmd"):
@@ -164,21 +170,24 @@ def scan_image(image, values, findings, shapes):
     try:
         exported = subprocess.Popen(["docker", "export", container], stdout=subprocess.PIPE)
         try:
-            scan_image_filesystem(exported.stdout, values, findings, shapes)
+            own_files = scan_image_filesystem(exported.stdout, values, findings, shapes)
         finally:
             exported.stdout.close()
             if exported.wait() != 0:
                 raise RuntimeError("docker export failed")
     finally:
         _docker("rm", container, capture_output=True)
+    if not own_files:
+        # The shape test read nothing of this repository's (#254 N3).
+        raise RuntimeError(f"no file under /{OWN_PREFIX} in the image")
 
 
 def main(argv=None, environment=None) -> int:
     import os
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--image", required=True)
-    parser.add_argument("--workflows", default=".github/workflows")
+    parser.add_argument("--image", help="omitted: the image is not scanned (the record run, #254 B3)")
+    parser.add_argument("--workflows", default=".github/workflows", help="'none': no workflow is scanned")
     parser.add_argument("--artifacts", nargs="*", default=[])
     parser.add_argument("--scanner", default=str(SCANNER))
     parser.add_argument("--out", default="secret-scan.json")
@@ -196,12 +205,14 @@ def main(argv=None, environment=None) -> int:
         # Inside the try: a scanner that cannot be loaded is a scan that did
         # not run, which is a failed case with a record, not a traceback.
         shapes = _shape_rules(arguments.scanner)
-        scanned["workflows"] = scan_files(
-            sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes
-        )
+        if arguments.workflows != "none":
+            scanned["workflows"] = scan_files(
+                sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes
+            )
         scanned["artifacts"] = scan_files(arguments.artifacts, "artifact", values, findings, shapes)
-        scan_image(arguments.image, values, findings, shapes)
-        scanned["image"] = arguments.image
+        if arguments.image:
+            scan_image(arguments.image, values, findings, shapes)
+            scanned["image"] = arguments.image
     except Exception as failure:  # noqa: BLE001 - an unfinished scan is a failed case, recorded
         error = f"the scan itself failed: {type(failure).__name__}"
     finally:
