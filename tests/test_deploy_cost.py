@@ -93,26 +93,17 @@ class OneFullDiscoveryResultAsARelayTurn(unittest.TestCase):
     carrying one `discover_entity` result at `entity-discovery-v0.1` Section
     4.6's `k` = 10.
 
-    Registered because nothing else measured it. `RL-019` builds its oversized
-    turn from filler text and `RL-010` from a two-candidate stub, so both are
-    silent about the size of a full result -- and `maximal_messages` above
-    measures the body bound, not what one real tool result costs inside it. The
-    connector puts the whole `entity-discovery-v0.1` envelope into the result's
-    `content` as `mcp-v0.1` Section 4.2's canonical JSON, the relay returns that
-    `content` unchanged (Section 4.4), and the page echoes it back verbatim as
-    the next request's relay turn (Section 4.2), so the size below is what the
-    deployed surface has to carry.
+    Registered because nothing else measured it (#248 B2). The connector puts
+    the whole envelope into the result's `content` as `mcp-v0.1` Section 4.2's
+    canonical JSON, the relay returns that `content` unchanged (Section 4.4),
+    and the page echoes it back verbatim as the next request's relay turn
+    (Section 4.2), so the size below is what the deployed surface has to carry.
+    The bounds were set above it on #247: such a turn is admitted, and a
+    candidate can be chosen from it (`RL-010`, `RL-021`).
 
-    **As the bounds stand it cannot.** One such result is over 13 KiB once it is
-    escaped into a relay turn, above `RELAY_TURN_MAX_BYTES`, so a conversation
-    that carries one admits no further turn at all -- sharper than Section 4.2's
-    "reaches the bound in a few exchanges", and it makes `RL-010`'s
-    across-turns scope check unreachable at full result size on that surface.
-    The two figures are the repository owner's to set under Section 10; this
-    case records the measurement that decision needs. If the owner raises
-    `RELAY_TURN_MAX_BYTES` above the measured size, both cases below become
-    their opposite: the turn is admitted, and the body bound is what such a
-    conversation then runs out of.
+    One copy of the result is counted. Whether the connector also carries
+    `structuredContent` into the relay turn is unverified until the first
+    deploy (`cost.TOOL_RESULT_CARRIAGE_COPIES`).
     """
 
     def relay_turn(self) -> dict:
@@ -122,21 +113,17 @@ class OneFullDiscoveryResultAsARelayTurn(unittest.TestCase):
             "content": [{"type": "mcp_tool_result", "content": [{"type": "text", "text": text}]}],
         }
 
-    def test_it_is_over_the_relay_turn_bound_and_under_the_body_bound(self):
+    def test_it_is_under_the_relay_turn_bound(self):
         size = len(relay._serialized(self.relay_turn()["content"]))
         # The measured magnitude, so it stays visible whatever the bounds become.
         self.assertGreater(size, 13 * 1024)
-        self.assertGreater(size, relay.RELAY_TURN_MAX_BYTES)
-        self.assertLess(size, relay.BODY_MAX_BYTES)
+        self.assertLessEqual(size, relay.RELAY_TURN_MAX_BYTES)
 
-    def test_the_conversation_that_carries_it_admits_no_further_turn(self):
-        """The person's next turn is refused, whichever of the two bounds the
-        conversation crosses first."""
+    def test_the_conversation_that_carries_it_admits_a_further_turn(self):
         person = {"role": "user", "content": "S" * relay.PERSON_TURN_MAX_CHARACTERS}
         body = relay._serialized({"messages": [person, self.relay_turn(), person]})
-        with self.assertRaises(relay.Refused) as refused:
-            relay.parse_request(body)
-        self.assertEqual(refused.exception.kind, "malformed_request")
+        self.assertLessEqual(len(body), relay.BODY_MAX_BYTES)
+        relay.parse_request(body)
 
 
 @unittest.skipUnless(HAS_RELAY, "the api extra is not installed")
