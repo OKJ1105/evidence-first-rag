@@ -139,6 +139,8 @@ jobs:
                   "commit": {"value": os.environ["COMMIT"]},
                   "keyVaultName": {"value": os.environ["KEY_VAULT"]},
                   "adminSecret": {"value": os.environ["ADMIN"]},
+                  # `relay-v0.1` Section 8.3 registers it; the test pins the two together.
+                  "relayDailyCeiling": {"value": "67"},
               },
           }
           with open(sys.argv[1], "w") as handle:

@@ -192,6 +192,20 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertIn("evidence-first-rag:$target", rollback)
 
 
+class TheRelayCeiling(unittest.TestCase):
+    """`deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`
+    Section 8.3 registers, so the relay never starts with none (and then
+    refuses every request) or with another number."""
+
+    def test_the_workflow_passes_the_registered_ceiling(self):
+        contract = (ROOT / "docs" / "contracts" / "relay-v0.1.md").read_text(encoding="utf-8")
+        section = contract[contract.index("### 8.3"):contract.index("## 9.")]
+        registered = re.search(r"per UTC day, registered before the first deployed run[^*]*\*\*(\d+)\*\*", section)
+        self.assertIsNotNone(registered, "Section 8.3 registers no ceiling")
+        infra = step("Apply the provisioning definitions")
+        self.assertIn(f'"relayDailyCeiling": {{"value": "{registered.group(1)}"}}', infra)
+
+
 class TheSecrets(unittest.TestCase):
     """DP-015: three secrets, written once, never printed."""
 
