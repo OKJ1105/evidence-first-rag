@@ -22,3 +22,8 @@ comparison with an error rather than passing it.
 - `cost-2026-09-29-body-32k.json`: at the 32 KiB body of `0.2.0`. The
   per-call bound is 13.91 JPY at one tool call and 61.11 at five. This is the
   worst-case evidence `relay-v0.1` `0.3.0` Section 8.3 cites.
+
+The `ceiling_section_8_3` and `ceiling_after_fixed_cost` fields in either file
+are worst-case counts reported for comparison. Since `relay-v0.1` `0.3.0`
+neither is registered: the daily ceiling is the 67 that Section 8.3 registers,
+and spend is bounded by the workspace spend limit (ADR-0006).
