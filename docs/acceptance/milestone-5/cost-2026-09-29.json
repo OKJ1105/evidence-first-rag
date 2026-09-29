@@ -1,0 +1,110 @@
+{
+  "computed_at": "2026-09-29T00:47:37.366728+00:00",
+  "region": "japaneast",
+  "monthly_budget_jpy": 8000.0,
+  "azure_meters": {
+    "app_service_plan_b1_linux": {
+      "productName": "Azure App Service Basic Plan - Linux",
+      "skuName": "B1",
+      "meterName": "B1",
+      "unitOfMeasure": "1 Hour",
+      "currencyCode": "JPY",
+      "retailPrice": 3.0271,
+      "effectiveStartDate": "2019-06-01T00:00:00Z",
+      "per": "hour",
+      "quantity": 1,
+      "units_per_month": 730
+    },
+    "postgresql_b1ms_compute": {
+      "productName": "Azure Database for PostgreSQL Flexible Server Burstable BS Series Compute",
+      "skuName": "B1MS",
+      "meterName": "B1MS",
+      "unitOfMeasure": "1 Hour",
+      "currencyCode": "JPY",
+      "retailPrice": 4.1423,
+      "effectiveStartDate": "2021-12-01T00:00:00Z",
+      "per": "hour",
+      "quantity": 1,
+      "units_per_month": 730
+    },
+    "postgresql_storage_gb": {
+      "productName": "Azure Database for PostgreSQL Flex Server Storage",
+      "skuName": "Storage",
+      "meterName": "Storage Data Stored",
+      "unitOfMeasure": "1 GB/Month",
+      "currencyCode": "JPY",
+      "retailPrice": 21.9862,
+      "effectiveStartDate": "2021-06-01T00:00:00Z",
+      "per": "month",
+      "quantity": 32,
+      "units_per_month": 1
+    },
+    "container_registry_basic": {
+      "productName": "Container Registry",
+      "skuName": "Basic",
+      "meterName": "Basic Registry Unit",
+      "unitOfMeasure": "1/Day",
+      "currencyCode": "JPY",
+      "retailPrice": 26.5427,
+      "effectiveStartDate": "2018-01-01T00:00:00Z",
+      "per": "day",
+      "quantity": 1,
+      "units_per_month": 30
+    }
+  },
+  "monthly_fixed_jpy": 6733.5,
+  "model": "claude-haiku-4-5",
+  "model_prices_usd_per_mtok": {
+    "input": 1.0,
+    "output": 5.0,
+    "source": "Anthropic pricing, https://platform.claude.com/docs/en/about-claude/pricing, viewed 2026-09-29 JST"
+  },
+  "jpy_per_usd": {
+    "rate": 157.77,
+    "source": "MUFG Bank, https://www.murc-kawasesouba.jp/fx/index.php?id=200828, 2026-09-28 JST; TTM=(158.77+156.77)/2"
+  },
+  "counted_tokens": {
+    "maximal_request_input": 132140,
+    "maximal_request_counted": 114121,
+    "maximal_request_body_bytes": 131070,
+    "maximal_request_byte_floor": 132140,
+    "call_overhead": 1068,
+    "filler_tokens_per_byte": 0.8625,
+    "maximal_tool_result": 9218,
+    "tool_result_carriage_copies": 2,
+    "tool_result_candidate_count": 10,
+    "max_tokens_output": 1024
+  },
+  "ceilings": [
+    {
+      "tool_calls_per_model_call": 1,
+      "cost_per_call_upper_bound_jpy": 44.9269,
+      "ceiling_section_8_3": 5,
+      "ceiling_after_fixed_cost": 0
+    },
+    {
+      "tool_calls_per_model_call": 2,
+      "cost_per_call_upper_bound_jpy": 69.8142,
+      "ceiling_section_8_3": 3,
+      "ceiling_after_fixed_cost": 0
+    },
+    {
+      "tool_calls_per_model_call": 3,
+      "cost_per_call_upper_bound_jpy": 96.3173,
+      "ceiling_section_8_3": 2,
+      "ceiling_after_fixed_cost": 0
+    },
+    {
+      "tool_calls_per_model_call": 4,
+      "cost_per_call_upper_bound_jpy": 124.4364,
+      "ceiling_section_8_3": 2,
+      "ceiling_after_fixed_cost": 0
+    },
+    {
+      "tool_calls_per_model_call": 5,
+      "cost_per_call_upper_bound_jpy": 154.1713,
+      "ceiling_section_8_3": 1,
+      "ceiling_after_fixed_cost": 0
+    }
+  ]
+}

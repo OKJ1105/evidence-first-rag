@@ -189,5 +189,14 @@ class TheMeterReading(unittest.TestCase):
             self.assertIn(meter["per"], cost.UNITS_PER_MONTH, name)
 
 
+
+class TheLiveMeterNames(unittest.TestCase):
+    """The names the live Retail Prices API used on 2026-09-29, in Japan East."""
+
+    def test_the_postgresql_filters_use_the_observed_names(self):
+        self.assertIn("skuName eq 'B1MS'", cost.METERS["postgresql_b1ms_compute"]["filter"])
+        self.assertIn("contains(productName, 'Flex Server Storage')", cost.METERS["postgresql_storage_gb"]["filter"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
