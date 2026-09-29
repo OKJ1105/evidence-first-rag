@@ -40,7 +40,7 @@ import starlette.routing
 from ..adapter.revalidation import is_verbatim
 
 IDENTIFIER = "relay-v0.1"
-CONTRACT_VERSION = "0.2.0"
+CONTRACT_VERSION = "0.3.0"
 
 PATH = "/chat"
 
