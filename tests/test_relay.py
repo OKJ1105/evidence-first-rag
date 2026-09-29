@@ -1,4 +1,4 @@
-"""`relay-v0.1` Section 8.1: the registered cases `RL-001` to `RL-020`.
+"""`relay-v0.1` Section 8.1: the registered cases `RL-001` to `RL-022`.
 
 Every case runs against a stub Messages API client that returns a registered
 `content` array, so no case calls a model, costs money, or varies between
@@ -222,7 +222,13 @@ class TheRequestShape(RelayCase):
             "an extra key on a turn": json.dumps(
                 {"messages": [{"role": "user", "content": "SAMPLE_A", "name": "SAMPLE_B"}]}
             ),
-            "a body over 32 KiB": json.dumps({"messages": [person("S")], "pad": "S" * (32 * 1024)}),
+            # Well-shaped, so only the size bound can refuse it (#248 N10):
+            # three relay turns each under the turn bound, over the body bound.
+            "a body over 32 KiB": json.dumps({"messages": [
+                turn
+                for _ in range(3)
+                for turn in (person("S"), {"role": "assistant", "content": [{"type": "text", "text": "S" * (15 * 1024)}]})
+            ] + [person("S")]}),
         }
         for name, raw in cases.items():
             with self.subTest(case=name):
@@ -266,6 +272,31 @@ class TheRequestShape(RelayCase):
         messages = [person("SAMPLE_A"), {"role": "assistant", "content": content}, person("SAMPLE_B")]
         self.assertEqual(self.post(self.relay(), messages).status_code, 200)
         self.assertEqual(len(self.stub.calls), 1)
+
+    def test_RL_022_a_long_reply_after_a_maximal_result_ends_the_conversation(self):
+        """The residual Section 4.2 states (#248 B4): a maximal result leaves
+        little of the turn bound for the model's own text, and a reply that
+        uses more makes the turn unreturnable."""
+        from evidence_first_rag.deploy import cost
+
+        text = cost.maximal_tool_result(ROOT / "tests" / "ui_envelopes.json")
+        result = {
+            "type": "mcp_tool_result",
+            "tool_use_id": "SAMPLE_TOOL_USE_1",
+            "is_error": False,
+            "content": [{"type": "text", "text": text}],
+        }
+        base = [discover_use({}), result, {"type": "text", "text": ""}]
+        headroom = relay.RELAY_TURN_MAX_BYTES - len(relay._serialized(base))
+        # The headroom is well under what `max_tokens` of prose can occupy.
+        self.assertLess(headroom, 2 * 1024)
+        client = self.relay()
+        for reply, expected in (("S" * headroom, 200), ("S" * (headroom + 1), 400)):
+            with self.subTest(reply_bytes=len(reply)):
+                self.clock.now += 3600  # stay clear of the rate limit
+                content = [discover_use({}), result, {"type": "text", "text": reply}]
+                messages = [person("SAMPLE_A"), {"role": "assistant", "content": content}, person("SAMPLE_B")]
+                self.assertEqual(self.post(client, messages).status_code, expected)
 
 
 class TheCall(RelayCase):

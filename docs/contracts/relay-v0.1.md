@@ -70,9 +70,9 @@ The path is outside `/v1`, which `api-v0.1` Section 4.1 fixes exhaustively, and 
 
 The list alternates, starts with a person's turn and ends with one.
 
-**Size.** The serialized request body is at most **32 KiB**, and each relay turn's serialized `content` at most **16 KiB**. These bound what one model call can be sent, which is what makes Section 8.3's per-call bound a bound: without them a client could return relay turns of any size, and a ceiling that counts calls would bound nothing. The relay-turn bound sits below the body bound so that `RL-019` observes it on its own, and above a relay turn carrying one maximal `discover_entity` result (Section 4.6 of `entity-discovery-v0.1`, k = 10), so that such a turn can be sent back and a candidate chosen from it (`RL-010`, P5). That size counts the result's `content` text once; whether the connector also carries its `structuredContent` into the turn is not yet observed, and if the first deploy shows that it does, the bounds are raised by a further minor version.
+**Size.** The serialized request body is at most **32 KiB**, and each relay turn's serialized `content` at most **16 KiB**. These bound what one model call can be sent, which is what makes Section 8.3's per-call bound a bound: without them a client could return relay turns of any size, and a ceiling that counts calls would bound nothing. The relay-turn bound sits below the body bound so that `RL-019` observes it on its own, and above a relay turn carrying one maximal `discover_entity` result (Section 4.6 of `entity-discovery-v0.1`, k = 10), so that such a turn can be sent back and a candidate chosen from it (`RL-010`, P5), **provided the model's own `text` in that turn fits the about 1.4 KiB that remain**. That headroom is shared with the reply, and `max_tokens` (Section 4.3) can produce more. That size counts the result's `content` text once; whether the connector also carries its `structuredContent` into the turn is not yet observed, and if the first deploy shows that it does, the bounds are raised by a further minor version.
 
-**What the 32 KiB bound costs a conversation.** The whole conversation, tool results included, is sent on every request, and the relay never truncates it (Section 4.3). A conversation that has grown past 32 KiB is refused as `malformed_request`, and the person starts a new one. A relay turn in which the model called the tool more than once with large results can exceed 16 KiB on its own; that conversation cannot continue past that turn. Both are the accepted price of a positive ceiling under the budget.
+**What the 32 KiB bound costs a conversation.** The whole conversation, tool results included, is sent on every request, and the relay never truncates it (Section 4.3). A conversation that has grown past 32 KiB is refused as `malformed_request`, and the person starts a new one. A relay turn can exceed 16 KiB on its own in two ways: the model called the tool more than once with large results, or it wrote a long reply after one maximal result (`RL-022`). Either way that conversation cannot continue past that turn. The owner kept these bounds with this residual stated, over raising them, on [#247](https://github.com/OKJ1105/evidence-first-rag/issues/247#issuecomment-5884948455). Both are the accepted price of a positive ceiling under the budget.
 
 **The relay cannot verify that a relay turn is one it returned**, because it holds no conversation. A client may forge one. The size bound limits what that costs. The scope check reads only person's turns (Section 4.5). And a fact never comes from a relay turn on the page (Section 4.7, P2). So a forged relay turn can change what the model writes, which is prose, and nothing the page renders as a fact.
 
@@ -184,7 +184,7 @@ The relay adds nothing to `evidence_bundle`, `source_trace` or `limitations`, re
 
 | Obligation | Evidence |
 | --- | --- |
-| Section 4.2 request shape and size | Automated: `RL-001` to `RL-004`, `RL-019` |
+| Section 4.2 request shape and size | Automated: `RL-001` to `RL-004`, `RL-019`, `RL-021`, `RL-022` |
 | Section 4.3 the call, toolset and system prompt | Automated, against a stub Messages API client: `RL-005` asserts the exact body parameter set and, separately, the header, that `configs` enables `discover_entity` alone and `default_config` disables the rest, and that `system` equals the Section 4.9 text read off this document byte for byte |
 | Section 4.4 pass-through | Automated: `RL-006`, the response's `content` equals the stub's byte for byte |
 | Section 4.5 scope check | Automated: `RL-007` to `RL-010` |
@@ -213,6 +213,7 @@ Every case runs against a stub Messages API client that returns a registered `co
 | `RL-019` | a relay turn whose serialized `content` is 16 KiB plus one byte, in a body under 32 KiB | `malformed_request`; no model call |
 | `RL-020` | a stub response whose `mcp_tool_result` has `isError` true with a `database_unavailable` refusal | 200; `content` unchanged; the log line names the refusal kind |
 | `RL-021` | a relay turn carrying one `discover_entity` result at `k` = 10 (the result Section 8.3 counts as maximal), in a body under 32 KiB | accepted; one model call |
+| `RL-022` | a relay turn carrying one maximal `discover_entity` result and a `text` block that fills the rest of the turn bound, then one byte more | accepted at the bound; `malformed_request` one byte over |
 | `RL-011` | 11 person's turns | `conversation_limit`; no model call |
 | `RL-012` | a 7th request within 60 seconds from one address | `rate_limited`; no model call |
 | `RL-013` | a 61st request in one UTC day from one address | `rate_limited`; no model call |
