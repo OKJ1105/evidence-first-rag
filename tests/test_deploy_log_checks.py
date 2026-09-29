@@ -95,7 +95,16 @@ class TheCase(unittest.TestCase):
         (passed, detail), _, pauses, _ = run(logs)
         self.assertFalse(passed)
         self.assertIn("relay", detail)
-        self.assertEqual(pauses.count(log_checks.PAUSE_SECONDS), log_checks.ATTEMPTS)
+        # The failing store's file names, never its lines (#256 N6).
+        self.assertIn("LogFiles/app.log", detail)
+        # No pause after the last read (#256 N3).
+        self.assertEqual(pauses.count(log_checks.PAUSE_SECONDS), log_checks.ATTEMPTS - 1)
+
+    def test_a_pass_says_the_control_may_be_an_earlier_line(self):
+        """#256 N7: the evidence claims no more than the run established."""
+        (passed, detail), _, _, _ = run(CLEAN)
+        self.assertTrue(passed)
+        self.assertIn("may be an earlier request's", detail)
 
     def test_a_pass_is_not_concluded_before_the_minimum_reads(self):
         (_, _), _, pauses, _ = run(CLEAN)

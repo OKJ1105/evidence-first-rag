@@ -198,24 +198,37 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
     statuses = f"request statuses {surface_answer[0]} and {relay_answer[0]}"
     marked, seen = {}, {surface: False, relay: False}
     records = {surface: SURFACE_RECORD, relay: RELAY_RECORD}
+    # The last download's file names, so an unmet control says what the store
+    # did hold (#256 N6). Names only, never a line.
+    names = {surface: [], relay: []}
     for attempt in range(ATTEMPTS):
         for app in (surface, relay):
-            found, logged = inspect(read_zip(download(app)), marker, records[app])
+            files = list(read_zip(download(app)))
+            names[app] = sorted(name for name, _ in files)
+            found, logged = inspect(files, marker, records[app])
             if found:
                 marked[app] = sorted(set(marked.get(app, [])) | set(found))
             seen[app] = seen[app] or logged
         if marked or (attempt + 1 >= MINIMUM_READS and all(seen.values())):
             break
-        pause(PAUSE_SECONDS)
+        # No pause after the last read: the outcome is decided (#256 N3).
+        if attempt + 1 < ATTEMPTS:
+            pause(PAUSE_SECONDS)
     if marked:
         return False, f"the marker is in {marked}; {statuses}"
     if not all(seen.values()):
         missing = sorted(app for app, logged in seen.items() if not logged)
         return False, (
             f"no file downloaded for {missing} holds that app's own record of a request to its"
-            f" route, so the stream Section 4.7 constrains was not inspected; {statuses}"
+            f" route, so the stream Section 4.7 constrains was not inspected; {statuses};"
+            f" files downloaded: { {app: names[app] for app in missing} }"
         )
-    return True, f"the marker is in no log file of either app; {statuses}"
+    # The control may have been met by an earlier request's line, so the
+    # evidence says so rather than claiming more (#256 N7).
+    return True, (
+        f"the marker is in no log file of either app; {statuses}; the control was met by a line"
+        " of each app's own shape, which may be an earlier request's"
+    )
 
 
 def az_download(group):
@@ -226,7 +239,7 @@ def az_download(group):
             target = f"{directory}/logs.zip"
             subprocess.run(
                 ["az", "webapp", "log", "download", "--resource-group", group, "--name", app, "--log-file", target],
-                check=True, capture_output=True,
+                check=True, capture_output=True, timeout=180,
             )
             with open(target, "rb") as handle:
                 return handle.read()
