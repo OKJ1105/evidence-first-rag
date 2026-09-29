@@ -2,6 +2,8 @@
 
 **Status:** Proposed. Recorded by the writer session on [#206](https://github.com/OKJ1105/evidence-first-rag/issues/206) from the repository owner's decision of 2026-09-25, recorded on [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205), that the chat relay runs in this repository's Milestone 5 deployment. The owner's disposition on the pull request is the recorded human decision.
 
+**Superseded in part** by [ADR-0006](0006-relay-spend-is-bounded-by-the-provider-workspace.md) (item 5, the spend bound).
+
 **Date:** 2026-09-25
 
 ## Context
@@ -36,7 +38,7 @@ So this repository does not own a loop, and ADR-0004's sentence stands. But it n
 
    **What stays accepted** is a scope value the model supplies from the person's own words — transcription, as the prefill table's `term` row is — and one it invents that happens to name a real snapshot. The second is the narrowed risk: the person sees that scope in the candidate before choosing, so a scope is **shown to a person before any fact is produced**, which ADR-0004 item 2 could not say of an arbitrary host. The risk is accepted in that form.
 
-5. **Cost and abuse are bounded by the relay, not only by alerts.** The endpoint is unauthenticated, because the goal is a link a reader opens. So the relay enforces caps a runaway cannot pass: a request-rate limit per client, a turn limit per conversation, a fixed `max_tokens`, and a **daily ceiling past which it refuses** until the next day. The Azure budget alert (8,000 JPY/month, [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205#issuecomment-5829415863)) and the Anthropic Console usage limit are backstops. They notify or stop at the provider, and neither is the design. *(Superseded for the Console limit by [ADR-0006](0006-relay-spend-is-bounded-by-the-provider-workspace.md) (#249): the workspace spend limit is the spend bound; the Azure budget alert remains a backstop.)* The numbers are fixed in `relay-v0.1` and the deployment contract.
+5. **Cost and abuse are bounded by the relay, not only by alerts.** The endpoint is unauthenticated, because the goal is a link a reader opens. So the relay enforces caps a runaway cannot pass: a request-rate limit per client, a turn limit per conversation, a fixed `max_tokens`, and a **daily ceiling past which it refuses** until the next day. The Azure budget alert (8,000 JPY/month, [#205](https://github.com/OKJ1105/evidence-first-rag/issues/205#issuecomment-5829415863)) and the Anthropic Console usage limit are backstops. They notify or stop at the provider, and neither is the design. *(Superseded for the spend bound by [ADR-0006](0006-relay-spend-is-bounded-by-the-provider-workspace.md) (#249): the workspace spend limit is the spend bound, so this item's lead sentence now holds for abuse and not for monthly cost; the relay's caps stay, and the Azure budget alert remains a backstop.)* The numbers are fixed in `relay-v0.1` and the deployment contract.
 
 6. **What the relay records.** A person's messages are sent to Anthropic; that is the point of the relay, and the page says so before the first message. The relay stores no message text and logs no message text. Its logs carry counts, latencies, the tools called and the statuses returned — what Charter Section 9's "latency/error metrics" and failure classification need, and nothing a reader typed. A privacy-safe feedback workflow remains Charter Section 9's "when real users exist" item, and it is not started here.
 

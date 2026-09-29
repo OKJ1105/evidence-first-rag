@@ -45,13 +45,15 @@ passes, each carrying the conversation *and the rounds already accumulated in
 it*, plus `max_tokens` of output. The owner chooses N. Section 8.3's
 single-result reading is the N = 1 row.
 
-**The fixed cost is reported beside the formula, not inside it.** Section
-8.3's formula divides the whole monthly budget by the per-call bound. The
-fixed cost comes out of the same budget, so the output also gives the ceiling
-over what remains after it. The owner decides which to register.
+**The fixed cost is reported beside the worst-case counts, not inside them.**
+The counts divide a daily share of the budget by the per-call bound, with and
+without the fixed cost taken out first.
 
 The output is one JSON document: prices, counts, dates and the arithmetic. It
-holds no secret, and it is the evidence `EFR_RELAY_DAILY_CEILING` is set from.
+holds no secret. Since `relay-v0.1` `0.3.0` it is the worst-case evidence
+Section 8.3 cites, and it gives the fixed cost the workspace spend limit is
+computed from. It no longer sets `EFR_RELAY_DAILY_CEILING`, which Section 8.3
+registers directly (ADR-0006).
 """
 
 import argparse

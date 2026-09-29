@@ -28,7 +28,7 @@ The worst case is also far from the typical request. A count cannot tell a short
 
 **The relay keeps every cap ADR-0005 item 5 lists:** the per-client rate limit, the turn limit, the fixed `max_tokens` and a daily ceiling past which it refuses. The daily ceiling changes role: it no longer carries the budget arithmetic, and it is not a monthly guarantee. At the registered 67 (`relay-v0.1` Section 8.3), one day at the ceiling costs about 932 JPY at one tool call per model call (67 × 13.9081), which is most of the month's 1,262 JPY, and about 1,560 JPY at two (67 × 23.2859), which is more than the month holds; the relay's counters are in memory, so a restart re-arms the day. It is a brake on a runaway day. The workspace spend limit is what bounds the month, and the provider's refusal — which the relay answers as `model_unavailable` — is what stops it.
 
-**This supersedes one sentence of ADR-0005 item 5:** the Console limit is no longer only a backstop. The Azure budget alert remains a backstop.
+**This supersedes ADR-0005 item 5 in part:** its lead sentence, "Cost and abuse are bounded by the relay", now holds for abuse and not for monthly cost, and the Console limit is no longer only a backstop. The Azure budget alert remains a backstop.
 
 ## Alternatives considered
 
