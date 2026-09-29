@@ -77,6 +77,9 @@ LIMITATIONS = (
     " rollback records — is outside this record, and `passed` says nothing"
     " about it. The deploy job scans those in a second run, recorded as"
     " `secret-scan-record.json`.",
+    "The image is read through `docker export`: the final filesystem, as raw"
+    " bytes. Content a later layer removed, and content inside a compressed"
+    " file, are not read.",
 )
 
 
@@ -140,7 +143,7 @@ def scan_image_config(config, values, findings, shapes):
         # one (#254 N4).
         scan_text(entry, f"image config Env {name}", values, findings, shapes)
     for key, value in (config.get("Labels") or {}).items():
-        scan_text(str(value), f"image config Label {key}", values, findings, shapes)
+        scan_text(f"{key}={value}", f"image config Label {key}", values, findings, shapes)
     for field in ("Entrypoint", "Cmd"):
         scan_text(" ".join(config.get(field) or []), f"image config {field}", values, findings, shapes)
 

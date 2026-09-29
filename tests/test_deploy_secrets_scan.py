@@ -278,6 +278,11 @@ class TheRecordRun(unittest.TestCase):
         stream = tar_of({"app/src/a.py": "x", "app/src/b.py": "y", "usr/lib/c": "z"})
         self.assertEqual(secrets_scan.scan_image_filesystem(stream, [VALUE], [], secrets_scan._shape_rules()), 2)
 
+    def test_a_secret_under_a_secret_shaped_name_in_a_label_is_found(self):
+        findings = []
+        secrets_scan.scan_image_config({"Labels": {"sample_api_key": "S" * 20}}, [], findings, secrets_scan._shape_rules())
+        self.assertEqual([f["test"] for f in findings], ["assigned-secret"])
+
     def test_a_secret_under_a_secret_shaped_name_in_the_image_env_is_found(self):
         findings = []
         value = "S" * 20
