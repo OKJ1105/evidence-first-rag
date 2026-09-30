@@ -1,14 +1,22 @@
-# `deploy-v0.1` Section 4.2: the deploy, started by the owner and by nothing else.
+# `deploy-v0.1` Section 4.2: the deploy, started by hand and by nothing else.
 #
 # The only trigger is `workflow_dispatch`. There is no deploy on push, merge,
 # schedule or any other event, and no step waits on an approval: required
-# reviewers are not available on this repository's plan (#205). The owner
-# starting a run is the recorded human decision for that deploy, and the run's
-# triggering actor and URL are written into the artifact as its evidence.
+# reviewers are not available on this repository's plan (#205). Since `0.6.0`
+# (ADR-0007, #265) the owner or the Claude Code writer session starts a run,
+# through the owner's account. The recorded human decision for a deploy is the
+# owner's merge of the commit to `main`; the run's triggering actor and URL
+# are written into the artifact as its evidence.
 #
 # The guard is the job's first condition. It bounds the run to the owner's
-# GitHub account, not to the owner in person, so no writer session, agent-loop
-# run or other automation dispatches this workflow (Section 4.2).
+# GitHub account and to `main`. No agent-loop run and no scheduled or
+# event-driven automation dispatches this workflow (Section 4.2).
+#
+# `mode: checks` (Section 4.8) runs the deployed checks against what is
+# already deployed and changes no deployed resource: no secret, template,
+# image, restart, provisioning or rollback. `cases` narrows a checks run to
+# named groups. In either mode, a failure among the fast groups skips the slow
+# ones, which are recorded as not run.
 #
 # This file is the first half of the deploy. It builds and ships one commit:
 # the three database secrets, the provisioning definitions, the image, and the
@@ -25,6 +33,16 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "deploy: build, ship and check this commit. checks: check what is deployed, changing nothing."
+        type: choice
+        options: [deploy, checks]
+        default: deploy
+      cases:
+        description: "checks mode only: comma-separated groups (AZURE,HTTP,DP-004,DP-007,WF/MC,DP-008,DP-006). Empty runs all. DP-003's scan always runs."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -63,6 +81,8 @@ jobs:
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       KEY_VAULT: ${{ vars.AZURE_KEY_VAULT_NAME }}
       COMMIT: ${{ github.sha }}
+      MODE: ${{ inputs.mode || 'deploy' }}
+      CASES: ${{ inputs.cases }}
       # Flexible Server refuses a connection without TLS (Section 4.5).
       PGSSLMODE: require
     steps:
@@ -87,6 +107,7 @@ jobs:
       # goes to Key Vault through a file that only this step can read, never
       # on a command line and never to the log.
       - name: Create the database passwords that do not exist yet
+        if: env.MODE == 'deploy'
         run: |
           set -euo pipefail
           umask 077
@@ -125,6 +146,32 @@ jobs:
         id: infra
         run: |
           set -euo pipefail
+          outputs_to_step() {
+            for key in registryName registryLoginServer serverName serverHost surfaceName relayName surfaceHost relayHost; do
+              echo "$key=$(jq -r ".$key.value" <<<"$1")" >> "$GITHUB_OUTPUT"
+            done
+          }
+          if [ "$MODE" = "checks" ]; then
+            # Nothing is applied. The names come from the newest template
+            # deployment that succeeded, and the commit under check is the tag
+            # surface is running, so every check reads what is deployed (#265).
+            name="$(az deployment group list --resource-group "$RESOURCE_GROUP" \
+              --query "sort_by([?starts_with(name, 'deploy-') && properties.provisioningState=='Succeeded'], &properties.timestamp)[-1].name" \
+              --output tsv)"
+            [ -n "$name" ] || { echo "no succeeded template deployment to check"; exit 1; }
+            outputs="$(az deployment group show --resource-group "$RESOURCE_GROUP" --name "$name" \
+              --query properties.outputs --output json)"
+            outputs_to_step "$outputs"
+            running="$(az webapp config show --resource-group "$RESOURCE_GROUP" \
+              --name "$(jq -r .surfaceName.value <<<"$outputs")" --query linuxFxVersion --output tsv)"
+            deployed="${running##*:}"
+            [[ "$deployed" =~ ^[0-9a-f]{40}$ ]] || { echo "surface runs no commit-tagged image"; exit 1; }
+            # A name of its own: a job-level `env` value is not one to rely on
+            # `GITHUB_ENV` overriding.
+            echo "DEPLOYED_COMMIT=$deployed" >> "$GITHUB_ENV"
+            echo "Checking the deployed commit $deployed; this checkout is ${{ github.sha }}."
+            exit 0
+          fi
           admin="$(az keyvault secret show --vault-name "$KEY_VAULT" --name postgres-admin-password --query value --output tsv)"
           echo "::add-mask::$admin"
           parameters="$(mktemp)"
@@ -152,14 +199,13 @@ jobs:
             --parameters "@$parameters" \
             --query properties.outputs --output json)"
           rm -f "$parameters"
-          for key in registryName registryLoginServer serverName serverHost surfaceName relayName surfaceHost relayHost; do
-            echo "$key=$(jq -r ".$key.value" <<<"$outputs")" >> "$GITHUB_OUTPUT"
-          done
+          outputs_to_step "$outputs"
 
       # Section 4.1: pushed under the commit tag only, by role. No registry
       # credential exists (DP-014), and no image or tag is deleted.
       - name: Build and push the image
         id: image
+        if: env.MODE == 'deploy'
         run: |
           set -euo pipefail
           image="${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$COMMIT"
@@ -178,6 +224,7 @@ jobs:
           echo "digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image")" >> "$GITHUB_OUTPUT"
 
       - name: Restart both apps on the pushed image
+        if: env.MODE == 'deploy'
         run: |
           set -euo pipefail
           az webapp restart --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.surfaceName }}"
@@ -213,6 +260,7 @@ jobs:
       # committed `sql/` and `fixtures/`, rebuilt from empty on every deploy.
       - name: Provision the database from this commit
         id: provision
+        if: env.MODE == 'deploy'
         run: |
           set -euo pipefail
           read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
@@ -227,12 +275,34 @@ jobs:
           python -m evidence_first_rag.db.provision --recreate | tee provision.txt
 
       # Section 4.8: the deployed checks, from this runner, inside the firewall
-      # window. Each check runs whatever the others did, and the step fails if
-      # any failed, which is what starts the rollback below.
+      # window. The fast groups run first, each whatever the others did; a
+      # failure among them skips the slow groups, recorded as not run (#265).
+      # DP-003's scan always runs. The step fails if any group failed, which
+      # is what starts the rollback below in deploy mode.
       - name: Run the deployed checks
         id: checks
         run: |
           set -uo pipefail
+          # The commit the checks hold the deployment to: this one in a deploy,
+          # the running one in checks mode.
+          COMMIT="${DEPLOYED_COMMIT:-$COMMIT}"
+          # The groups, in the order they run. `cases` narrows a checks run to
+          # some of them; a deploy runs them all. DP-006 compares the deployed
+          # runner's verdicts, so asking for it runs DP-007 too. DP-003's scan
+          # is not a group: it gates the upload below, so it always runs.
+          # Not `GROUPS`: bash reserves that name and ignores an assignment.
+          check_groups="AZURE HTTP DP-004 DP-007 WF/MC DP-008 DP-006"
+          selected="$check_groups"
+          if [ "$MODE" = "checks" ] && [ -n "$CASES" ]; then
+            selected=""
+            for group in $(tr ',' ' ' <<<"$CASES"); do
+              [[ " $check_groups " == *" $group "* ]] || { echo "unknown group in cases: $group"; exit 2; }
+              selected="$selected $group"
+            done
+            [[ " $selected " == *" DP-006 "* ]] && selected="$selected DP-007"
+          fi
+          want() { [[ " $selected " == *" $1 "* ]]; }
+          skipped=""
           # The restarted apps pull a fresh image before they serve. Wait,
           # bounded, until surface answers its health route with JSON, so a
           # slow start is not read as a failed deploy (#237 B2).
@@ -282,59 +352,89 @@ jobs:
           export MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
           export PGHOST="${{ steps.infra.outputs.serverHost }}" PGPORT=5432
           failed=""
+          # The fast groups: about two minutes together, none needing the
+          # others' output.
+          # DP-014 and DP-003's settings half, read off Azure's resource state.
+          if want AZURE; then
+            python -m evidence_first_rag.deploy.azure_checks \
+              --group "$RESOURCE_GROUP" \
+              --registry "${{ steps.infra.outputs.registryName }}" \
+              --surface "${{ steps.infra.outputs.surfaceName }}" \
+              --relay "${{ steps.infra.outputs.relayName }}" \
+              --deploy-identity id-efr-github-deploy \
+              --commit "$COMMIT" \
+              || failed="$failed AZURE"
+          fi
+          # DP-005, DP-009, DP-010 and DP-012 over the network. DP-012 is the
+          # one model call a run makes.
+          if want HTTP; then
+            python -m evidence_first_rag.deploy.http_checks \
+              --surface "${{ steps.infra.outputs.surfaceHost }}" \
+              --relay "${{ steps.infra.outputs.relayHost }}" \
+              || failed="$failed HTTP"
+          fi
+          # DP-004: the runtime identity cannot write.
+          if want DP-004; then
+            python -m evidence_first_rag.deploy.deployed writes | tee writes.json || failed="$failed DP-004"
+          fi
+          # The slow groups, skipped once a fast one has failed: the run has
+          # already failed, and minutes spent here would not change that.
+          if [ -n "$failed" ]; then
+            for group in DP-007 WF/MC DP-008 DP-006; do
+              want "$group" && skipped="$skipped $group"
+            done
+            echo "skipped after a fast failure:$skipped"
+            selected="$(tr ' ' '\n' <<<"$selected" | grep -vxF -e DP-007 -e WF/MC -e DP-008 -e DP-006 | tr '\n' ' ')"
+          fi
           # DP-007: the mvp-v0.1 Section 4.9 runner, as the runtime identity,
           # and as mvp_provisioning for its Group C invariants only.
-          python -m evidence_first_rag.conformance.runner --artifact conformance.json || failed="$failed DP-007"
-          # DP-004: the runtime identity cannot write.
-          python -m evidence_first_rag.deploy.deployed writes | tee writes.json || failed="$failed DP-004"
+          if want DP-007; then
+            python -m evidence_first_rag.conformance.runner --artifact conformance.json || failed="$failed DP-007"
+          fi
           # The api-v0.1 WF rows and the mcp-v0.1 MC rows that need no model and
           # no fault, over HTTPS against surface (tests_stack, #257).
-          EFR_STACK_URL="https://${{ steps.infra.outputs.surfaceHost }}" \
-            python -m unittest discover --start-directory tests_stack --top-level-directory . --verbose \
-            || failed="$failed WF/MC"
-          # DP-005, DP-009, DP-010 and DP-012 over the network. DP-012 is the
-          # one model call a deploy makes.
-          python -m evidence_first_rag.deploy.http_checks \
-            --surface "${{ steps.infra.outputs.surfaceHost }}" \
-            --relay "${{ steps.infra.outputs.relayHost }}" \
-            || failed="$failed HTTP"
-          # DP-014 and DP-003's settings half, read off Azure's resource state.
-          python -m evidence_first_rag.deploy.azure_checks \
-            --group "$RESOURCE_GROUP" \
-            --registry "${{ steps.infra.outputs.registryName }}" \
-            --surface "${{ steps.infra.outputs.surfaceName }}" \
-            --relay "${{ steps.infra.outputs.relayName }}" \
-            --deploy-identity id-efr-github-deploy \
-            --commit "$COMMIT" \
-            || failed="$failed AZURE"
+          if want WF/MC; then
+            EFR_STACK_URL="https://${{ steps.infra.outputs.surfaceHost }}" \
+              python -m unittest discover --start-directory tests_stack --top-level-directory . --verbose \
+              || failed="$failed WF/MC"
+          fi
           # DP-008: a fresh SAMPLE_* marker in a request body to each app, then
-          # both apps' log stores read until each shows its route (#255).
-          python -m evidence_first_rag.deploy.log_checks \
-            --group "$RESOURCE_GROUP" \
-            --surface "${{ steps.infra.outputs.surfaceName }}" \
-            --relay "${{ steps.infra.outputs.relayName }}" \
-            --surface-host "${{ steps.infra.outputs.surfaceHost }}" \
-            --relay-host "${{ steps.infra.outputs.relayHost }}" \
-            || failed="$failed DP-008"
+          # both apps' log stores read until each shows its route (#255). It
+          # waits out the relay's rate window DP-009 filled.
+          if want DP-008; then
+            python -m evidence_first_rag.deploy.log_checks \
+              --group "$RESOURCE_GROUP" \
+              --surface "${{ steps.infra.outputs.surfaceName }}" \
+              --relay "${{ steps.infra.outputs.relayName }}" \
+              --surface-host "${{ steps.infra.outputs.surfaceHost }}" \
+              --relay-host "${{ steps.infra.outputs.relayHost }}" \
+              || failed="$failed DP-008"
+          fi
           # DP-006 and DP-007: the same commit provisioned locally, its runner
-          # run there, and the two stable digests and verdicts compared.
-          python -m evidence_first_rag.deploy.digests record --conformance conformance.json --out stable-digest.json \
-            || failed="$failed DP-006"
-          (
-            export PGHOST=localhost PGPORT=5432 PGSSLMODE=disable PGUSER=postgres
-            export PGPASSWORD=local_superuser_not_a_secret
-            export MVP_PROVISIONING_PASSWORD=local_provisioning_not_a_secret
-            export MVP_RUNTIME_PASSWORD=local_runtime_not_a_secret
-            python -m evidence_first_rag.db.provision --recreate > /dev/null &&
-            # A failing local verdict is DP-007's to report, so the digest is
-            # recorded and compared whatever the local run concluded (#243 N5).
-            { python -m evidence_first_rag.conformance.runner --artifact local-conformance.json > /dev/null || true; } &&
-            python -m evidence_first_rag.deploy.digests record --conformance local-conformance.json --out local-stable-digest.json
-          ) || failed="$failed LOCAL"
-          python -m evidence_first_rag.deploy.digests compare \
-            --deployed-digest stable-digest.json --local-digest local-stable-digest.json \
-            --deployed-conformance conformance.json --local-conformance local-conformance.json \
-            | tee compare.json || failed="$failed DP-006/DP-007"
+          # run there, and the two stable digests and verdicts compared. In
+          # checks mode the checkout may be newer than the deployed commit, and
+          # a difference that makes is reported, not hidden.
+          if want DP-006; then
+            python -m evidence_first_rag.deploy.digests record --conformance conformance.json --out stable-digest.json \
+              || failed="$failed DP-006"
+            (
+              export PGHOST=localhost PGPORT=5432 PGSSLMODE=disable PGUSER=postgres
+              export PGPASSWORD=local_superuser_not_a_secret
+              export MVP_PROVISIONING_PASSWORD=local_provisioning_not_a_secret
+              export MVP_RUNTIME_PASSWORD=local_runtime_not_a_secret
+              python -m evidence_first_rag.db.provision --recreate > /dev/null &&
+              # A failing local verdict is DP-007's to report, so the digest is
+              # recorded and compared whatever the local run concluded (#243 N5).
+              { python -m evidence_first_rag.conformance.runner --artifact local-conformance.json > /dev/null || true; } &&
+              python -m evidence_first_rag.deploy.digests record --conformance local-conformance.json --out local-stable-digest.json
+            ) || failed="$failed LOCAL"
+            python -m evidence_first_rag.deploy.digests compare \
+              --deployed-digest stable-digest.json --local-digest local-stable-digest.json \
+              --deployed-conformance conformance.json --local-conformance local-conformance.json \
+              | tee compare.json || failed="$failed DP-006/DP-007"
+          fi
+          echo "skipped=${skipped# }" >> "$GITHUB_OUTPUT"
+          echo "ran=$(xargs <<<"$selected")" >> "$GITHUB_OUTPUT"
           # DP-003's image, workflow and artifact half, last, so every artifact
           # this step wrote is scanned for the passwords it holds (#253). A
           # finding is published as an output, so the upload below withholds
@@ -360,7 +460,8 @@ jobs:
         # From the moment the template has repointed the apps, any failure is
         # rolled back (#237 B1). The image half always; the database half only
         # when the firewall window opened, since otherwise it was not touched.
-        if: failure() && steps.infra.outcome == 'success'
+        # A checks run deployed nothing, so there is nothing to undo.
+        if: failure() && steps.infra.outcome == 'success' && env.MODE == 'deploy'
         run: |
           set -euo pipefail
           target="$(python -m evidence_first_rag.deploy.deployed last-passing --excluding "$COMMIT")"
@@ -434,7 +535,12 @@ jobs:
           python - <<'PY'
           import datetime, json, os
           record = {
-              "commit": os.environ["COMMIT"],
+              # A checks run deployed nothing: it is never a rollback target,
+              # and never the Section 4.8 acceptance artifact (#265).
+              "mode": os.environ["MODE"],
+              "checks_ran": os.environ["RAN"] or None,
+              "checks_skipped": os.environ["SKIPPED"] or None,
+              "commit": os.environ.get("DEPLOYED_COMMIT") or os.environ["COMMIT"],
               "image_digest": os.environ["DIGEST"] or None,
               "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
               "triggering_actor": os.environ["TRIGGERING_ACTOR"],
@@ -461,6 +567,8 @@ jobs:
           PY
         env:
           DIGEST: ${{ steps.image.outputs.digest }}
+          RAN: ${{ steps.checks.outputs.ran }}
+          SKIPPED: ${{ steps.checks.outputs.skipped }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OUTCOME: ${{ job.status }}

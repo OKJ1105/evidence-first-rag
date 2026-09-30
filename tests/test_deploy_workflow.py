@@ -7,6 +7,7 @@ run can show is the deployed cases', on the owner's first deploy.
 
 import pathlib
 import re
+import subprocess
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -52,11 +53,14 @@ def code(text: str) -> str:
 
 
 class TheStart(unittest.TestCase):
-    """DP-013: only the owner starts a deploy, and only this file can."""
+    """DP-013: a deploy starts only by hand, from `main`, through the owner's
+    account (the owner or the writer session, ADR-0007), and only this file
+    can start one."""
 
     def test_the_only_trigger_is_workflow_dispatch(self):
         self.assertEqual(re.findall(r"^  (\w+):", top_level("on"), re.MULTILINE), ["workflow_dispatch"])
-        self.assertEqual(top_level("on").strip(), "workflow_dispatch:")
+        # Its inputs are the two #265 registers, and nothing else.
+        self.assertEqual(re.findall(r"^      (\w+):", top_level("on"), re.MULTILINE), ["mode", "cases"])
 
     def test_every_job_that_logs_in_names_production_and_opens_with_the_guard(self):
         azure = [job for job in jobs().values() if logs_in(job)]
@@ -191,7 +195,7 @@ class TheDeployedChecks(unittest.TestCase):
     def test_the_rollback_runs_only_on_failure_and_restores_both_halves(self):
         rollback = step("Roll back to the last passing commit")
         # Any failure after the template repointed the apps (#237 B1).
-        self.assertRegex(rollback, r"(?m)^        if: failure\(\) && steps\.infra\.outcome == 'success'$")
+        self.assertRegex(rollback, r"(?m)^        if: failure\(\) && steps\.infra\.outcome == 'success' && env\.MODE == 'deploy'$")
         # The image half comes before, and does not depend on, the database half.
         self.assertLess(rollback.index("--linux-fx-version"), rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'))
         self.assertLess(rollback.index('if [ "${{ steps.firewall.outputs.rule }}" = "" ]'), rollback.index("db.provision"))
@@ -203,6 +207,72 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertIn('echo "result=nothing to roll back to"', rollback)
         self.assertIn('--linux-fx-version "DOCKER|$image"', rollback)
         self.assertIn("evidence-first-rag:$target", rollback)
+
+
+class TheChecksMode(unittest.TestCase):
+    """#265, `DP-017`: `mode: checks` changes no deployed resource, and the
+    fast groups run before the slow ones, which a fast failure skips."""
+
+    MUTATING = (
+        "Create the database passwords that do not exist yet",
+        "Build and push the image",
+        "Restart both apps on the pushed image",
+        "Provision the database from this commit",
+    )
+
+    def test_every_step_that_changes_a_resource_is_deploy_only(self):
+        for name in self.MUTATING:
+            with self.subTest(step=name):
+                self.assertRegex(step(name), r"(?m)^        if: env\.MODE == 'deploy'$")
+        self.assertIn("env.MODE == 'deploy'", step("Roll back to the last passing commit"))
+
+    def test_a_checks_run_applies_no_template(self):
+        infra = step("Apply the provisioning definitions")
+        branch = infra[infra.index('if [ "$MODE" = "checks" ]'):]
+        self.assertLess(branch.index("exit 0"), branch.index("az deployment group create"))
+        self.assertNotIn("az deployment group create", branch[:branch.index("exit 0")])
+        self.assertIn('echo "DEPLOYED_COMMIT=$deployed" >> "$GITHUB_ENV"', branch)
+        self.assertIn('COMMIT="${DEPLOYED_COMMIT:-$COMMIT}"', step("Run the deployed checks"))
+
+    def selection(self, mode, cases):
+        """The step's own group selection, run by bash."""
+        checks = step("Run the deployed checks")
+        body = code(checks[checks.index('check_groups="'):checks.index('skipped=""')])
+        body = "\n".join(line.strip() for line in body.splitlines())
+        completed = subprocess.run(
+            ["bash", "-c", body + '\necho "$selected"'],
+            env={"MODE": mode, "CASES": cases, "PATH": "/usr/bin:/bin"},
+            capture_output=True, text=True, check=False,
+        )
+        return completed.returncode, completed.stdout.split()
+
+    def test_a_deploy_runs_every_group_whatever_cases_says(self):
+        status, selected = self.selection("deploy", "HTTP")
+        self.assertEqual(status, 0)
+        self.assertEqual(selected, ["AZURE", "HTTP", "DP-004", "DP-007", "WF/MC", "DP-008", "DP-006"])
+
+    def test_cases_narrow_a_checks_run_and_dp_006_brings_dp_007(self):
+        self.assertEqual(self.selection("checks", "HTTP,AZURE")[1], ["HTTP", "AZURE"])
+        self.assertEqual(self.selection("checks", "DP-006")[1], ["DP-006", "DP-007"])
+
+    def test_an_unknown_group_stops_the_run(self):
+        self.assertEqual(self.selection("checks", "HTTP,DP-999")[0], 2)
+
+    def test_the_fast_groups_run_first_and_a_failure_skips_the_slow(self):
+        checks = "\n".join(line.strip() for line in code(step("Run the deployed checks")).splitlines())
+        order = [checks.index(f"want {group}") for group in ("AZURE", "HTTP", "DP-004")]
+        gate = checks.index('if [ -n "$failed" ]; then\nfor group in DP-007 WF/MC DP-008 DP-006')
+        slow = [checks.index(f"want {group};") for group in ("DP-007", "WF/MC", "DP-008", "DP-006")]
+        self.assertEqual(order, sorted(order))
+        self.assertTrue(max(order) < gate < min(slow))
+        # DP-003's scan is not a group: it gates the upload, so it always runs.
+        self.assertNotIn("want DP-003", checks)
+        self.assertGreater(checks.index("evidence_first_rag.deploy.secrets_scan"), max(slow))
+
+    def test_the_record_says_what_ran_and_what_was_skipped(self):
+        record = step("Write the deploy record")
+        for field in ('"mode": os.environ["MODE"]', '"checks_ran"', '"checks_skipped"'):
+            self.assertIn(field, record)
 
 
 class TheSecretScan(unittest.TestCase):
