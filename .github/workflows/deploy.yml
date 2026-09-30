@@ -552,7 +552,8 @@ jobs:
             --yes --output none || echo "no rule to remove"
 
       # Section 4.8: the commit, the image digest, the date, and the run's
-      # triggering actor and URL, which are the evidence of the owner's start.
+      # triggering actor and URL, which identify the account and the run. The
+      # recorded human decision is the owner's merge of the commit (Section 4.2).
       - name: Write the deploy record
         if: always()
         run: |
@@ -633,7 +634,9 @@ jobs:
         if: always() && steps.record_scan.outcome != 'failure' && steps.checks.outputs.secret_scan != 'fail'
         uses: actions/upload-artifact@v4
         with:
-          name: deploy-record-${{ github.sha }}
+          # Named for the mode and the commit the record holds, which in checks
+          # mode is the deployed one, not this checkout (#266 O1).
+          name: deploy-record-${{ env.MODE }}-${{ env.DEPLOYED_COMMIT || github.sha }}
           path: |
             deploy-record.json
             conformance.json
@@ -660,7 +663,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: secret-scan-${{ github.sha }}
+          name: secret-scan-${{ env.MODE }}-${{ env.DEPLOYED_COMMIT || github.sha }}
           path: |
             secret-scan.json
             secret-scan-record.json
