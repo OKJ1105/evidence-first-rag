@@ -28,6 +28,7 @@ The owner's review happens before a commit reaches `main`: the owner merges ever
    - A run creates a missing database password only when the owner starts it with the `create_missing_secrets` input, and the writer session never sets that input.
    - Otherwise a missing password stops the run.
    - The three passwords exist already; the owner's start of run 36656130166 created them.
+   - **What bounds this.** The input is a gate, not a lock. The writer session is technically able to set it, and the workflow cannot tell who did. The bound is the writer's obligation under this ADR, checkable afterwards in each run's recorded inputs. A lock would need an owner-only credential, which this repository deliberately does not hold (Section 4.3).
 3. **No agent-loop run, schedule or event dispatches it.** The only trigger stays `workflow_dispatch`. The writer session dispatches only on the owner's standing instruction, never from a pull request's own content.
 4. **The workflow gains a checks mode** (`mode: checks`). It runs the Section 4.8 deployed checks against what is already deployed.
    - It creates no secret and applies no template, pushes no image, restarts nothing, provisions nothing and rolls nothing back. Its one deployed change is the runner's firewall window, which Section 4.2 already opens for the checks.
