@@ -59,8 +59,10 @@ class TheStart(unittest.TestCase):
 
     def test_the_only_trigger_is_workflow_dispatch(self):
         self.assertEqual(re.findall(r"^  (\w+):", top_level("on"), re.MULTILINE), ["workflow_dispatch"])
-        # Its inputs are the two #265 registers, and nothing else.
-        self.assertEqual(re.findall(r"^      (\w+):", top_level("on"), re.MULTILINE), ["mode", "cases"])
+        # Its inputs are the three #265 registers, and nothing else.
+        self.assertEqual(
+            re.findall(r"^      (\w+):", top_level("on"), re.MULTILINE), ["mode", "cases", "create_missing_secrets"]
+        )
 
     def test_every_job_that_logs_in_names_production_and_opens_with_the_guard(self):
         azure = [job for job in jobs().values() if logs_in(job)]
@@ -233,6 +235,23 @@ class TheChecksMode(unittest.TestCase):
         self.assertNotIn("az deployment group create", branch[:branch.index("exit 0")])
         self.assertIn('echo "DEPLOYED_COMMIT=$deployed" >> "$GITHUB_ENV"', branch)
         self.assertIn('COMMIT="${DEPLOYED_COMMIT:-$COMMIT}"', step("Run the deployed checks"))
+
+    def test_a_checks_run_pulls_the_deployed_image_for_the_scan(self):
+        """#266 B1: DP-003's image half reads the local store, which only the
+        deploy-mode build fills, so a checks run pulls the running image."""
+        infra = step("Apply the provisioning definitions")
+        branch = infra[infra.index('if [ "$MODE" = "checks" ]'):infra.index("exit 0")]
+        self.assertIn("az acr login --name", branch)
+        self.assertIn('/evidence-first-rag:$deployed"', branch[branch.index("docker pull"):])
+
+    def test_only_the_owners_input_creates_a_missing_secret(self):
+        """#266 B2: a missing password stops the run unless the owner started
+        it with `create_missing_secrets`."""
+        create = step("Create the database passwords that do not exist yet")
+        self.assertIn("CREATE_MISSING_SECRETS: ${{ inputs.create_missing_secrets }}", create)
+        gate = create.index('if [ "$CREATE_MISSING_SECRETS" != "true" ]')
+        self.assertLess(gate, create.index("az keyvault secret set"))
+        self.assertIn("exit 1", create[gate:create.index("az keyvault secret set")])
 
     def selection(self, mode, cases):
         """The step's own group selection, run by bash."""

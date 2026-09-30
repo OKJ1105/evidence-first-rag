@@ -13,8 +13,10 @@
 # event-driven automation dispatches this workflow (Section 4.2).
 #
 # `mode: checks` (Section 4.8) runs the deployed checks against what is
-# already deployed and changes no deployed resource: no secret, template,
-# image, restart, provisioning or rollback. `cases` narrows a checks run to
+# already deployed. It creates no secret and applies no template, pushes no
+# image, restarts nothing, provisions nothing and rolls nothing back; the one
+# deployed change it makes is the runner's firewall window, which Section 4.2
+# opens for the checks and the final step closes. `cases` narrows a checks run to
 # named groups. In either mode, a failure among the fast groups skips the slow
 # ones, which are recorded as not run.
 #
@@ -43,6 +45,10 @@ on:
         description: "checks mode only: comma-separated groups (AZURE,HTTP,DP-004,DP-007,WF/MC,DP-008,DP-006). Empty runs all. DP-003's scan always runs."
         type: string
         default: ""
+      create_missing_secrets:
+        description: "Owner only: create a database password Key Vault does not hold. Off, a missing password stops the run."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -112,6 +118,8 @@ jobs:
       # on a command line and never to the log.
       - name: Create the database passwords that do not exist yet
         if: env.MODE == 'deploy'
+        env:
+          CREATE_MISSING_SECRETS: ${{ inputs.create_missing_secrets }}
         run: |
           set -euo pipefail
           umask 077
@@ -135,6 +143,13 @@ jobs:
               exit 1
             fi
             rm -f "$error"
+            # Creating a secret is the owner's act (Section 4.3, #265 B2): the
+            # owner sets this input when starting the run, and the writer
+            # session never does.
+            if [ "$CREATE_MISSING_SECRETS" != "true" ]; then
+              echo "$name is missing; only a run the owner starts with create_missing_secrets creates it"
+              exit 1
+            fi
             file="$scratch/value"
             # 43 URL-safe characters, plus one of each class the server's
             # administrator password policy asks for.
@@ -173,6 +188,11 @@ jobs:
             # A name of its own: a job-level `env` value is not one to rely on
             # `GITHUB_ENV` overriding.
             echo "DEPLOYED_COMMIT=$deployed" >> "$GITHUB_ENV"
+            # DP-003's image half reads the local image store, which only the
+            # deploy-mode build fills. Pull the deployed image instead, by the
+            # deploy identity's AcrPush, which includes pull (#266 B1).
+            az acr login --name "$(jq -r .registryName.value <<<"$outputs")"
+            docker pull --quiet "$(jq -r .registryLoginServer.value <<<"$outputs")/evidence-first-rag:$deployed"
             echo "Checking the deployed commit $deployed; this checkout is ${{ github.sha }}."
             exit 0
           fi
