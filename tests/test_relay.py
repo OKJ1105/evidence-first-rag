@@ -553,6 +553,27 @@ class TheCaps(RelayCase):
             self.assertEqual(self.post(client, address=forged).status_code, 200)
         self.assert_refused(self.post(client, address="203.0.113.7, 192.0.2.10"), "rate_limited", 429)
 
+    def test_the_client_port_does_not_move_the_key(self):
+        """Run 36662412772: App Service appends `address:port`, and the port
+        changes per connection. Seven requests from one address on seven
+        ports share one window."""
+        client = self.relay()
+        for port in range(6):
+            forged = f"198.51.100.{port}, 192.0.2.10:{50_000 + port}"
+            self.assertEqual(self.post(client, address=forged).status_code, 200)
+        self.assert_refused(self.post(client, address="192.0.2.10:50999"), "rate_limited", 429)
+
+    def test_the_forwarded_entry_is_read_as_an_address(self):
+        cases = {
+            "192.0.2.10:50123": "192.0.2.10",
+            "192.0.2.10": "192.0.2.10",
+            "[2001:db8::1]:50123": "2001:db8::1",
+            "2001:db8::1": "2001:db8::1",
+        }
+        for entry, address in cases.items():
+            with self.subTest(entry=entry):
+                self.assertEqual(relay._host(entry), address)
+
     def test_RL_014_a_request_after_the_daily_ceiling(self):
         client = self.relay(ceiling=2)
         self.assertEqual(self.post(client, address="192.0.2.1").status_code, 200)

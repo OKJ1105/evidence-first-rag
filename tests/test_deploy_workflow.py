@@ -338,6 +338,13 @@ class TheLogCheck(unittest.TestCase):
         self.assertIn("log-checks.json", step("Upload the deploy record"))
 
 
+class TheInstall(unittest.TestCase):
+    def test_the_package_is_installed_editable(self):
+        """Run 36662412772: `pip install .` shipped no expected results, so the
+        deployed conformance runner found none registered (DP-007)."""
+        self.assertIn("run: python -m pip install --quiet -e .", step("Install the package"))
+
+
 class TheRelayCeiling(unittest.TestCase):
     """`DP-016`, `deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`
     Section 8.3 registers, so the relay never starts with none (and then

@@ -51,13 +51,39 @@ def run_az(*arguments):
         ["az", *arguments, "--output", "json"], capture_output=True, text=True, check=False
     )
     if completed.returncode != 0:
-        raise AzError(f"az {arguments[0]} {arguments[1] if len(arguments) > 1 else ''} failed", completed.stderr)
+        raise AzError(f"az {_command(arguments)} failed", completed.stderr)
     return json.loads(completed.stdout or "null")
+
+
+def _command(arguments):
+    """The command's words, up to its first option: `role assignment list`,
+    never an argument's value."""
+    words = []
+    for argument in arguments:
+        if argument.startswith("-"):
+            break
+        words.append(argument)
+    return " ".join(words)
+
+
+# The code ARM and the CLI put in parentheses before a message, such as
+# `(AuthorizationFailed)` or `(ResourceNotFound)`. A code is a fixed word, so
+# it can be recorded where the message, which names resources, is not.
+ERROR_CODE = re.compile(r"\(([A-Z][A-Za-z]+)\)")
+
+
+def error_code(output):
+    found = ERROR_CODE.search(output or "")
+    return found.group(1) if found else "no error code in the output"
 
 
 def _guarded(case, *arguments):
     try:
         return case(*arguments)
+    except AzError as error:
+        # Which call failed and Azure's code for why, so a failed run names
+        # its cause (run 36662412772 recorded only `AzError`).
+        return False, f"the check itself failed: {error} ({error_code(error.output)})"
     except Exception as error:  # noqa: BLE001 - one case failing must not hide the rest
         return False, f"the check itself failed: {type(error).__name__}"
 
