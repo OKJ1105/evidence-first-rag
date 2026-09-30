@@ -202,7 +202,7 @@ class TheSecretScan(unittest.TestCase):
         scan = checks.index("evidence_first_rag.deploy.secrets_scan")
         self.assertGreater(scan, checks.index("tee compare.json"))
         self.assertIn('failed="$failed DP-003"', checks[scan:])
-        for artifact in ("conformance.json", "http-checks.json", "azure-checks.json", "compare.json"):
+        for artifact in ("conformance.json", "http-checks.json", "azure-checks.json", "compare.json", "log-checks.json"):
             self.assertIn(artifact, checks[scan:checks.index("--out secret-scan.json")])
 
     def test_the_files_written_after_the_checks_are_scanned_before_upload(self):
@@ -239,6 +239,20 @@ class TheSecretScan(unittest.TestCase):
         self.assertIn('echo "::add-mask::$admin_password"', checks)
         self.assertIn('PGPASSWORD="$admin_password" python -m evidence_first_rag.deploy.secrets_scan', checks)
         self.assertNotIn("export PGPASSWORD=\"$admin_password", checks)
+
+
+class TheLogCheck(unittest.TestCase):
+    """`DP-008` runs in the checks step, after `DP-009` has used the relay's
+    window, and its record is uploaded."""
+
+    def test_the_log_check_runs_after_the_http_checks_and_fails_the_step(self):
+        checks = step("Run the deployed checks")
+        position = checks.index("evidence_first_rag.deploy.log_checks")
+        self.assertGreater(position, checks.index("evidence_first_rag.deploy.http_checks"))
+        self.assertIn('failed="$failed DP-008"', checks[position:])
+
+    def test_the_log_record_is_uploaded(self):
+        self.assertIn("log-checks.json", step("Upload the deploy record"))
 
 
 class TheRelayCeiling(unittest.TestCase):
