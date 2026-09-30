@@ -192,6 +192,55 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertIn("evidence-first-rag:$target", rollback)
 
 
+class TheSecretScan(unittest.TestCase):
+    """`DP-003`'s image, workflow and artifact half runs in the checks step,
+    after every artifact that step writes; a second run after the deploy record
+    covers what is written later (#254 B3). Both records are uploaded."""
+
+    def test_the_scan_runs_last_and_fails_the_step(self):
+        checks = step("Run the deployed checks")
+        scan = checks.index("evidence_first_rag.deploy.secrets_scan")
+        self.assertGreater(scan, checks.index("tee compare.json"))
+        self.assertIn('failed="$failed DP-003"', checks[scan:])
+        for artifact in ("conformance.json", "http-checks.json", "azure-checks.json", "compare.json", "log-checks.json"):
+            self.assertIn(artifact, checks[scan:checks.index("--out secret-scan.json")])
+
+    def test_the_files_written_after_the_checks_are_scanned_before_upload(self):
+        """#254 B3: the deploy record embeds provision.txt and is committed."""
+        scan = step("Scan the deploy record")
+        for artifact in ("deploy-record.json", "provision.txt", "restored-compare.json", "expected-digest.json"):
+            self.assertIn(artifact, scan)
+        self.assertIn("--out secret-scan-record.json", scan)
+        names = [body.split("\n", 1)[0] for body in steps(jobs()["deploy"])]
+        order = [names.index(f"name: {name}") for name in ("Write the deploy record", "Scan the deploy record", "Upload the deploy record")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn("secret-scan-record.json", step("Upload the deploy record"))
+
+    def test_the_scan_record_is_uploaded(self):
+        self.assertIn("secret-scan.json", step("Upload the deploy record"))
+
+    def test_a_finding_withholds_the_deploy_record(self):
+        """#254 B5: a file that may carry a value is never uploaded."""
+        self.assertIn("id: record_scan", step("Scan the deploy record"))
+        self.assertIn('echo "secret_scan=fail" >> "$GITHUB_OUTPUT"', step("Run the deployed checks"))
+        upload = step("Upload the deploy record")
+        self.assertIn("steps.record_scan.outcome != 'failure'", upload)
+        self.assertIn("steps.checks.outputs.secret_scan != 'fail'", upload)
+        records = step("Upload the scan records")
+        self.assertIn("if: always()\n", records)
+        self.assertNotIn("deploy-record.json", records)
+        for record in ("secret-scan.json", "secret-scan-record.json"):
+            self.assertIn(record, records)
+
+    def test_the_checks_scan_seeks_the_admin_password_too(self):
+        """#254 N8: all three passwords, the admin one handed to the scan alone."""
+        checks = step("Run the deployed checks")
+        self.assertIn('admin_password="$(read_secret postgres-admin-password)"', checks)
+        self.assertIn('echo "::add-mask::$admin_password"', checks)
+        self.assertIn('PGPASSWORD="$admin_password" python -m evidence_first_rag.deploy.secrets_scan', checks)
+        self.assertNotIn("export PGPASSWORD=\"$admin_password", checks)
+
+
 class TheLogCheck(unittest.TestCase):
     """`DP-008` runs in the checks step, after `DP-009` has used the relay's
     window, and its record is uploaded."""

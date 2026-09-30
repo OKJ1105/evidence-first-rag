@@ -13,11 +13,10 @@
 # This file is the first half of the deploy. It builds and ships one commit:
 # the three database secrets, the provisioning definitions, the image, and the
 # database provisioned from that commit inside a firewall window that is always
-# closed; then the Section 4.8 deployed checks (DP-003's settings half, DP-004,
-# DP-005, DP-007, DP-008, DP-009, DP-010, DP-012, DP-014, the WF rows and the
-# MC rows) and, on a failure, the rollback to the last passing commit, with
-# DP-006, DP-007's comparison and DP-011. DP-003's image and artifact scan
-# remain.
+# closed; then the Section 4.8 deployed checks (DP-003, DP-004, DP-005,
+# DP-007, DP-008, DP-009, DP-010, DP-012, DP-014, the WF rows and the MC rows)
+# and, on a failure, the rollback to the last passing commit, with DP-006,
+# DP-007's comparison and DP-011.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
 # reads the five identifiers #205 lists from the `production` environment's
@@ -270,10 +269,14 @@ jobs:
           # never recorded as a failed check (#237 B6).
           MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)" || { echo "Key Vault read failed"; exit 2; }
           MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)" || { echo "Key Vault read failed"; exit 2; }
-          if [ -z "$MVP_PROVISIONING_PASSWORD" ] || [ -z "$MVP_RUNTIME_PASSWORD" ]; then
+          # Read for DP-003's known-value test only, and handed to the scan
+          # alone, so no check runs with the admin password (#254 N8).
+          admin_password="$(read_secret postgres-admin-password)" || { echo "Key Vault read failed"; exit 2; }
+          if [ -z "$MVP_PROVISIONING_PASSWORD" ] || [ -z "$MVP_RUNTIME_PASSWORD" ] || [ -z "$admin_password" ]; then
             echo "Key Vault returned an empty value"
             exit 2
           fi
+          echo "::add-mask::$admin_password"
           echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
           echo "::add-mask::$MVP_RUNTIME_PASSWORD"
           export MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
@@ -332,6 +335,17 @@ jobs:
             --deployed-digest stable-digest.json --local-digest local-stable-digest.json \
             --deployed-conformance conformance.json --local-conformance local-conformance.json \
             | tee compare.json || failed="$failed DP-006/DP-007"
+          # DP-003's image, workflow and artifact half, last, so every artifact
+          # this step wrote is scanned for the passwords it holds (#253). A
+          # finding is published as an output, so the upload below withholds
+          # the files that may carry the value (#254 B5).
+          PGPASSWORD="$admin_password" python -m evidence_first_rag.deploy.secrets_scan \
+            --image "${{ steps.infra.outputs.registryLoginServer }}/evidence-first-rag:$COMMIT" \
+            --workflows .github/workflows \
+            --artifacts conformance.json writes.json http-checks.json azure-checks.json \
+              stable-digest.json local-conformance.json local-stable-digest.json compare.json log-checks.json \
+            --out secret-scan.json \
+            || { failed="$failed DP-003"; echo "secret_scan=fail" >> "$GITHUB_OUTPUT"; }
           if [ -n "$failed" ]; then
             echo "failed:$failed"
             exit 1
@@ -456,8 +470,35 @@ jobs:
           ROLLBACK_RESULT: ${{ steps.rollback.outputs.result }}
           ROLLBACK_DATABASE: ${{ steps.rollback.outputs.database }}
 
+      # DP-003 over what the checks step could not see: the deploy record and
+      # the rollback records are written after it, and the record embeds
+      # provision.txt, the output of a step that held all three passwords
+      # (#254 B3). A finding fails the job, and the upload below then
+      # withholds every file but the two scan records (#254 B5).
+      - name: Scan the deploy record
+        id: record_scan
+        if: always() && steps.infra.outcome == 'success'
+        run: |
+          set -uo pipefail
+          read_secret() { az keyvault secret show --vault-name "$KEY_VAULT" --name "$1" --query value --output tsv; }
+          PGPASSWORD="$(read_secret postgres-admin-password)" || { echo "Key Vault read failed"; exit 1; }
+          MVP_PROVISIONING_PASSWORD="$(read_secret mvp-provisioning-password)" || { echo "Key Vault read failed"; exit 1; }
+          MVP_RUNTIME_PASSWORD="$(read_secret mvp-runtime-password)" || { echo "Key Vault read failed"; exit 1; }
+          echo "::add-mask::$PGPASSWORD"
+          echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
+          echo "::add-mask::$MVP_RUNTIME_PASSWORD"
+          export PGPASSWORD MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
+          python -m evidence_first_rag.deploy.secrets_scan \
+            --workflows none \
+            --artifacts deploy-record.json provision.txt restored-conformance.json \
+              restored-compare.json restored-digest.json expected-digest.json \
+            --out secret-scan-record.json
+
+      # Withheld when either scan found a secret, so a file carrying a value
+      # is never published. A skipped record scan (no infrastructure) is not
+      # a finding, hence `!= 'failure'` (#254 B5).
       - name: Upload the deploy record
-        if: always()
+        if: always() && steps.record_scan.outcome != 'failure' && steps.checks.outputs.secret_scan != 'fail'
         uses: actions/upload-artifact@v4
         with:
           name: deploy-record-${{ github.sha }}
@@ -476,4 +517,19 @@ jobs:
             stable-digest.json
             local-stable-digest.json
             log-checks.json
+            secret-scan.json
+            secret-scan-record.json
+          if-no-files-found: warn
+
+      # The scan records alone, uploaded whatever the scans found: they name
+      # a finding's file and test, never its value, so the evidence of a
+      # finding survives the upload above being withheld (#254 B5).
+      - name: Upload the scan records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-${{ github.sha }}
+          path: |
+            secret-scan.json
+            secret-scan-record.json
           if-no-files-found: warn
