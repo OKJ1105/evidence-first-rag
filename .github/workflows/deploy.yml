@@ -258,6 +258,9 @@ jobs:
       # deployed checks, and the final step below closes it whatever happened.
       - name: Open the database firewall to this runner
         id: firewall
+        # A narrowed checks run opens it only when a group it runs connects to
+        # the database: DP-004, DP-007, or DP-006, which brings DP-007 (#266 N5).
+        if: env.MODE == 'deploy' || env.CASES == '' || contains(env.CASES, 'DP-004') || contains(env.CASES, 'DP-007') || contains(env.CASES, 'DP-006')
         run: |
           set -euo pipefail
           # A rule an earlier run failed to close is removed first, so no
@@ -327,6 +330,11 @@ jobs:
           fi
           want() { [[ " $selected " == *" $1 "* ]]; }
           skipped=""
+          # Every exit records what ran and what did not: an early exit (a
+          # health wait or a vault read) ran no group and skipped them all
+          # (#266 N6).
+          recorded=""
+          trap '[ -n "$recorded" ] || { echo "skipped=$(xargs <<<"$selected")"; echo "ran="; } >> "$GITHUB_OUTPUT"' EXIT
           # The restarted apps pull a fresh image before they serve. Wait,
           # bounded, until surface answers its health route with JSON, so a
           # slow start is not read as a failed deploy (#237 B2).
@@ -459,6 +467,7 @@ jobs:
           fi
           echo "skipped=${skipped# }" >> "$GITHUB_OUTPUT"
           echo "ran=$(xargs <<<"$selected")" >> "$GITHUB_OUTPUT"
+          recorded=yes
           # DP-003's image, workflow and artifact half, last, so every artifact
           # this step wrote is scanned for the passwords it holds (#253). A
           # finding is published as an output, so the upload below withholds

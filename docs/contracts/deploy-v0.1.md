@@ -182,7 +182,8 @@ Charter Section 9's first gate item: "the deployed environment passes the same r
 - **`DP-003`'s image, workflow and artifact scan always runs**, because it gates the artifact's upload.
 
 **Checks mode** (`DP-017`). The workflow has a second mode that runs these checks against what is already deployed.
-- **What it changes.** It creates no secret, applies no template deployment, pushes no image, restarts nothing, provisions nothing and rolls nothing back. **The one deployed change it makes is the runner's firewall window**, which Section 4.2 opens for the deployed checks and the final step closes whatever the result.
+- **What it changes.** It creates no secret, applies no template deployment, pushes no image, restarts nothing, provisions nothing and rolls nothing back. **The one deployed change it makes is the runner's firewall window**, which Section 4.2 opens for the deployed checks and the final step closes whatever the result. A run narrowed to groups that never connect to the database (`AZURE`, `HTTP`, `WF/MC`, `DP-008`) does not open it.
+- **Its record.** Every exit of the checks step records the groups run and skipped. An early exit (a health wait or a vault read) records none run and all skipped.
 - **The image.** It pulls the deployed image, so `DP-003`'s image half reads what is running.
 - **What it checks.** It reads the resource names from the newest succeeded template deployment. The commit under check is the image tag `surface` is running.
 - **Narrowing.** It may be narrowed to named check groups.

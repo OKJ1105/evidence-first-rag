@@ -8,6 +8,7 @@ run can show is the deployed cases', on the owner's first deploy.
 import pathlib
 import re
 import subprocess
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -287,6 +288,30 @@ class TheChecksMode(unittest.TestCase):
         # DP-003's scan is not a group: it gates the upload, so it always runs.
         self.assertNotIn("want DP-003", checks)
         self.assertGreater(checks.index("evidence_first_rag.deploy.secrets_scan"), max(slow))
+
+    def test_a_narrowed_run_without_a_database_group_opens_no_firewall(self):
+        """#266 N5."""
+        opened = step("Open the database firewall to this runner")
+        self.assertIn(
+            "if: env.MODE == 'deploy' || env.CASES == '' || contains(env.CASES, 'DP-004')"
+            " || contains(env.CASES, 'DP-007') || contains(env.CASES, 'DP-006')",
+            opened,
+        )
+
+    def test_an_early_exit_records_every_group_as_skipped(self):
+        """#266 N6: the trap writes the outputs when the step exits before the
+        groups run."""
+        checks = step("Run the deployed checks")
+        body = code(checks[checks.index('check_groups="'):checks.index("# The restarted apps")])
+        body = "\n".join(line.strip() for line in body.splitlines())
+        with tempfile.NamedTemporaryFile("r", suffix=".out") as output:
+            completed = subprocess.run(
+                ["bash", "-c", body + "\nexit 1"],
+                env={"MODE": "checks", "CASES": "HTTP,DP-004", "GITHUB_OUTPUT": output.name, "PATH": "/usr/bin:/bin"},
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(completed.returncode, 1)
+            self.assertEqual(output.read().splitlines(), ["skipped=HTTP DP-004", "ran="])
 
     def test_the_record_says_what_ran_and_what_was_skipped(self):
         record = step("Write the deploy record")
