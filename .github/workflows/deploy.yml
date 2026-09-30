@@ -72,8 +72,12 @@ jobs:
         with:
           python-version-file: .python-version
 
+      # Editable, as every other workflow installs it: a plain install leaves
+      # the package's data files -- the conformance runner's registered
+      # expected results -- behind, and the deployed runner then fails every
+      # case as unregistered (run 36662412772, DP-007).
       - name: Install the package
-        run: python -m pip install --quiet .
+        run: python -m pip install --quiet -e .
 
       - name: Log in to Azure as the deploy identity
         uses: azure/login@v2

@@ -217,6 +217,35 @@ class TheTier(unittest.TestCase):
         self.assertFalse(outcome["DP-014 credential"]["passed"])
 
 
+class TheFailureDetail(unittest.TestCase):
+    """Run 36662412772 recorded `DP-014 roles` as `AzError` alone. The detail
+    now names the failed command and Azure's error code, never the message."""
+
+    def test_a_failed_call_is_named_with_its_code_and_not_its_message(self):
+        real = stand_in(good_state())
+        message = (
+            "ERROR: (AuthorizationFailed) The client 'SAMPLE_CLIENT' does not have authorization"
+            " to perform action over scope '/subscriptions/SAMPLE_SUBSCRIPTION'."
+        )
+
+        def az(*arguments):
+            if arguments[:3] == ("role", "assignment", "list"):
+                raise checks.AzError(f"az {checks._command(arguments)} failed", message)
+            return real(*arguments)
+
+        detail = checks.run(az, "g", "r", "surface", "relay", "id-deploy", COMMIT)["DP-014 roles"]
+        self.assertFalse(detail["passed"])
+        self.assertIn("az role assignment list failed", detail["detail"])
+        self.assertIn("(AuthorizationFailed)", detail["detail"])
+        self.assertNotIn("SAMPLE_", detail["detail"])
+
+    def test_the_command_stops_at_its_first_option(self):
+        self.assertEqual(checks._command(("identity", "show", "--resource-group", "SAMPLE_GROUP")), "identity show")
+
+    def test_output_without_a_code_says_so(self):
+        self.assertEqual(checks.error_code("SAMPLE plain failure"), "no error code in the output")
+
+
 class TheRoleScopes(unittest.TestCase):
     def test_a_scope_differing_only_in_case_is_the_same_scope(self):
         """ARM identifiers compare without case (#241 N5)."""
