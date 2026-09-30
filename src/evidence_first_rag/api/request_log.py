@@ -42,9 +42,11 @@ LOGGER = logging.getLogger("evidence_first_rag.surface.requests")
 # two together.
 MCP_PATH = "/mcp"
 # The paths `create_app` registers, written as themselves. `api-v0.1`
-# Section 4.1's five routes, `mcp-v0.1`'s endpoint, and the page's root.
+# Section 4.1's five routes, the bare namespace that refuses as Section 4.5
+# `unknown_route` (#268 N6), `mcp-v0.1`'s endpoint, and the page's root.
+NAMESPACE = "/v1"
 KNOWN_PATHS = frozenset(
-    {"/", MCP_PATH, "/v1/health", "/v1/select", "/v1/query", "/v1/discover", "/v1/ask"}
+    {"/", MCP_PATH, NAMESPACE, "/v1/health", "/v1/select", "/v1/query", "/v1/discover", "/v1/ask"}
 )
 OTHER_PATH = "(other)"
 # Only a JSON body this app answered with is read, and only up to this many
@@ -143,7 +145,7 @@ class RequestLog:
             return
         started = self.clock()
         path = scope["path"]
-        read = path == MCP_PATH or path.startswith("/v1/")
+        read = path in (MCP_PATH, NAMESPACE) or path.startswith(NAMESPACE + "/")
         state = {"status": 500, "chunks": [], "size": 0, "logged": False}
 
         async def recording(message):

@@ -137,6 +137,15 @@ class ThePositiveControl(unittest.TestCase):
         self.assertIn("relay", detail)
         self.assertNotIn("surface", detail)
 
+    def test_the_surface_needs_its_own_record_not_uvicorns_access_line(self):
+        """#268 N7: the line DP-008 relied on before this record existed."""
+        access = 'INFO:     <address>:0 - "POST /v1/discover HTTP/1.1" 200 OK'
+        logs = {**CLEAN, "surface": {"LogFiles/app.log": access}}
+        (passed, detail), _, _, _ = run(logs)
+        self.assertFalse(passed)
+        self.assertIn("surface", detail)
+        self.assertNotIn("relay", detail)
+
     def test_terms_spread_over_separate_lines_are_not_one_record(self):
         logs = {**CLEAN, "relay": {"LogFiles/app.log": '{"path":"/chat"}\n{"http_status":400}'}}
         (passed, _), _, _, _ = run(logs)

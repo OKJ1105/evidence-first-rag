@@ -115,6 +115,13 @@ class TheRecord(unittest.TestCase):
         self.assertNotIn(MARKER, json.dumps(lines[0]))
         self.assertNotIn("detail", lines[0])
 
+    def test_the_bare_namespace_is_logged_as_itself_with_its_refusal(self):
+        """#268 N6: `/v1` is a registered route, answered with Section 4.5
+        `unknown_route`."""
+        body = json.dumps({"refusal": "unknown_route", "detail": "SAMPLE"}).encode()
+        lines, _, _ = run(respond(404, body), "/v1")
+        self.assertEqual((lines[0]["path"], lines[0]["refusal"]), ("/v1", "unknown_route"))
+
     def test_a_value_that_is_not_a_bare_token_is_dropped(self):
         body = json.dumps({"result": {"status": f"found {MARKER}"}}).encode()
         lines, _, _ = run(respond(200, body), "/v1/select")
@@ -288,9 +295,14 @@ class TheRegisteredPaths(unittest.TestCase):
         self.assertIsInstance(app, request_log.RequestLog)
         # A templated route (the `/v1/{rest:path}` catch-all that refuses
         # unknown paths) takes a caller's path, so it is rightly `(other)`.
+        # The bare namespace is a route of its own (#268 N6), so the filter
+        # takes it as well as everything under it.
         served = {
-            route.path for route in app.app.routes if route.path.startswith("/v1/") and "{" not in route.path
+            route.path
+            for route in app.app.routes
+            if (route.path == "/v1" or route.path.startswith("/v1/")) and "{" not in route.path
         }
+        self.assertIn("/v1", served)
         self.assertTrue(served)
         self.assertLessEqual(served, request_log.KNOWN_PATHS)
 
