@@ -192,11 +192,11 @@ jobs:
           # A rule an earlier run failed to close is removed first, so no
           # runner address stays admitted past its own run (#235 N1).
           for stale in $(az postgres flexible-server firewall-rule list \
-              --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.serverName }}" \
+              --resource-group "$RESOURCE_GROUP" --server-name "${{ steps.infra.outputs.serverName }}" \
               --query "[?starts_with(name, 'deploy-runner-')].name" --output tsv); do
             az postgres flexible-server firewall-rule delete \
-              --resource-group "$RESOURCE_GROUP" --name "${{ steps.infra.outputs.serverName }}" \
-              --rule-name "$stale" --yes --output none
+              --resource-group "$RESOURCE_GROUP" --server-name "${{ steps.infra.outputs.serverName }}" \
+              --name "$stale" --yes --output none
           done
           # Recorded before the create, so the close step runs whatever the
           # create's exit status (#235 N5).
@@ -204,8 +204,8 @@ jobs:
           address="$(curl --silent --show-error --fail https://api.ipify.org)"
           az postgres flexible-server firewall-rule create \
             --resource-group "$RESOURCE_GROUP" \
-            --name "${{ steps.infra.outputs.serverName }}" \
-            --rule-name "deploy-runner-${{ github.run_id }}" \
+            --server-name "${{ steps.infra.outputs.serverName }}" \
+            --name "deploy-runner-${{ github.run_id }}" \
             --start-ip-address "$address" --end-ip-address "$address" \
             --output none
 
@@ -422,8 +422,8 @@ jobs:
         run: |
           az postgres flexible-server firewall-rule delete \
             --resource-group "$RESOURCE_GROUP" \
-            --name "${{ steps.infra.outputs.serverName }}" \
-            --rule-name "${{ steps.firewall.outputs.rule }}" \
+            --server-name "${{ steps.infra.outputs.serverName }}" \
+            --name "${{ steps.firewall.outputs.rule }}" \
             --yes --output none || echo "no rule to remove"
 
       # Section 4.8: the commit, the image digest, the date, and the run's
