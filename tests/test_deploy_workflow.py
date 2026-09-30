@@ -192,6 +192,20 @@ class TheDeployedChecks(unittest.TestCase):
         self.assertIn("evidence-first-rag:$target", rollback)
 
 
+class TheLogCheck(unittest.TestCase):
+    """`DP-008` runs in the checks step, after `DP-009` has used the relay's
+    window, and its record is uploaded."""
+
+    def test_the_log_check_runs_after_the_http_checks_and_fails_the_step(self):
+        checks = step("Run the deployed checks")
+        position = checks.index("evidence_first_rag.deploy.log_checks")
+        self.assertGreater(position, checks.index("evidence_first_rag.deploy.http_checks"))
+        self.assertIn('failed="$failed DP-008"', checks[position:])
+
+    def test_the_log_record_is_uploaded(self):
+        self.assertIn("log-checks.json", step("Upload the deploy record"))
+
+
 class TheRelayCeiling(unittest.TestCase):
     """`DP-016`, `deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`
     Section 8.3 registers, so the relay never starts with none (and then
