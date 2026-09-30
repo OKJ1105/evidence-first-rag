@@ -705,6 +705,15 @@ class TheRecords(RelayCase):
             with self.subTest(name):
                 self.assertEqual(relay._tool_result_kind(block), expected)
 
+    def test_a_refusal_the_mcp_surface_writes_is_read_by_kind(self):
+        """#272 N1: the refusal branch reads the body `mcp-v0.1` Section 4.3's
+        own writer produces, not only a hand-written one."""
+        if not HAS_MCP_SURFACE:
+            self.skipTest("the mcp extra is not installed")
+        written = mcp_surface.refusal("database_unavailable", mcp_surface.DATABASE_DETAIL)
+        block = tool_result(json.loads(written.content[-1].text), is_error=True)
+        self.assertEqual(relay._tool_result_kind(block), "database_unavailable")
+
     def test_a_refusal_is_logged_by_kind(self):
         client = self.relay(ceiling=None)
         with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
