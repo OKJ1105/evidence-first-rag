@@ -43,12 +43,12 @@ def tar_of(files: dict) -> io.BytesIO:
 class TheImageFilesystem(unittest.TestCase):
     def scan(self, files):
         findings = []
-        secrets_scan.scan_image_filesystem(tar_of(files), [VALUE], findings, secrets_scan._shape_rules(SCANNER))
+        secrets_scan.scan_image_filesystem(tar_of(files), [("PGPASSWORD", VALUE)], findings, secrets_scan._shape_rules(SCANNER))
         return findings
 
     def test_a_known_value_is_found_anywhere(self):
         findings = self.scan({"usr/lib/somewhere.txt": f"x {VALUE} y"})
-        self.assertEqual([f["test"] for f in findings], ["known value 1"])
+        self.assertEqual([f["test"] for f in findings], ["known value PGPASSWORD"])
 
     def test_a_shape_is_found_in_this_repositorys_files(self):
         findings = self.scan({"app/src/leak.py": SHAPED})
@@ -65,7 +65,7 @@ class TheImageFilesystem(unittest.TestCase):
 class TheImageConfig(unittest.TestCase):
     def scan(self, config):
         findings = []
-        secrets_scan.scan_image_config(config, [VALUE], findings, secrets_scan._shape_rules(SCANNER))
+        secrets_scan.scan_image_config(config, [("PGPASSWORD", VALUE)], findings, secrets_scan._shape_rules(SCANNER))
         return findings
 
     def test_a_secret_setting_in_the_image_is_found_whatever_its_value(self):
@@ -74,7 +74,7 @@ class TheImageConfig(unittest.TestCase):
 
     def test_a_known_value_in_a_label_is_found(self):
         findings = self.scan({"Labels": {"note": VALUE}})
-        self.assertEqual([f["test"] for f in findings], ["known value 1"])
+        self.assertEqual([f["test"] for f in findings], ["known value PGPASSWORD"])
 
     def test_the_usual_environment_is_clean(self):
         self.assertEqual(self.scan({"Env": ["PATH=/usr/local/bin", "LANG=C.UTF-8"], "Cmd": ["python3"]}), [])
@@ -83,13 +83,13 @@ class TheImageConfig(unittest.TestCase):
 class TheReport(unittest.TestCase):
     def test_no_finding_carries_the_value(self):
         findings = []
-        secrets_scan.scan_text(f"a={VALUE}", "artifact:x.json", [VALUE], findings)
+        secrets_scan.scan_text(f"a={VALUE}", "artifact:x.json", [("PGPASSWORD", VALUE)], findings)
         self.assertNotIn(VALUE, json.dumps(findings))
-        self.assertEqual(findings, [{"where": "artifact:x.json", "test": "known value 1"}])
+        self.assertEqual(findings, [{"where": "artifact:x.json", "test": "known value PGPASSWORD"}])
 
     def test_the_known_values_come_from_the_exported_variables(self):
         environment = {"MVP_RUNTIME_PASSWORD": VALUE, "MVP_PROVISIONING_PASSWORD": "", "OTHER": "SAMPLE_X"}
-        self.assertEqual(secrets_scan.known_values(environment), [VALUE])
+        self.assertEqual(secrets_scan.known_values(environment), [("MVP_RUNTIME_PASSWORD", VALUE)])
 
     def test_the_case_fails_when_no_secret_was_provided(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -240,7 +240,7 @@ class TheCredentialRules(unittest.TestCase):
     def test_a_secret_assigned_under_a_secret_name_is_found(self):
         findings = []
         secrets_scan.scan_text(
-            ASSIGNED, "workflow:.github/workflows/sample.yml", [VALUE], findings,
+            ASSIGNED, "workflow:.github/workflows/sample.yml", [("PGPASSWORD", VALUE)], findings,
             secrets_scan._shape_rules(SCANNER), ".github/workflows/sample.yml",
         )
         self.assertEqual([f["test"] for f in findings], ["assigned-secret"])
@@ -272,11 +272,11 @@ class TheRecordRun(unittest.TestCase):
         self.assertEqual(document["scanned"], {"image": None, "workflows": [], "artifacts": [record.as_posix()]})
 
     def test_the_admin_password_is_a_known_value(self):
-        self.assertEqual(secrets_scan.known_values({"PGPASSWORD": VALUE}), [VALUE])
+        self.assertEqual(secrets_scan.known_values({"PGPASSWORD": VALUE}), [("PGPASSWORD", VALUE)])
 
     def test_the_image_filesystem_reports_how_many_own_files_it_read(self):
         stream = tar_of({"app/src/a.py": "x", "app/src/b.py": "y", "usr/lib/c": "z"})
-        self.assertEqual(secrets_scan.scan_image_filesystem(stream, [VALUE], [], secrets_scan._shape_rules()), 2)
+        self.assertEqual(secrets_scan.scan_image_filesystem(stream, [("PGPASSWORD", VALUE)], [], secrets_scan._shape_rules()), 2)
 
     def test_a_secret_under_a_secret_shaped_name_in_a_label_is_found(self):
         findings = []

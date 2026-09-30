@@ -219,6 +219,27 @@ class TheSecretScan(unittest.TestCase):
     def test_the_scan_record_is_uploaded(self):
         self.assertIn("secret-scan.json", step("Upload the deploy record"))
 
+    def test_a_finding_withholds_the_deploy_record(self):
+        """#254 B5: a file that may carry a value is never uploaded."""
+        self.assertIn("id: record_scan", step("Scan the deploy record"))
+        self.assertIn('echo "secret_scan=fail" >> "$GITHUB_OUTPUT"', step("Run the deployed checks"))
+        upload = step("Upload the deploy record")
+        self.assertIn("steps.record_scan.outcome != 'failure'", upload)
+        self.assertIn("steps.checks.outputs.secret_scan != 'fail'", upload)
+        records = step("Upload the scan records")
+        self.assertIn("if: always()\n", records)
+        self.assertNotIn("deploy-record.json", records)
+        for record in ("secret-scan.json", "secret-scan-record.json"):
+            self.assertIn(record, records)
+
+    def test_the_checks_scan_seeks_the_admin_password_too(self):
+        """#254 N8: all three passwords, the admin one handed to the scan alone."""
+        checks = step("Run the deployed checks")
+        self.assertIn('admin_password="$(read_secret postgres-admin-password)"', checks)
+        self.assertIn('echo "::add-mask::$admin_password"', checks)
+        self.assertIn('PGPASSWORD="$admin_password" python -m evidence_first_rag.deploy.secrets_scan', checks)
+        self.assertNotIn("export PGPASSWORD=\"$admin_password", checks)
+
 
 class TheRelayCeiling(unittest.TestCase):
     """`DP-016`, `deploy-v0.1` Section 4.6: the deploy passes the ceiling `relay-v0.1`

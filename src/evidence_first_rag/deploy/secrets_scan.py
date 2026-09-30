@@ -95,17 +95,20 @@ def _shape_rules(path=None):
 
 
 def known_values(environment) -> list:
-    """The secret values the job holds, empty ones left out."""
-    return [environment[name] for name in KNOWN_VALUE_VARIABLES if environment.get(name)]
+    """The secret values the job holds, as (variable, value), empty ones left
+    out. A finding names the variable, never the value, so a reader of the
+    record can tell which of the passwords was found and which were sought
+    (#254 N8)."""
+    return [(name, environment[name]) for name in KNOWN_VALUE_VARIABLES if environment.get(name)]
 
 
 def scan_text(text, where, values, findings, shapes=None, path=None):
     """Append a finding for each known value in `text`, and for each shape
     hit when `shapes` is given. `path` is what the shape rules are told the
     file is, since some of them read its suffix."""
-    for index, value in enumerate(values):
+    for name, value in values:
         if value in text:
-            findings.append({"where": where, "test": f"known value {index + 1}"})
+            findings.append({"where": where, "test": f"known value {name}"})
     if shapes:
         target = pathlib.PurePosixPath(path or where)
         for number, line in enumerate(text.splitlines(), 1):
@@ -222,7 +225,7 @@ def main(argv=None, environment=None) -> int:
         result = {
             "DP-003 image, workflows, artifact": {
                 "passed": not findings and error is None,
-                "known_values": len(values),
+                "known_values": [name for name, _ in values],
                 "scanned": scanned,
                 "findings": findings,
                 "limitations": list(LIMITATIONS),
