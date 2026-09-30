@@ -5,6 +5,13 @@ after the run, with its conformance artifacts, whether the owner or the writer
 session started it (`deploy-v0.1` Section 4.2, ADR-0007). A checks-mode run's
 record is not committed here (Section 4.8).
 
+The other files of a run's artifact are committed beside it in
+`run-<run id>/`, byte for byte as the run uploaded them.
+
+| Record | Run | Outcome |
+| --- | --- | --- |
+| [`deploy-b36303d08268b5de5872f926e33f41af5e5443e3.json`](deploy-b36303d08268b5de5872f926e33f41af5e5443e3.json), [`run-36677427212/`](run-36677427212/) | [36677427212](https://github.com/OKJ1105/evidence-first-rag/actions/runs/36677427212), the first passing deploy (2026-09-30) | `success`; deployed checks `pass`; all seven groups ran |
+
 `deploy-v0.1` Section 4.8's rollback target is the newest record here whose
 mode is `deploy` (a record without `mode` predates the field and is a deploy),
 whose outcome is `success` and whose deployed checks are `pass`.
