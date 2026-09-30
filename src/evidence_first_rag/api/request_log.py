@@ -6,10 +6,12 @@ record uses for the fields they share, so one reader serves both apps.
 
 Both of the app's answering surfaces are read: a `/v1` route's `api-v0.1`
 Section 4.2 envelope, and `/mcp`'s JSON-RPC document, whose result carries
-`mcp-v0.1` Section 4.2's canonical JSON in its last text block. A `/mcp` line
-carrying neither would leave a `coverage_gap`, a `not_found` and a successful
-lookup byte-identical apart from latency, and Section 4.7's failure
-classification with nothing to read on that route (#259 B1).
+`mcp-v0.1` Section 4.2's canonical JSON in its last text block -- which is
+that same `api-v0.1` envelope, so the status sits one level in, under its
+`result` (#259 B2). A `/mcp` line carrying neither would leave a
+`coverage_gap`, a `not_found` and a successful lookup byte-identical apart
+from latency, and Section 4.7's failure classification with nothing to read
+on that route (#259 B1).
 
 What never reaches the line (Section 4.7):
 
@@ -57,10 +59,16 @@ def _token(value):
 
 
 def _tool_outcome(result: dict) -> dict:
-    """The same read `relay/app.py:_tool_result_kind` performs on the same
-    canonical JSON: `mcp-v0.1` Section 4.2 makes the last text block of a tool
-    result that document, and Section 4.3 the refusal body. A value that is not
-    a bare token is dropped, exactly as it is for a `/v1` envelope."""
+    """The tool result's status, or its refusal kind when it is an error.
+
+    Read off the last text block, which `mcp-v0.1` Section 4.2 makes the
+    canonical JSON of a result and Section 4.3 the refusal body. **The two are
+    not nested alike**, and Section 4.2 is why: a result's canonical JSON is
+    the `api-v0.1` Section 4.2 envelope, so its status is one level in, under
+    `result`; Section 4.3's refusal body is flat, `{"refusal", "detail"}` and
+    nothing else (`mcp/surface.py:tool_result` and `:refusal`). A value that is
+    not a bare token is dropped, exactly as it is for a `/v1` envelope.
+    """
     content = result.get("content")
     texts = [
         item.get("text")
@@ -75,9 +83,12 @@ def _tool_outcome(result: dict) -> dict:
         return {}
     # The MCP spelling is `isError`; the Python SDK's model spells it
     # `is_error`. Either marks a refusal (`relay/app.py:_tool_result_kind`).
-    key = "refusal" if (result.get("isError") or result.get("is_error")) else "status"
-    value = _token(document.get(key))
-    return {key: value} if value is not None else {}
+    if result.get("isError") or result.get("is_error"):
+        kind = _token(document.get("refusal"))
+        return {"refusal": kind} if kind is not None else {}
+    inner = document.get("result")
+    status = _token(inner.get("status")) if isinstance(inner, dict) else None
+    return {"status": status} if status is not None else {}
 
 
 def outcome(body: bytes) -> dict:
@@ -85,8 +96,9 @@ def outcome(body: bytes) -> dict:
 
     Two shapes answer for this app: the `api-v0.1` Section 4.2 envelope of a
     `/v1` route, whose `result` carries the status directly, and the JSON-RPC
-    document of `/mcp`, whose `result` carries it inside the tool result. A
-    `/mcp` POST is one plain JSON document rather than an event stream because
+    document of `/mcp`, whose `result` is the tool result and carries that same
+    envelope inside it, as the canonical JSON of its last text block. A `/mcp`
+    POST is one plain JSON document rather than an event stream because
     `mcp/surface.py:mount` builds the session manager with `json_response`.
     """
     try:
