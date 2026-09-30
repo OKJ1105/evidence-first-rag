@@ -74,6 +74,17 @@ def refused_writes(connect, errors) -> dict:
     return outcome
 
 
+def _passing_deploy(record) -> bool:
+    """A deploy that passed. A checks-mode record deployed nothing, so it is
+    never one, whatever its checks concluded (#265); a record written before
+    the mode existed was a deploy."""
+    return (
+        record.get("mode", "deploy") == "deploy"
+        and record.get("outcome") == "success"
+        and record.get("deployed_checks") == "pass"
+    )
+
+
 def last_passing_commit(records: pathlib.Path = RECORDS, excluding: str = ""):
     """The commit of the newest passing deploy record, or `None`.
 
@@ -89,7 +100,7 @@ def last_passing_commit(records: pathlib.Path = RECORDS, excluding: str = ""):
         record = json.loads(path.read_text(encoding="utf-8"))
         if record.get("commit") == excluding:
             continue
-        if record.get("outcome") == "success" and record.get("deployed_checks") == "pass":
+        if _passing_deploy(record):
             passing.append((record["date"], record["commit"]))
     return max(passing)[1] if passing else None
 
@@ -101,7 +112,7 @@ def stable_digest_of(commit: str, records: pathlib.Path = RECORDS):
     for path in sorted(records.glob("deploy-*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
         # The same predicate `last_passing_commit` chose the target by (#243 N6).
-        if record.get("commit") == commit and record.get("outcome") == "success" and record.get("deployed_checks") == "pass":
+        if record.get("commit") == commit and _passing_deploy(record):
             digest = record.get("stable_digest")
             if digest is None:
                 raise ValueError(f"the passing record for {commit} holds no stable digest")

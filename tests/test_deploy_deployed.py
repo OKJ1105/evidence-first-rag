@@ -114,6 +114,16 @@ class TheRollbackTarget(unittest.TestCase):
         unchecked = {"date": "2026-01-01T00:00:00+00:00", "commit": "a" * 40, "outcome": "success", "deployed_checks": "not run"}
         self.assertIsNone(deployed.last_passing_commit(self.records(unchecked)))
 
+    def test_a_passing_checks_run_is_never_a_rollback_target(self):
+        """#265: a checks-mode run deployed nothing, whatever it concluded."""
+        digest = {"row_counts": {"a": 1}, "registry_digest": "r", "templates": []}
+        deploy = {"date": "2026-01-01T00:00:00+00:00", "mode": "deploy", "commit": "a" * 40, "outcome": "success", "deployed_checks": "pass", "stable_digest": digest}
+        checks = {"date": "2026-02-01T00:00:00+00:00", "mode": "checks", "commit": "b" * 40, "outcome": "success", "deployed_checks": "pass", "stable_digest": digest}
+        records = self.records(deploy, checks)
+        self.assertEqual(deployed.last_passing_commit(records), "a" * 40)
+        with self.assertRaises(ValueError):
+            deployed.stable_digest_of("b" * 40, records)
+
 
 if __name__ == "__main__":
     unittest.main()
