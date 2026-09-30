@@ -1,13 +1,20 @@
 """`deploy-v0.1` Section 4.7: `surface`'s one JSON line per request (#259).
 
-The record is timestamp, path, HTTP status, latency, and for a `/v1` result
-its `status` or for a refusal its kind -- the same keys `relay`'s Section 4.10
+The record is timestamp, path, HTTP status, latency, and for a result its
+`status` or for a refusal its kind -- the same keys `relay`'s Section 4.10
 record uses for the fields they share, so one reader serves both apps.
+
+Both of the app's answering surfaces are read: a `/v1` route's `api-v0.1`
+Section 4.2 envelope, and `/mcp`'s JSON-RPC document, whose result carries
+`mcp-v0.1` Section 4.2's canonical JSON in its last text block. A `/mcp` line
+carrying neither would leave a `coverage_gap`, a `not_found` and a successful
+lookup byte-identical apart from latency, and Section 4.7's failure
+classification with nothing to read on that route (#259 B1).
 
 What never reaches the line (Section 4.7):
 
-- **No body, argument value or row.** A `/v1` response body is read only to
-  take two values out of it, the result's `status` and the refusal's kind, and
+- **No body, argument value or row.** A response body is read only to take
+  two values out of it, the result's `status` and the refusal's kind, and
   each is written only if it is a bare lowercase token. Anything else is
   dropped, not quoted.
 - **No path a caller chose.** A path outside the routes this app registers
@@ -28,15 +35,19 @@ import time
 
 LOGGER = logging.getLogger("evidence_first_rag.surface.requests")
 
+# `mcp-v0.1` Section 4.5's endpoint. Written here rather than imported from
+# `mcp.surface`, which pulls in the MCP SDK; `TheRegisteredPaths` holds the
+# two together.
+MCP_PATH = "/mcp"
 # The paths `create_app` registers, written as themselves. `api-v0.1`
 # Section 4.1's five routes, `mcp-v0.1`'s endpoint, and the page's root.
 KNOWN_PATHS = frozenset(
-    {"/", "/mcp", "/v1/health", "/v1/select", "/v1/query", "/v1/discover", "/v1/ask"}
+    {"/", MCP_PATH, "/v1/health", "/v1/select", "/v1/query", "/v1/discover", "/v1/ask"}
 )
 OTHER_PATH = "(other)"
-# Only a `/v1` JSON body is read, and only up to this many bytes: every
-# Section 4.2 envelope fits, and a larger one is logged without its status
-# rather than held in memory.
+# Only a JSON body this app answered with is read, and only up to this many
+# bytes: every Section 4.2 envelope fits, and a larger one is logged without
+# its status rather than held in memory.
 BODY_LIMIT = 1 << 20
 TOKEN = re.compile(r"^[a-z][a-z_]{0,63}$")
 
@@ -45,8 +56,39 @@ def _token(value):
     return value if isinstance(value, str) and TOKEN.match(value) else None
 
 
+def _tool_outcome(result: dict) -> dict:
+    """The same read `relay/app.py:_tool_result_kind` performs on the same
+    canonical JSON: `mcp-v0.1` Section 4.2 makes the last text block of a tool
+    result that document, and Section 4.3 the refusal body. A value that is not
+    a bare token is dropped, exactly as it is for a `/v1` envelope."""
+    content = result.get("content")
+    texts = [
+        item.get("text")
+        for item in (content if isinstance(content, list) else [])
+        if isinstance(item, dict) and item.get("type") == "text"
+    ]
+    try:
+        document = json.loads(texts[-1])
+    except (IndexError, TypeError, ValueError):
+        return {}
+    if not isinstance(document, dict):
+        return {}
+    # The MCP spelling is `isError`; the Python SDK's model spells it
+    # `is_error`. Either marks a refusal (`relay/app.py:_tool_result_kind`).
+    key = "refusal" if (result.get("isError") or result.get("is_error")) else "status"
+    value = _token(document.get(key))
+    return {key: value} if value is not None else {}
+
+
 def outcome(body: bytes) -> dict:
-    """The result's `status` or the refusal's kind, and nothing else."""
+    """The result's `status` or the refusal's kind, and nothing else.
+
+    Two shapes answer for this app: the `api-v0.1` Section 4.2 envelope of a
+    `/v1` route, whose `result` carries the status directly, and the JSON-RPC
+    document of `/mcp`, whose `result` carries it inside the tool result. A
+    `/mcp` POST is one plain JSON document rather than an event stream because
+    `mcp/surface.py:mount` builds the session manager with `json_response`.
+    """
     try:
         document = json.loads(body)
     except ValueError:
@@ -57,8 +99,10 @@ def outcome(body: bytes) -> dict:
     if kind is not None:
         return {"refusal": kind}
     result = document.get("result")
-    status = _token(result.get("status")) if isinstance(result, dict) else None
-    return {"status": status} if status is not None else {}
+    if not isinstance(result, dict):
+        return {}
+    status = _token(result.get("status"))
+    return {"status": status} if status is not None else _tool_outcome(result)
 
 
 def log_line(*, path: str, http_status: int, latency_ms: float, body: bytes | None) -> str:
@@ -87,7 +131,7 @@ class RequestLog:
             return
         started = self.clock()
         path = scope["path"]
-        read = path.startswith("/v1/")
+        read = path == MCP_PATH or path.startswith("/v1/")
         state = {"status": 500, "chunks": [], "size": 0, "logged": False}
 
         async def recording(message):

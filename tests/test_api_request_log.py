@@ -29,6 +29,15 @@ def respond(status, body, *, chunks=1, raises=None):
     return app
 
 
+def jsonrpc(canonical, *, error_key=None):
+    """The `/mcp` answer to a tool call: one JSON-RPC document whose result
+    carries `mcp-v0.1` Section 4.2's canonical JSON in its last text block."""
+    result = {"content": [{"type": "text", "text": json.dumps(canonical)}]}
+    if error_key is not None:
+        result[error_key] = True
+    return json.dumps({"jsonrpc": "2.0", "id": 1, "result": result}).encode()
+
+
 class Captured(logging.Handler):
     def __init__(self):
         super().__init__()
@@ -96,12 +105,52 @@ class TheRecord(unittest.TestCase):
         self.assertEqual(lines[0]["path"], request_log.OTHER_PATH)
         self.assertNotIn(MARKER, json.dumps(lines[0]))
 
-    def test_mcp_and_the_page_are_logged_without_reading_the_body(self):
-        for path in ("/mcp", "/"):
-            with self.subTest(path=path):
-                lines, _, _ = run(respond(200, json.dumps({"result": {"status": "found"}}).encode()), path)
-                self.assertEqual(lines[0]["path"], path)
+    def test_the_page_is_logged_without_reading_the_body(self):
+        lines, _, _ = run(respond(200, json.dumps({"result": {"status": "found"}}).encode()), "/")
+        self.assertEqual(lines[0]["path"], "/")
+        self.assertNotIn("status", lines[0])
+
+    def test_a_mcp_tool_result_is_logged_with_its_status(self):
+        """Without this, a `coverage_gap`, a `not_found` and a lookup over
+        `/mcp` leave byte-identical lines apart from latency (#259 B1)."""
+        lines, _, _ = run(respond(200, jsonrpc({
+            "contract": {"identifier": "mcp-v0.1"},
+            "status": "coverage_gap",
+            "limitations": [MARKER],
+        })), request_log.MCP_PATH)
+        self.assertEqual(lines[0]["path"], request_log.MCP_PATH)
+        self.assertEqual(lines[0]["status"], "coverage_gap")
+        self.assertNotIn(MARKER, json.dumps(lines[0]))
+
+    def test_a_mcp_tool_refusal_is_logged_with_its_kind(self):
+        """Either spelling of the error flag marks a refusal."""
+        for key in ("isError", "is_error"):
+            with self.subTest(key=key):
+                lines, _, _ = run(respond(200, jsonrpc(
+                    {"refusal": "malformed_request", "detail": f"SAMPLE {MARKER}"}, error_key=key
+                )), request_log.MCP_PATH)
+                self.assertEqual(lines[0]["refusal"], "malformed_request")
                 self.assertNotIn("status", lines[0])
+                self.assertNotIn(MARKER, json.dumps(lines[0]))
+
+    def test_a_mcp_value_that_is_not_a_bare_token_is_dropped(self):
+        lines, _, _ = run(respond(200, jsonrpc({"status": f"found {MARKER}"})), request_log.MCP_PATH)
+        self.assertNotIn("status", lines[0])
+        self.assertNotIn(MARKER, json.dumps(lines[0]))
+
+    def test_a_mcp_response_carrying_no_tool_result_is_logged_without_one(self):
+        """`initialize` and `tools/list` answer with no content blocks, and a
+        stream or a protocol error is not a Section 4.2 document either."""
+        bodies = (
+            json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "discover_entity"}]}}).encode(),
+            json.dumps({"jsonrpc": "2.0", "id": 1, "error": {"code": -32600, "message": MARKER}}).encode(),
+            b"event: message\ndata: " + jsonrpc({"status": "found"}) + b"\n\n",
+        )
+        for body in bodies:
+            with self.subTest(body=body[:24]):
+                lines, _, _ = run(respond(200, body), request_log.MCP_PATH)
+                self.assertEqual(set(lines[0]), {"timestamp", "path", "http_status", "latency_ms"})
+                self.assertNotIn(MARKER, json.dumps(lines[0]))
 
     def test_a_body_over_the_limit_is_logged_without_its_status(self):
         body = json.dumps({"result": {"status": "found"}, "pad": "x" * (request_log.BODY_LIMIT + 1)}).encode()
@@ -137,6 +186,16 @@ class TheRegisteredPaths(unittest.TestCase):
         }
         self.assertTrue(served)
         self.assertLessEqual(served, request_log.KNOWN_PATHS)
+
+    def test_the_mcp_path_is_the_one_the_surface_serves(self):
+        """`MCP_PATH` is written out rather than imported, so drift in either
+        would silently stop the body being read there (#259 B1)."""
+        try:
+            from evidence_first_rag.mcp import surface
+        except ImportError:
+            self.skipTest("the mcp extra is not installed")
+        self.assertEqual(request_log.MCP_PATH, surface.PATH)
+        self.assertIn(surface.PATH, request_log.KNOWN_PATHS)
 
 
 if __name__ == "__main__":
