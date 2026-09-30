@@ -634,11 +634,37 @@ jobs:
           echo "::add-mask::$MVP_PROVISIONING_PASSWORD"
           echo "::add-mask::$MVP_RUNTIME_PASSWORD"
           export PGPASSWORD MVP_PROVISIONING_PASSWORD MVP_RUNTIME_PASSWORD
+          # 1 is a finding, published so the upload below withholds the files;
+          # any other failure is a scan that did not finish (#260 N11).
+          status=0
           python -m evidence_first_rag.deploy.secrets_scan \
             --workflows none \
             --artifacts deploy-record.json provision.txt restored-conformance.json \
               restored-compare.json restored-digest.json expected-digest.json \
-            --out secret-scan-record.json
+            --out secret-scan-record.json || status=$?
+          [ "$status" -ne 1 ] || echo "finding=yes" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      # When the record scan could not finish but found nothing, the files the
+      # checks step's own scan cleared are still published, so the run's
+      # evidence survives. The deploy record and the rollback records, which
+      # no finished scan cleared, stay withheld (#260 N11).
+      - name: Upload the checks evidence
+        if: always() && steps.record_scan.outcome == 'failure' && steps.record_scan.outputs.finding != 'yes' && steps.checks.outputs.secret_scan != 'fail'
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-evidence-${{ env.MODE }}-${{ env.DEPLOYED_COMMIT || github.sha }}
+          path: |
+            conformance.json
+            writes.json
+            http-checks.json
+            azure-checks.json
+            stable-digest.json
+            local-conformance.json
+            local-stable-digest.json
+            compare.json
+            log-checks.json
+          if-no-files-found: warn
 
       # Withheld when either scan found a secret, so a file carrying a value
       # is never published. A skipped record scan (no infrastructure) is not

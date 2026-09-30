@@ -94,6 +94,7 @@ class TheReport(unittest.TestCase):
     def test_the_case_fails_when_no_secret_was_provided(self):
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory) / "scan.json"
+            (pathlib.Path(directory) / "sample.yml").write_text("name: Sample\n", encoding="utf-8")
             original = secrets_scan.scan_image
             secrets_scan.scan_image = lambda *arguments: None
             try:
@@ -104,12 +105,13 @@ class TheReport(unittest.TestCase):
                 )
             finally:
                 secrets_scan.scan_image = original
-            self.assertEqual(status, 1)
+            self.assertEqual(status, 2)
             self.assertFalse(json.loads(out.read_text())["DP-003 image, workflows, artifact"]["passed"])
 
     def test_a_scan_that_raises_is_recorded_as_a_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory) / "scan.json"
+            (pathlib.Path(directory) / "sample.yml").write_text("name: Sample\n", encoding="utf-8")
             original = secrets_scan.scan_image
 
             def broken(*arguments):
@@ -125,7 +127,7 @@ class TheReport(unittest.TestCase):
             finally:
                 secrets_scan.scan_image = original
             record = json.loads(out.read_text())["DP-003 image, workflows, artifact"]
-            self.assertEqual(status, 1)
+            self.assertEqual(status, 2)
             self.assertEqual(record["error"], "the scan itself failed: OSError")
 
     def test_a_scanner_that_cannot_be_loaded_is_recorded_rather_than_raised(self):
@@ -133,13 +135,14 @@ class TheReport(unittest.TestCase):
         where the job looked leaves a record instead of a traceback (#253 B1)."""
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory) / "scan.json"
+            (pathlib.Path(directory) / "sample.yml").write_text("name: Sample\n", encoding="utf-8")
             status = secrets_scan.main(
                 ["--image", "SAMPLE_IMAGE", "--workflows", directory, "--out", str(out),
                  "--scanner", str(pathlib.Path(directory) / "absent.py")],
                 environment={"MVP_RUNTIME_PASSWORD": VALUE},
             )
             record = json.loads(out.read_text())["DP-003 image, workflows, artifact"]
-            self.assertEqual(status, 1)
+            self.assertEqual(status, 2)
             self.assertFalse(record["passed"])
             self.assertEqual(record["error"], "the scan itself failed: FileNotFoundError")
 
@@ -195,13 +198,61 @@ class TheScopeOfTheRecord(unittest.TestCase):
     def test_an_image_the_scan_did_not_finish_is_not_named_as_read(self):
         with tempfile.TemporaryDirectory() as directory:
             (pathlib.Path(directory) / "workflows").mkdir()
+            (pathlib.Path(directory) / "workflows" / "sample.yml").write_text("name: Sample\n", encoding="utf-8")
 
             def broken(*arguments):
                 raise OSError("SAMPLE")
 
             status, record = self.run_over(directory, [], image=broken)
-            self.assertEqual(status, 1)
+            self.assertEqual(status, 2)
             self.assertIsNone(record["scanned"]["image"])
+
+
+class TheIssue260(unittest.TestCase):
+    """#260: the record states its shape-rule scope, names what was never
+    there, fails on an empty workflow directory, and tells a finding (1) from
+    an unfinished scan (2)."""
+
+    def run_scan(self, directory, workflows, artifacts, environment):
+        out = pathlib.Path(directory) / "scan.json"
+        status = secrets_scan.main(
+            ["--workflows", workflows, "--artifacts", *artifacts, "--out", str(out), "--scanner", str(SCANNER)],
+            environment=environment,
+        )
+        return status, json.loads(out.read_text())["DP-003 image, workflows, artifact"]
+
+    def test_the_limitations_state_where_the_shape_rules_ran(self):
+        self.assertTrue(any("`/app`" in entry and "image configuration" in entry for entry in secrets_scan.LIMITATIONS))
+
+    def test_an_absent_artifact_is_named_as_missing_not_failed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "kept.json").write_text("{}\n", encoding="utf-8")
+            status, record = self.run_scan(
+                directory, "none", [str(root / "kept.json"), str(root / "absent.json")], {"MVP_RUNTIME_PASSWORD": VALUE}
+            )
+            self.assertEqual(status, 0)
+            self.assertEqual(record["missing"], [str(root / "absent.json")])
+
+    def test_an_empty_workflow_directory_fails_the_scan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "empty").mkdir()
+            status, record = self.run_scan(
+                directory, str(pathlib.Path(directory) / "empty"), [], {"MVP_RUNTIME_PASSWORD": VALUE}
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(record["error"], f"no workflow file under {pathlib.Path(directory) / 'empty'}")
+
+    def test_the_limitations_say_missing_does_not_affect_passed(self):
+        self.assertTrue(any("`missing`" in entry and "`passed`" in entry for entry in secrets_scan.LIMITATIONS))
+
+    def test_a_finding_exits_1(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "leak.json").write_text(f'{{"a": "{VALUE}"}}\n', encoding="utf-8")
+            status, record = self.run_scan(directory, "none", [str(root / "leak.json")], {"MVP_RUNTIME_PASSWORD": VALUE})
+            self.assertEqual(status, 1)
+            self.assertTrue(record["findings"])
 
 
 class TheScannerLocation(unittest.TestCase):
