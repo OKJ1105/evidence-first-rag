@@ -14,9 +14,9 @@
 # the three database secrets, the provisioning definitions, the image, and the
 # database provisioned from that commit inside a firewall window that is always
 # closed; then the Section 4.8 deployed checks (DP-003's settings half, DP-004,
-# DP-005, DP-007, DP-008, DP-009, DP-010, DP-012, DP-014 and the WF rows) and,
-# on a failure, the rollback to the last passing commit, with DP-006, DP-007's
-# comparison and DP-011. DP-003's image and artifact scan and the MC rows
+# DP-005, DP-007, DP-008, DP-009, DP-010, DP-012, DP-014, the WF rows and the
+# MC rows) and, on a failure, the rollback to the last passing commit, with
+# DP-006, DP-007's comparison and DP-011. DP-003's image and artifact scan
 # remain.
 #
 # No secret is in this file, in a GitHub Secret, or in a log. The deploy job
@@ -284,10 +284,11 @@ jobs:
           python -m evidence_first_rag.conformance.runner --artifact conformance.json || failed="$failed DP-007"
           # DP-004: the runtime identity cannot write.
           python -m evidence_first_rag.deploy.deployed writes | tee writes.json || failed="$failed DP-004"
-          # The api-v0.1 WF rows that need no model, over HTTPS against surface.
+          # The api-v0.1 WF rows and the mcp-v0.1 MC rows that need no model and
+          # no fault, over HTTPS against surface (tests_stack, #257).
           EFR_STACK_URL="https://${{ steps.infra.outputs.surfaceHost }}" \
             python -m unittest discover --start-directory tests_stack --top-level-directory . --verbose \
-            || failed="$failed WF"
+            || failed="$failed WF/MC"
           # DP-005, DP-009, DP-010 and DP-012 over the network. DP-012 is the
           # one model call a deploy makes.
           python -m evidence_first_rag.deploy.http_checks \
