@@ -359,6 +359,26 @@ class TheSecretScan(unittest.TestCase):
         for record in ("secret-scan.json", "secret-scan-record.json"):
             self.assertIn(record, records)
 
+    def test_an_unfinished_record_scan_still_publishes_the_cleared_evidence(self):
+        """#260 N11: only a finding (exit 1) is published as one; a scan that
+        did not finish keeps the record withheld but uploads what the checks
+        step's own scan cleared."""
+        scan = step("Scan the deploy record")
+        self.assertIn('[ "$status" -ne 1 ] || echo "finding=yes" >> "$GITHUB_OUTPUT"', scan)
+        self.assertIn('exit "$status"', scan)
+        evidence = step("Upload the checks evidence")
+        self.assertIn(
+            "if: always() && steps.record_scan.outcome == 'failure' && steps.record_scan.outputs.finding != 'yes'"
+            " && steps.checks.outputs.secret_scan != 'fail'",
+            evidence,
+        )
+        for withheld in ("deploy-record.json", "provision.txt", "restored-"):
+            self.assertNotIn(withheld, evidence)
+        checks = step("Run the deployed checks")
+        cleared = checks[checks.index("--artifacts", checks.index("secrets_scan")):checks.index("--out secret-scan.json")]
+        for name in re.findall(r"[\w-]+\.json", evidence):
+            self.assertIn(name, cleared)
+
     def test_the_checks_scan_seeks_the_admin_password_too(self):
         """#254 N8: all three passwords, the admin one handed to the scan alone."""
         checks = step("Run the deployed checks")

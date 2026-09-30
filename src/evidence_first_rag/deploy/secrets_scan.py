@@ -80,6 +80,12 @@ LIMITATIONS = (
     "The image is read through `docker export`: the final filesystem, as raw"
     " bytes. Content a later layer removed, and content inside a compressed"
     " file, are not read.",
+    # #260 N9: the record, not only the docstring, says where the shape
+    # rules ran.
+    "The credential-shape rules were applied to files under `/app` and to the"
+    " image configuration only: the base image's packages ship test vectors"
+    " and certificate bundles that have a credential's shape. Every other file"
+    " in the image was read for the known values alone.",
 )
 
 
@@ -204,6 +210,10 @@ def main(argv=None, environment=None) -> int:
     # Each target is entered only once it has been read, so a scan that stops
     # partway names what it covered and not what it was asked to cover.
     scanned = {"image": None, "workflows": [], "artifacts": []}
+    # #260 N10: what was asked for and not there, so "scanned and clean" and
+    # "never there" read differently. An absent artifact is recorded, not
+    # failed: a narrowed or first run legitimately writes fewer files.
+    missing = [path for path in arguments.artifacts if not pathlib.Path(path).is_file()]
     if not values:
         # Without the job's secrets the known-value test would pass vacuously.
         error = "none of the job's secrets was provided"
@@ -215,6 +225,9 @@ def main(argv=None, environment=None) -> int:
             scanned["workflows"] = scan_files(
                 sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes
             )
+            if not scanned["workflows"]:
+                # A typo or a moved directory must not pass over nothing.
+                raise FileNotFoundError(f"no workflow file under {arguments.workflows}")
         scanned["artifacts"] = scan_files(arguments.artifacts, "artifact", values, findings, shapes)
         if arguments.image:
             scan_image(arguments.image, values, findings, shapes)
@@ -227,6 +240,7 @@ def main(argv=None, environment=None) -> int:
                 "passed": not findings and error is None,
                 "known_values": [name for name, _ in values],
                 "scanned": scanned,
+                "missing": missing,
                 "findings": findings,
                 "limitations": list(LIMITATIONS),
                 "error": error,
@@ -235,7 +249,11 @@ def main(argv=None, environment=None) -> int:
         with open(arguments.out, "w", encoding="utf-8") as handle:
             json.dump(result, handle, indent=2)
     print(json.dumps(result))
-    return 0 if not findings and error is None else 1
+    # 1 is a finding: a value may be in a file. 2 is a scan that did not
+    # finish: nothing was found, and nothing was cleared either (#260 N11).
+    if findings:
+        return 1
+    return 2 if error is not None else 0
 
 
 if __name__ == "__main__":
