@@ -6,6 +6,7 @@ import json
 import unittest
 import zipfile
 
+from evidence_first_rag.api import request_log
 from evidence_first_rag.deploy import http_checks, log_checks
 
 MARKER = "SAMPLE_DP008_TEST"
@@ -57,10 +58,13 @@ def run(logs, marker=MARKER, fetch=None):
 
 
 # Each app's own record of a request to its route, as the deployed process
-# writes it: uvicorn's access line for the surface, which writes no other, and
-# `relay/app.py:log_line`'s Section 4.10 JSON line for the relay.
+# writes it: `api/request_log.py:log_line`'s Section 4.7 JSON line for the
+# surface (#259), and `relay/app.py:log_line`'s Section 4.10 line for the relay.
 CLEAN = {
-    "surface": {"LogFiles/app.log": 'INFO:     <address>:0 - "POST /v1/discover HTTP/1.1" 200 OK'},
+    "surface": {"LogFiles/app.log": request_log.log_line(
+        path="/v1/discover", http_status=200, latency_ms=1.0,
+        body=b'{"contract":{"identifier":"api-v0.1"},"result":{"status":"found"}}',
+    )},
     "relay": {"LogFiles/app.log": json.dumps({
         "timestamp": "2026-01-01T00:00:00+00:00",
         "path": "/chat",
