@@ -86,6 +86,11 @@ LIMITATIONS = (
     " image configuration only: the base image's packages ship test vectors"
     " and certificate bundles that have a credential's shape. Every other file"
     " in the image was read for the known values alone.",
+    # #267 N3: the record, not only a source comment, says what `missing`
+    # means for `passed`.
+    "A requested artifact that did not exist is listed in `missing` and does"
+    " not affect `passed`: a narrowed or first run legitimately writes fewer"
+    " files. Only files in `scanned` were read.",
 )
 
 
@@ -98,6 +103,10 @@ def _scanner(path=None):
 
 def _shape_rules(path=None):
     return [(name, find) for name, _clause, find in _scanner(path).RULES if name in SHAPE_RULES]
+
+
+class NoWorkflows(Exception):
+    """`--workflows` named a directory holding no file."""
 
 
 def known_values(environment) -> list:
@@ -226,12 +235,15 @@ def main(argv=None, environment=None) -> int:
                 sorted(pathlib.Path(arguments.workflows).glob("*")), "workflow", values, findings, shapes
             )
             if not scanned["workflows"]:
-                # A typo or a moved directory must not pass over nothing.
-                raise FileNotFoundError(f"no workflow file under {arguments.workflows}")
+                # A typo or a moved directory must not pass over nothing, and
+                # the record says which (#267 N1): a path argument, never a value.
+                raise NoWorkflows(f"no workflow file under {arguments.workflows}")
         scanned["artifacts"] = scan_files(arguments.artifacts, "artifact", values, findings, shapes)
         if arguments.image:
             scan_image(arguments.image, values, findings, shapes)
             scanned["image"] = arguments.image
+    except NoWorkflows as failure:
+        error = str(failure)
     except Exception as failure:  # noqa: BLE001 - an unfinished scan is a failed case, recorded
         error = f"the scan itself failed: {type(failure).__name__}"
     finally:

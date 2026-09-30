@@ -241,7 +241,10 @@ class TheIssue260(unittest.TestCase):
                 directory, str(pathlib.Path(directory) / "empty"), [], {"MVP_RUNTIME_PASSWORD": VALUE}
             )
             self.assertEqual(status, 2)
-            self.assertEqual(record["error"], "the scan itself failed: FileNotFoundError")
+            self.assertEqual(record["error"], f"no workflow file under {pathlib.Path(directory) / 'empty'}")
+
+    def test_the_limitations_say_missing_does_not_affect_passed(self):
+        self.assertTrue(any("`missing`" in entry and "`passed`" in entry for entry in secrets_scan.LIMITATIONS))
 
     def test_a_finding_exits_1(self):
         with tempfile.TemporaryDirectory() as directory:
