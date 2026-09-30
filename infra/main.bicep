@@ -233,7 +233,7 @@ resource surface 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     keyVaultReferenceIdentity: 'SystemAssigned'
     siteConfig: union(commonSiteConfig, {
-      appCommandLine: 'uvicorn --factory evidence_first_rag.api.serve:build --host 0.0.0.0 --port ${port}'
+      appCommandLine: 'uvicorn --factory evidence_first_rag.api.serve:build --host 0.0.0.0 --port ${port} --no-access-log'
     })
   }
 }
@@ -250,7 +250,7 @@ resource relay 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     keyVaultReferenceIdentity: 'SystemAssigned'
     siteConfig: union(commonSiteConfig, {
-      appCommandLine: 'uvicorn --factory evidence_first_rag.relay.serve:build --host 0.0.0.0 --port ${port}'
+      appCommandLine: 'uvicorn --factory evidence_first_rag.relay.serve:build --host 0.0.0.0 --port ${port} --no-access-log'
     })
   }
 }

@@ -88,6 +88,13 @@ class TheTopology(unittest.TestCase):
         self.assertIn("evidence_first_rag.api.serve:build", block("surface"))
         self.assertIn("evidence_first_rag.relay.serve:build", block("relay"))
 
+    def test_neither_app_writes_uvicorns_access_line(self):
+        """#273: the access line carries the full request target, query string
+        included; each app writes its own `deploy-v0.1` Section 4.7 record."""
+        for name in ("surface", "relay"):
+            with self.subTest(app=name):
+                self.assertIn("--no-access-log", block(name))
+
 
 class TheIdentitiesAndSecrets(unittest.TestCase):
     """Section 4.3."""

@@ -132,7 +132,9 @@ services:
     # `--factory`, because the entry point reads the environment when it is
     # called rather than when it is imported. `--host 0.0.0.0` is the container's
     # own interface, which the port mapping above still confines to loopback on
-    # the host.
+    # the host. `--no-access-log`: uvicorn's access line writes the full request
+    # target, query string included, and `deploy-v0.1` Section 4.7 lets no
+    # person's words be logged; the app writes its own record (#273).
     command:
       - "uvicorn"
       - "--factory"
@@ -141,3 +143,4 @@ services:
       - "0.0.0.0"
       - "--port"
       - "8000"
+      - "--no-access-log"
