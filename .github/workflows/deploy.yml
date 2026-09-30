@@ -575,6 +575,10 @@ jobs:
               "checks_ran": os.environ["RAN"] or None,
               "checks_skipped": os.environ["SKIPPED"] or None,
               "commit": os.environ.get("DEPLOYED_COMMIT") or os.environ["COMMIT"],
+              # The checkout the local comparison and the expected results
+              # came from, which in checks mode may differ from `commit`
+              # (#266 N8).
+              "checkout_commit": os.environ["GITHUB_SHA"],
               "image_digest": os.environ["DIGEST"] or None,
               "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
               "triggering_actor": os.environ["TRIGGERING_ACTOR"],
