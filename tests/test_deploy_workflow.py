@@ -82,6 +82,19 @@ class TheStart(unittest.TestCase):
         opened = step("Open the database firewall to this runner")
         self.assertLess(opened.index('echo "rule='), opened.index("firewall-rule create"))
 
+    def test_every_firewall_rule_command_names_the_server_by_server_name(self):
+        """Azure CLI's `flexible-server firewall-rule` takes the server as
+        `--server-name` and the rule as `--name`; `--rule-name` is not an
+        argument and fails the command (run 36660167510)."""
+        commands = re.findall(r"az postgres flexible-server firewall-rule (\w+)(.*?)--output", code(TEXT), re.S)
+        self.assertEqual(sorted(verb for verb, _ in commands), ["create", "delete", "delete", "list"])
+        for verb, arguments in commands:
+            with self.subTest(verb=verb):
+                self.assertIn('--server-name "${{ steps.infra.outputs.serverName }}"', arguments)
+                self.assertNotIn("--rule-name", arguments)
+                if verb != "list":
+                    self.assertRegex(arguments, r'--name "(\$stale|deploy-runner-\$\{\{ github\.run_id \}\}|\$\{\{ steps\.firewall\.outputs\.rule \}\})"')
+
     def test_a_stale_runner_rule_is_removed_before_a_new_one_opens(self):
         opened = step("Open the database firewall to this runner")
         self.assertLess(opened.index("firewall-rule delete"), opened.index("firewall-rule create"))
