@@ -205,9 +205,9 @@ class TheScopeOfTheRecord(unittest.TestCase):
 
 
 class TheScannerLocation(unittest.TestCase):
-    """The deploy job installs the package (`pip install .`), so the module
-    runs from site-packages while the job's working directory is the checkout.
-    The scanner is found from the second, never from the first (#253 B1)."""
+    """Installed without `-e`, the module runs from site-packages while the
+    job's working directory is the checkout. The scanner is found from the
+    second, never from the first, so either install finds it (#253 B1)."""
 
     def test_the_default_is_read_from_the_working_directory(self):
         self.assertFalse(secrets_scan.SCANNER.is_absolute())

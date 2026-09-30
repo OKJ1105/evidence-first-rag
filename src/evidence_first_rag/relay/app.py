@@ -377,8 +377,21 @@ def client_address(request: starlette.requests.Request) -> str:
     Without the header -- a local run -- the connection's own address."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[-1].strip()
+        return _host(forwarded.split(",")[-1].strip())
     return request.client.host if request.client else "unknown"
+
+
+def _host(entry: str) -> str:
+    """The address alone. App Service writes its entry as `address:port`, and
+    the port is the caller's ephemeral one, new on every connection, so a key
+    that kept it would give each request its own window (run 36662412772,
+    `DP-009`). `[v6]:port` loses the brackets and port; a bare IPv6 address,
+    which has more than one colon, is already an address."""
+    if entry.startswith("["):
+        return entry[1:].split("]", 1)[0]
+    if entry.count(":") == 1:
+        return entry.split(":", 1)[0]
+    return entry
 
 
 # --------------------------------------------------------------------------
