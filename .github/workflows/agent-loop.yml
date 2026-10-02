@@ -206,7 +206,9 @@ jobs:
       # Pinned: this job holds both secrets, so the CLI version changes only
       # by a deliberate commit, not by whatever npm serves that day.
       - name: Install the Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.252
+        # 2.1.280 or newer is what CI_AGENT_*_MODEL claude-opus-5-5 needs
+        # (#291); 2.1.252 refused it with HTTP 400 on #296.
+        run: npm install -g @anthropic-ai/claude-code@2.1.287
 
       # Pinned settings, written outside both checkouts, so a branch that adds
       # .claude/settings.json cannot widen what its own reviewer may do (BF4).
