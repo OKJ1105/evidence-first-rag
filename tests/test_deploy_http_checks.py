@@ -1,4 +1,4 @@
-"""`deploy-v0.1` `DP-005`, `DP-009`, `DP-010` and `DP-012`, against stand-ins.
+"""`deploy-v0.1` `DP-005`, `DP-009`, `DP-010`, `DP-012` and `DP-019`, against stand-ins.
 
 Each case is driven through a fake `fetch`, so what it accepts and what it
 refuses is exercised here; that the deployed apps answer this way is the
@@ -92,6 +92,75 @@ class TheForeignOrigin(unittest.TestCase):
         # not the app's vocabulary.
         self.assertFalse(self.probe(405, body=b"Method Not Allowed")[0])
         self.assertFalse(self.probe(405, body=refusal_body("something_else"))[0])
+
+
+REGISTERED = "https://registered.invalid"
+
+
+def admitted(origin=REGISTERED, **overrides):
+    """The headers an admitted preflight carries, with any one replaced or removed."""
+    headers = {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "POST",
+        "Access-Control-Allow-Headers": "content-type",
+        "Vary": "Origin",
+    }
+    for name, value in overrides.items():
+        name = name.replace("_", "-")
+        if value is None:
+            headers.pop(name)
+        else:
+            headers[name] = value
+    return headers
+
+
+class TheRegisteredOrigin(unittest.TestCase):
+    """`DP-019`: the registered origin is admitted, with the grant naming it."""
+
+    def probe(self, status, headers=None, body=b""):
+        fetch = answering({("OPTIONS", "/chat"): lambda h, b: (status, headers or {}, body)})
+        passed, detail = checks.dp019_registered_origin(fetch, "https://relay/chat", REGISTERED)
+        sent = fetch.calls[0][2]
+        self.assertEqual(sent, {"Origin": REGISTERED, "Access-Control-Request-Method": "POST"})
+        return passed, detail
+
+    def test_an_admitted_preflight_with_the_four_headers_passes(self):
+        passed, detail = self.probe(204, admitted())
+        self.assertTrue(passed, detail)
+        self.assertNotIn(REGISTERED, detail)
+
+    def test_the_apps_refusal_fails(self):
+        # What a deployment with no origin configured answers, and what
+        # `DP-005` alone cannot tell from an admitted one.
+        self.assertFalse(self.probe(405, body=refusal_body())[0])
+
+    def test_a_grant_to_another_origin_or_any_fails(self):
+        for granted in ("https://registered.invalid/", "*", "https://other.invalid"):
+            self.assertFalse(self.probe(204, admitted(origin=granted))[0], granted)
+        self.assertFalse(self.probe(204, admitted(**{"Access-Control-Allow-Origin": None}))[0])
+
+    def test_a_missing_or_wrong_header_fails(self):
+        for name in ("Access-Control-Allow-Methods", "Access-Control-Allow-Headers", "Vary"):
+            self.assertFalse(self.probe(204, admitted(**{name: None}))[0], name)
+        self.assertFalse(self.probe(204, admitted(**{"Access-Control-Allow-Methods": "GET"}))[0])
+
+    def test_an_unreachable_host_or_a_platform_error_fails(self):
+        self.assertFalse(self.probe(checks.UNREACHABLE, body=b"URLError")[0])
+        self.assertFalse(self.probe(503, body=b"<html>Service Unavailable</html>")[0])
+
+    def test_the_run_aims_it_at_both_apps_and_fails_without_an_origin(self):
+        order = []
+
+        def fetch(method, url, headers=None, body=None, timeout=None):
+            order.append((method, url, dict(headers or {})))
+            return 400, {}, b""
+
+        connect = connecting(require=Refused("unreachable"), disable=Refused("unreachable"))
+        checks.run(fetch, "surface", "relay", connect, Refused, pause=lambda s: None, origin=REGISTERED)
+        registered = [url for method, url, headers in order if method == "OPTIONS" and headers.get("Origin") == REGISTERED]
+        self.assertEqual(registered, [f"https://surface{checks.SURFACE_CORS_PATH}", "https://relay/chat"])
+        results = checks.run(fetch, "surface", "relay", connect, Refused, pause=lambda s: None)
+        self.assertFalse(results["DP-019"]["passed"])
 
 
 class Refused(Exception):
