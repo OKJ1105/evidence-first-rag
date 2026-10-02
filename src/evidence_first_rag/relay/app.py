@@ -20,6 +20,10 @@ What the relay does, in the order it does it:
    an unserved path, a trailing slash, a handler that raised -- leaves its
    line too (`deploy-v0.1` Section 4.7, #280).
 
+Between the two sits `Cors` (Section 4.1, `0.4.0`): it answers an admitted
+preflight before step 1 is reached, and adds the CORS headers to every
+`POST /chat` response, whichever step wrote it.
+
 The relay holds no conversation. Every check reads the request and the
 response and nothing else, which is what lets a stateless Messages API sit
 behind a stateless relay.
@@ -43,7 +47,7 @@ import starlette.routing
 from ..adapter.revalidation import is_verbatim
 
 IDENTIFIER = "relay-v0.1"
-CONTRACT_VERSION = "0.3.0"
+CONTRACT_VERSION = "0.4.0"
 
 PATH = "/chat"
 
@@ -542,6 +546,87 @@ class RequestLog:
 
 
 # --------------------------------------------------------------------------
+# Section 4.1 (`0.4.0`): the CORS preflight and the response header.
+# --------------------------------------------------------------------------
+
+
+class Cors:
+    """Section 4.1's one exception to `method_not_allowed`, and the header a
+    browser needs to hand the page a `POST /chat` response.
+
+    A pure ASGI wrapper, as `api/app._Preflight` is for `/v1`, placed inside
+    `RequestLog` and outside the framework:
+
+    - **Inside `RequestLog`**, so an admitted preflight leaves exactly one
+      Section 4.10 line, with HTTP 204 and nothing a `POST` adds: it reaches no
+      route, so nothing is left in the scope for the line but what `RequestLog`
+      reads itself.
+    - **Before routing and before the caps**, so an admitted preflight reaches
+      no cap, consumes none, and makes no model call (`RL-023`).
+    - **Outside the framework**, so every `POST /chat` response passes through
+      `with_headers`: the 200, each Section 4.6 refusal, and the 500 a handler
+      that raised past every layer leaves, which `_Preflight` learned in #215
+      B2. A browser withholds a response without `Access-Control-Allow-Origin`
+      from the page, and P7 forbids a refusal reaching the person as a network
+      failure.
+
+    An `OPTIONS /chat` is admitted only with all three of Section 4.1's
+    conditions: a registered origin, an `Origin` equal to it, and
+    `Access-Control-Request-Method: POST`. Anything short of that is passed
+    through untouched and refused `method_not_allowed`, exactly as at `0.3.x`
+    (`RL-024`). The origin is compared, never reflected.
+
+    `Vary: Origin` goes on **every** `POST /chat`, whatever its `Origin` and
+    whether or not an origin is registered, because the response differs by
+    `Origin`; `Access-Control-Allow-Origin` only on one from the registered
+    origin (`RL-025`). The body is never touched.
+    """
+
+    def __init__(self, app, *, origin: str | None) -> None:
+        self.app = app
+        self.origin = origin.encode("latin-1") if origin else None
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"] != PATH:
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope["headers"])
+        from_origin = self.origin is not None and headers.get(b"origin") == self.origin
+        if scope["method"] == "OPTIONS":
+            if from_origin and headers.get(b"access-control-request-method") == b"POST":
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 204,
+                        "headers": [
+                            (b"access-control-allow-origin", self.origin),
+                            (b"access-control-allow-methods", b"POST"),
+                            (b"access-control-allow-headers", b"content-type"),
+                            (b"vary", b"Origin"),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b""})
+                return
+            await self.app(scope, receive, send)
+            return
+        if scope["method"] != "POST":
+            await self.app(scope, receive, send)
+            return
+        added = [(b"vary", b"Origin")]
+        if from_origin:
+            added.insert(0, (b"access-control-allow-origin", self.origin))
+
+        async def with_headers(message):
+            if message["type"] == "http.response.start":
+                message = dict(message)
+                message["headers"] = list(message.get("headers", [])) + added
+            await send(message)
+
+        await self.app(scope, receive, with_headers)
+
+
+# --------------------------------------------------------------------------
 # The route.
 # --------------------------------------------------------------------------
 
@@ -593,12 +678,15 @@ def create_app(
     *,
     mcp_url: str,
     ceiling: int | None,
+    cors_origin: str | None = None,
     clock: Callable[[], float] = time.time,
 ) -> RequestLog:
     """The `relay-v0.1` route, over `caller`, under its Section 4.7 request log.
 
     `ceiling` is the Section 8.3 count of model calls per UTC day, or `None`
-    while none is registered.
+    while none is registered. `cors_origin` is Section 4.1's one registered
+    origin (`0.4.0`), or `None`, in which case no preflight is admitted and no
+    response carries `Access-Control-Allow-Origin`.
 
     Returned **wrapped** rather than as the `Starlette` application itself, so
     that one line is written for every request and not only for the ones a
@@ -654,8 +742,11 @@ def create_app(
         return starlette.responses.PlainTextResponse("Not Found", status_code=404)
 
     return RequestLog(
-        starlette.applications.Starlette(
-            routes=[starlette.routing.Route(PATH, chat, methods=["POST"])],
-            exception_handlers={404: not_found, 405: not_allowed},
+        Cors(
+            starlette.applications.Starlette(
+                routes=[starlette.routing.Route(PATH, chat, methods=["POST"])],
+                exception_handlers={404: not_found, 405: not_allowed},
+            ),
+            origin=cors_origin,
         )
     )
