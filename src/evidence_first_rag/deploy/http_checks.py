@@ -268,7 +268,15 @@ def dp009(fetch, relay_host):
 
 
 def dp012(fetch, relay_host):
-    """One deployed `POST /chat`, asserting what the relay controls."""
+    """One deployed `POST /chat`: what the relay controls, and one term it does not.
+
+    HTTP 200, the Section 4.3 block types, `scope_checks` and `relay.model` are
+    the relay's own. Since `deploy-v0.1` `0.6.2` the case also requires at least
+    one `discover_entity` call answered by a tool result that is not a refusal
+    (#286) -- and whether the model calls the tool is not in this repository's
+    control, so this one case carries a term the relay does not decide. The
+    model's words are asserted no more than before.
+    """
     body = json.dumps({"messages": [{"role": "user", "content": DP012_TEXT}]}).encode()
     status, _, raw = fetch("POST", f"https://{relay_host}/chat", {"Content-Type": "application/json"}, body)
     if status != 200:
