@@ -1,0 +1,1453 @@
+{
+  "run_identifier": "b69f0614-fa3a-4001-8be7-952a60f2aa51",
+  "started_at": "2026-10-02T10:56:29.642691+00:00",
+  "contract_identifier": "mvp-v0.1",
+  "contract_version": "0.6.1",
+  "verdict": "pass",
+  "environment": {
+    "statement_timeout": "5s",
+    "registered_templates": [
+      {
+        "name": "TPL_SNAPSHOT_CANDIDATES_V1",
+        "version": "1",
+        "sha256": "f1b4fe82ccde7db78dd9e25de3f32b188d52055fdbea280fb5c7f796928f4904"
+      },
+      {
+        "name": "TPL_MESSAGE_FACTS_V1",
+        "version": "2",
+        "sha256": "ebacae39956da6c0638251eaf67fa722f77d54c49222d7f8df2c18576c884f73"
+      },
+      {
+        "name": "TPL_SIGNAL_FACTS_V1",
+        "version": "2",
+        "sha256": "38c1bd4e93c04a4c05ebd0b03e7fdf0f83fbb820ee4fa043c32195941762aad1"
+      },
+      {
+        "name": "TPL_SIGNAL_MAPPING_V1",
+        "version": "2",
+        "sha256": "25cc00cbe3f9e79bd12c4b11fe72981aa3a7212026b31d5faaab5b13fefa0e45"
+      },
+      {
+        "name": "TPL_REGISTRY_STATE_V1",
+        "version": "1",
+        "sha256": "11455961497e5556aad6d4c8a640130cf84a01a2ce850d7f56047c58a782414e"
+      },
+      {
+        "name": "TPL_DISCOVERY_EXACT_V1",
+        "version": "1",
+        "sha256": "0c6280f727cd0aca9f0c873e0d244c9128f603c65e440d5c99eeb128c8e8f045"
+      },
+      {
+        "name": "TPL_DISCOVERY_LEXICAL_V1",
+        "version": "1",
+        "sha256": "d44adb18fbb2c7f27b5f9bc18f1116d0ae22a67fa1feabc0c0fc6e0f8ad9fdec"
+      }
+    ],
+    "runtime_roles": [
+      "mvp_runtime"
+    ]
+  },
+  "state_digest": {
+    "before": {
+      "row_counts": {
+        "source_snapshot": 4,
+        "message_occurrence": 7,
+        "signal_occurrence": 13,
+        "signal_mapping": 3,
+        "approved_entity": 17,
+        "approved_alias": 6,
+        "entity_match_term": 23,
+        "entity_registry_state": 1
+      },
+      "highest_transaction_id": "27903"
+    },
+    "after": {
+      "row_counts": {
+        "source_snapshot": 4,
+        "message_occurrence": 7,
+        "signal_occurrence": 13,
+        "signal_mapping": 3,
+        "approved_entity": 17,
+        "approved_alias": 6,
+        "entity_match_term": 23,
+        "entity_registry_state": 1
+      },
+      "highest_transaction_id": "27903"
+    }
+  },
+  "refusals": {
+    "INSERT": {
+      "refused": true,
+      "sqlstate": "42501",
+      "from_privileges": true
+    },
+    "UPDATE": {
+      "refused": true,
+      "sqlstate": "42501",
+      "from_privileges": true
+    },
+    "DELETE": {
+      "refused": true,
+      "sqlstate": "42501",
+      "from_privileges": true
+    },
+    "CREATE TABLE": {
+      "refused": true,
+      "sqlstate": "42501",
+      "from_privileges": true
+    }
+  },
+  "checks": [
+    {
+      "identifier": "B1",
+      "group": "B",
+      "passed": true,
+      "detail": "19 statement(s) reached the database, each byte-identical to one of the 7 committed template texts; no arbitrary-SQL entry point reachable",
+      "failure_class": null
+    },
+    {
+      "identifier": "B2",
+      "group": "B",
+      "passed": true,
+      "detail": "every negative outcome returned no factual row",
+      "failure_class": null
+    },
+    {
+      "identifier": "B3",
+      "group": "B",
+      "passed": true,
+      "detail": "all four writes refused with SQLSTATE 42501",
+      "failure_class": null
+    },
+    {
+      "identifier": "B4",
+      "group": "B",
+      "passed": true,
+      "detail": "state digests equal",
+      "failure_class": null
+    },
+    {
+      "identifier": "C1",
+      "group": "C",
+      "passed": true,
+      "detail": "all data-level invariants hold",
+      "failure_class": null
+    },
+    {
+      "identifier": "D1",
+      "group": "D",
+      "passed": true,
+      "detail": "two runs compared equal",
+      "failure_class": null
+    }
+  ],
+  "advisories": [],
+  "fixtures": [
+    {
+      "identifier": "FX-001",
+      "structural_case": "Message facts for a fully scoped reference",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "15 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "success",
+        "rows": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "transmit_mode": "SAMPLE_MODE_CYCLIC",
+            "transmit_period_ms": 10,
+            "payload_byte_length": 8,
+            "frame_identifier": 256,
+            "superseded_by_project_code": null,
+            "superseded_by_revision_label": null,
+            "superseded_by_network_name": null,
+            "superseded_by_snapshot_label": null
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "TPL_MESSAGE_FACTS_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          },
+          "row_count": 1,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          ],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-002",
+      "structural_case": "Signal facts for a fully scoped reference",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "17 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "success",
+        "rows": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+            "unit_label": "SAMPLE_UNIT_RPM",
+            "scale_factor": "0.25",
+            "scale_offset": "0",
+            "bit_width": 16,
+            "bit_offset": 8,
+            "superseded_by_project_code": null,
+            "superseded_by_revision_label": null,
+            "superseded_by_network_name": null,
+            "superseded_by_snapshot_label": null
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "signal_facts",
+          "template_name": "TPL_SIGNAL_FACTS_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED"
+          },
+          "row_count": 1,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          ],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-003",
+      "structural_case": "Signal mapping returning more than one row",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "42 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "success",
+        "rows": [
+          {
+            "asserting_project_code": "SAMPLE_PROJECT_ALPHA",
+            "asserting_revision_label": "SAMPLE_REV_A",
+            "asserting_network_name": "SAMPLE_NET_POWERTRAIN",
+            "asserting_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_project_code": "SAMPLE_PROJECT_ALPHA",
+            "source_revision_label": "SAMPLE_REV_A",
+            "source_network_name": "SAMPLE_NET_POWERTRAIN",
+            "source_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "source_signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+            "target_project_code": "SAMPLE_PROJECT_ALPHA",
+            "target_revision_label": "SAMPLE_REV_A",
+            "target_network_name": "SAMPLE_NET_POWERTRAIN",
+            "target_snapshot_label": "SAMPLE_SNAP_BASE",
+            "target_message_key": "SAMPLE_MSG_DIAGNOSTIC_EVENT",
+            "target_signal_key": "SAMPLE_SIG_FAULT_CODE",
+            "mapping_key": "SAMPLE_MAP_SPEED_TO_FAULT",
+            "transform_kind": "SAMPLE_TRANSFORM_DIRECT",
+            "asserting_superseded_by_project_code": null,
+            "asserting_superseded_by_revision_label": null,
+            "asserting_superseded_by_network_name": null,
+            "asserting_superseded_by_snapshot_label": null,
+            "source_superseded_by_project_code": null,
+            "source_superseded_by_revision_label": null,
+            "source_superseded_by_network_name": null,
+            "source_superseded_by_snapshot_label": null,
+            "target_superseded_by_project_code": null,
+            "target_superseded_by_revision_label": null,
+            "target_superseded_by_network_name": null,
+            "target_superseded_by_snapshot_label": null
+          },
+          {
+            "asserting_project_code": "SAMPLE_PROJECT_ALPHA",
+            "asserting_revision_label": "SAMPLE_REV_A",
+            "asserting_network_name": "SAMPLE_NET_POWERTRAIN",
+            "asserting_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_project_code": "SAMPLE_PROJECT_ALPHA",
+            "source_revision_label": "SAMPLE_REV_A",
+            "source_network_name": "SAMPLE_NET_POWERTRAIN",
+            "source_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "source_signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+            "target_project_code": "SAMPLE_PROJECT_ALPHA",
+            "target_revision_label": "SAMPLE_REV_A",
+            "target_network_name": "SAMPLE_NET_POWERTRAIN",
+            "target_snapshot_label": "SAMPLE_SNAP_BASE",
+            "target_message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "target_signal_key": "SAMPLE_SIG_GEAR_POSITION",
+            "mapping_key": "SAMPLE_MAP_SPEED_TO_GEAR",
+            "transform_kind": "SAMPLE_TRANSFORM_LINEAR",
+            "asserting_superseded_by_project_code": null,
+            "asserting_superseded_by_revision_label": null,
+            "asserting_superseded_by_network_name": null,
+            "asserting_superseded_by_snapshot_label": null,
+            "source_superseded_by_project_code": null,
+            "source_superseded_by_revision_label": null,
+            "source_superseded_by_network_name": null,
+            "source_superseded_by_snapshot_label": null,
+            "target_superseded_by_project_code": null,
+            "target_superseded_by_revision_label": null,
+            "target_superseded_by_network_name": null,
+            "target_superseded_by_snapshot_label": null
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "signal_mapping",
+          "template_name": "TPL_SIGNAL_MAPPING_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_ENGINE_SPEED",
+            "mapping_key": null
+          },
+          "row_count": 2,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          ],
+          "mapping_provenance": [
+            {
+              "asserting_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_POWERTRAIN",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              },
+              "source_endpoint_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_POWERTRAIN",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              },
+              "target_endpoint_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_POWERTRAIN",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              }
+            },
+            {
+              "asserting_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_POWERTRAIN",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              },
+              "source_endpoint_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_POWERTRAIN",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              },
+              "target_endpoint_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_POWERTRAIN",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              }
+            }
+          ],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-101",
+      "structural_case": "Same `message_key` present in two snapshots, request fully scoped to one",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "15 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "success",
+        "rows": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_REVISED",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "transmit_mode": "SAMPLE_MODE_CYCLIC",
+            "transmit_period_ms": 20,
+            "payload_byte_length": 8,
+            "frame_identifier": 256,
+            "superseded_by_project_code": null,
+            "superseded_by_revision_label": null,
+            "superseded_by_network_name": null,
+            "superseded_by_snapshot_label": null
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "TPL_MESSAGE_FACTS_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_REVISED",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS"
+          },
+          "row_count": 1,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_REVISED"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_REVISED"
+            }
+          ],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-102",
+      "structural_case": "Same `signal_key` under two different parent messages in one snapshot",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "17 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "success",
+        "rows": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE",
+            "unit_label": "SAMPLE_UNIT_DEGC",
+            "scale_factor": "0.5",
+            "scale_offset": "-50",
+            "bit_width": 8,
+            "bit_offset": 0,
+            "superseded_by_project_code": null,
+            "superseded_by_revision_label": null,
+            "superseded_by_network_name": null,
+            "superseded_by_snapshot_label": null
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "signal_facts",
+          "template_name": "TPL_SIGNAL_FACTS_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_TRANSMISSION_STATE",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE"
+          },
+          "row_count": 1,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          ],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-103",
+      "structural_case": "Source signal exists, no mapping row asserted",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "6 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "not_found",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "signal_mapping",
+          "template_name": "TPL_SIGNAL_MAPPING_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ENGINE_STATUS",
+            "signal_key": "SAMPLE_SIG_TEMPERATURE",
+            "mapping_key": null
+          },
+          "row_count": 0,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-104",
+      "structural_case": "Mapping asserted by a snapshot whose `superseded_by` is non-null",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "34 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "success",
+        "rows": [
+          {
+            "asserting_project_code": "SAMPLE_PROJECT_ALPHA",
+            "asserting_revision_label": "SAMPLE_REV_A",
+            "asserting_network_name": "SAMPLE_NET_CHASSIS",
+            "asserting_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_project_code": "SAMPLE_PROJECT_ALPHA",
+            "source_revision_label": "SAMPLE_REV_A",
+            "source_network_name": "SAMPLE_NET_CHASSIS",
+            "source_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_message_key": "SAMPLE_MSG_WHEEL_SPEED",
+            "source_signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL",
+            "target_project_code": "SAMPLE_PROJECT_ALPHA",
+            "target_revision_label": "SAMPLE_REV_B",
+            "target_network_name": "SAMPLE_NET_CHASSIS",
+            "target_snapshot_label": "SAMPLE_SNAP_BASE",
+            "target_message_key": "SAMPLE_MSG_WHEEL_SPEED",
+            "target_signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL",
+            "mapping_key": "SAMPLE_MAP_WHEEL_FL_CARRYOVER",
+            "transform_kind": "SAMPLE_TRANSFORM_DIRECT",
+            "asserting_superseded_by_project_code": "SAMPLE_PROJECT_ALPHA",
+            "asserting_superseded_by_revision_label": "SAMPLE_REV_B",
+            "asserting_superseded_by_network_name": "SAMPLE_NET_CHASSIS",
+            "asserting_superseded_by_snapshot_label": "SAMPLE_SNAP_BASE",
+            "source_superseded_by_project_code": "SAMPLE_PROJECT_ALPHA",
+            "source_superseded_by_revision_label": "SAMPLE_REV_B",
+            "source_superseded_by_network_name": "SAMPLE_NET_CHASSIS",
+            "source_superseded_by_snapshot_label": "SAMPLE_SNAP_BASE",
+            "target_superseded_by_project_code": null,
+            "target_superseded_by_revision_label": null,
+            "target_superseded_by_network_name": null,
+            "target_superseded_by_snapshot_label": null
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "signal_mapping",
+          "template_name": "TPL_SIGNAL_MAPPING_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_WHEEL_SPEED",
+            "signal_key": "SAMPLE_SIG_WHEEL_SPEED_FL",
+            "mapping_key": null
+          },
+          "row_count": 1,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_CHASSIS",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            },
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_B",
+              "network_name": "SAMPLE_NET_CHASSIS",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          ],
+          "mapping_provenance": [
+            {
+              "asserting_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_CHASSIS",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              },
+              "source_endpoint_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_A",
+                "network_name": "SAMPLE_NET_CHASSIS",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              },
+              "target_endpoint_scope": {
+                "project_code": "SAMPLE_PROJECT_ALPHA",
+                "revision_label": "SAMPLE_REV_B",
+                "network_name": "SAMPLE_NET_CHASSIS",
+                "snapshot_label": "SAMPLE_SNAP_BASE"
+              }
+            }
+          ],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": [
+          {
+            "kind": "superseded_snapshot",
+            "detail": "SAMPLE_PROJECT_ALPHA / SAMPLE_REV_A / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE is superseded by SAMPLE_PROJECT_ALPHA / SAMPLE_REV_B / SAMPLE_NET_CHASSIS / SAMPLE_SNAP_BASE. Its facts hold for itself; they are not presented as holding in the later snapshot (Section 4.2)."
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "FX-105",
+      "structural_case": "Scope omitted, two candidate snapshots match",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "10 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "ambiguous",
+        "rows": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_REVISED"
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+          "template_version": "1",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": null
+          },
+          "row_count": 2,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            },
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_A",
+              "network_name": "SAMPLE_NET_POWERTRAIN",
+              "snapshot_label": "SAMPLE_SNAP_REVISED"
+            }
+          ],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-106",
+      "structural_case": "Scope names a `network_name` that no snapshot has",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "4 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "coverage_gap",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+          "template_version": "1",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_BODY",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "row_count": 0,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": [
+          {
+            "kind": "coverage_not_established",
+            "detail": "no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_BODY, snapshot_label=SAMPLE_SNAP_BASE, so the coverage this request needs could not be established (Sections 4.2 and 5)."
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "FX-107",
+      "structural_case": "Lookup key absent from a fully resolved, covered snapshot",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "6 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "not_found",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "TPL_MESSAGE_FACTS_V1",
+          "template_version": "2",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE",
+            "message_key": "SAMPLE_MSG_ABSENT"
+          },
+          "row_count": 0,
+          "resolved_scope": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_A",
+            "network_name": "SAMPLE_NET_POWERTRAIN",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          },
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-108",
+      "structural_case": "Request outside the three approved routes",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "2 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "unsupported",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "rebuild_the_index",
+          "template_name": "",
+          "template_version": "",
+          "bound_parameters": {},
+          "row_count": 0,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "",
+            "read_only_transaction": false,
+            "connection_opened": false
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": "runtime",
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-109",
+      "structural_case": "Parameter outside the route allowlist",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "2 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "invalid_request",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "",
+          "template_version": "",
+          "bound_parameters": {},
+          "row_count": 0,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "",
+            "read_only_transaction": false,
+            "connection_opened": false
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-110",
+      "structural_case": "Contradictory scope, for example two different `revision_label` values",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "2 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "invalid_request",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "",
+          "template_version": "",
+          "bound_parameters": {},
+          "row_count": 0,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "",
+            "read_only_transaction": false,
+            "connection_opened": false
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-111",
+      "structural_case": "Route determined, no canonical reference formable",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "4 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "needs_entity_discovery",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "",
+          "template_version": "",
+          "bound_parameters": {},
+          "row_count": 0,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "",
+            "read_only_transaction": false,
+            "connection_opened": false
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": [
+          {
+            "kind": "entity_discovery_not_implemented",
+            "detail": "Entity Discovery is not implemented in v0.1; this outcome is terminal and never reaches the database (Sections 4.6 and 5). route 'message_facts' is determined, but ['message_key'] is missing, so no canonical reference can be formed (Sections 4.2 and 5)"
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "FX-112",
+      "structural_case": "Adapter emits an argument value absent from the request",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "2 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "invalid_request",
+        "rows": [],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "",
+          "template_version": "",
+          "bound_parameters": {},
+          "row_count": 0,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "",
+            "read_only_transaction": false,
+            "connection_opened": false
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    },
+    {
+      "identifier": "FX-113",
+      "structural_case": "Scope omitted, exactly one candidate snapshot matches",
+      "verdict": "pass",
+      "failure_class": null,
+      "checks": [
+        {
+          "identifier": "A1",
+          "group": "A",
+          "passed": true,
+          "detail": "equal in full",
+          "failure_class": null
+        },
+        {
+          "identifier": "E1",
+          "group": "E",
+          "passed": true,
+          "detail": "6 rendered value(s), all present in the result",
+          "failure_class": null
+        }
+      ],
+      "result": {
+        "status": "ambiguous",
+        "rows": [
+          {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_B",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": "SAMPLE_SNAP_BASE"
+          }
+        ],
+        "evidence_bundle": {
+          "contract_identifier": "mvp-v0.1",
+          "contract_version": "0.6.1",
+          "route": "message_facts",
+          "template_name": "TPL_SNAPSHOT_CANDIDATES_V1",
+          "template_version": "1",
+          "bound_parameters": {
+            "project_code": "SAMPLE_PROJECT_ALPHA",
+            "revision_label": "SAMPLE_REV_B",
+            "network_name": "SAMPLE_NET_CHASSIS",
+            "snapshot_label": null
+          },
+          "row_count": 1,
+          "resolved_scope": null,
+          "collation": "C",
+          "read_only_safeguards": {
+            "role_name": "mvp_runtime",
+            "read_only_transaction": true,
+            "connection_opened": true
+          }
+        },
+        "source_trace": {
+          "contributing_scopes": [
+            {
+              "project_code": "SAMPLE_PROJECT_ALPHA",
+              "revision_label": "SAMPLE_REV_B",
+              "network_name": "SAMPLE_NET_CHASSIS",
+              "snapshot_label": "SAMPLE_SNAP_BASE"
+            }
+          ],
+          "mapping_provenance": [],
+          "producing_layer": null,
+          "fixture_provenance": [
+            "fixtures/source_snapshot.jsonl",
+            "fixtures/message_occurrence.jsonl",
+            "fixtures/signal_occurrence.jsonl",
+            "fixtures/signal_mapping.jsonl"
+          ]
+        },
+        "limitations": []
+      }
+    }
+  ]
+}
