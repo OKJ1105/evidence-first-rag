@@ -24,7 +24,12 @@ The five-open-pull-request cap that the tracking Issue carried as its rule 1 nev
 
 6. **Several sessions may write at once, one per track.** A session claims a track by commenting on the tracking Issue before it starts and releases it when it stops. It never touches another track's tree while that track is claimed. Sessions coordinate only through GitHub — the Issue, the pull request, the diff — never through a chat's memory. Every session starts by reading [CLAUDE.md](../CLAUDE.md), the tracking Issue, and this document.
 
-7. **What does not change.** The tracking Issue's rules 2 to 9. Every slice is L2 and goes through the loop; blocking findings are fixed without asking. Merging is the owner's act, and there is no automatic merge. A contract amendment is a recorded human decision under the contract's change-control section, and a contract-only pull request ends at `agent:needs-human` by design ([Agent Loop](agent-loop.md), BF7). That is not a reason to postpone a contract: acceptance never waits for a milestone ([Contracts README](contracts/README.md), Section 2.1). Agents change no Secrets, GitHub Apps, OAuth grants, or Rulesets ([AGENTS.md](../AGENTS.md)).
+7. **Actions minutes are a budget.** The account's GitHub Actions allowance is finite: on 2026-09-30 it ran out mid-month and every job was refused until it reset. The writer spends it deliberately:
+   - **The level is the one the [AI Development Workflow](ai-development-workflow.md) assigns, not L2 by default.** An L0 change gets no loop review, an L1 change one round, an L2 change two. Uncertain is still L2. Before this rule every slice was treated as L2.
+   - **Related small changes go in one pull request.** This holds only where the tracking Issue's rule 2 and rule 2 above still allow it: one file tree, and one independently reviewable behavior.
+   - **A checks-mode deploy names only the groups it needs to re-establish** (`cases`, `deploy-v0.1` Section 4.8). A full deploy runs only for a merged change that alters what is deployed.
+
+8. **What does not change.** The tracking Issue's rules 2 to 9, except where rule 7 above sets the review level. Every slice goes through the loop at its level; blocking findings are fixed without asking. Merging is the owner's act, and there is no automatic merge. A contract amendment is a recorded human decision under the contract's change-control section, and a contract-only pull request ends at `agent:needs-human` by design ([Agent Loop](agent-loop.md), BF7). That is not a reason to postpone a contract: acceptance never waits for a milestone ([Contracts README](contracts/README.md), Section 2.1). Agents change no Secrets, GitHub Apps, OAuth grants, or Rulesets ([AGENTS.md](../AGENTS.md)).
 
 ## 3. How to tell it is working
 
@@ -33,3 +38,4 @@ Two counts per owner sitting, appended to the tracking Issue's change record: pu
 ## 4. Change record
 
 - 2026-09-08 — adopted on the repository owner's decision, recorded on tracking Issue #68, which supersedes tracking Issue #17 rule 1 (the five-pull-request cap). #68 holds the queue and the tracks.
+- 2026-10-02 — rule 7 (Actions minutes) added on the repository owner's decision of 2026-09-30, after the account's Actions allowance ran out. The review level now follows the AI Development Workflow instead of every slice being L2. The former rule 7 is now rule 8.
