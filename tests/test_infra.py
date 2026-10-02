@@ -281,7 +281,7 @@ class TheConfiguration(unittest.TestCase):
 
 
 class TheLogs(unittest.TestCase):
-    """Section 4.7: the platform's log store, 7 days."""
+    """Section 4.7: the platform's log store."""
 
     def test_each_sites_config_writes_run_one_after_the_other(self):
         """App Service refuses a second config write to a site while one is in
@@ -290,10 +290,21 @@ class TheLogs(unittest.TestCase):
             with self.subTest(logs=logs):
                 self.assertIn(f"dependsOn: [{settings}]", block(logs))
 
-    def test_seven_days(self):
+    def test_neither_app_enables_the_platforms_http_log(self):
+        """#279: that log records each request line, query string included, and
+        Section 4.7 binds a request's URL and query string as well as its body.
+        Off explicitly, not by the platform's default, because an earlier deploy
+        of this template turned it on. With it off, no log here sets
+        `retentionInDays`: Section 4.7's 7 days is the platform's own retention
+        of the standard-output stream, its default, which the first deploy
+        settles (#231 N1)."""
         for logs in ("surfaceLogs", "relayLogs"):
             with self.subTest(logs=logs):
-                self.assertIn("retentionInDays: 7", block(logs))
+                http = re.search(r"httpLogs: \{.*?\n    \}", block(logs), re.DOTALL)
+                self.assertIsNotNone(http, "no `httpLogs` block, so the log is left at a default")
+                self.assertIn("enabled: false", http.group(0))
+                self.assertNotIn("enabled: true", http.group(0))
+                self.assertNotIn("retentionInDays", block(logs))
 
 
 if __name__ == "__main__":  # pragma: no cover

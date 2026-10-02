@@ -275,11 +275,17 @@ resource relayAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   dependsOn: [relaySecret]
 }
 
-// Section 4.7: the platform's log store, 7 days. `retentionInDays` is set on
-// the HTTP logs, the one file-system log this setting carries it for. How long
-// the platform keeps the apps' own standard-output lines (the per-request JSON
-// records) is its default, expected and unverified here; the first deploy
-// settles it (#231 N1).
+// Section 4.7: the platform's log store. The apps' own standard-output lines
+// (the per-request JSON records) are the one stream it holds here. The
+// platform's file-system HTTP log is **off**: it records each request line,
+// query string included, and Section 4.7 binds a request's URL and query
+// string as well as its body (`0.6.1`, #279). Off explicitly rather than by
+// omission, because an earlier deploy of this template turned it on.
+//
+// So no log here carries `retentionInDays` any more: Section 4.7's 7 days is
+// how long the platform keeps the standard-output stream, which is its
+// default, expected and unverified here; the first deploy settles it
+// (#231 N1).
 resource surfaceLogs 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: surface
   name: 'logs'
@@ -293,9 +299,7 @@ resource surfaceLogs 'Microsoft.Web/sites/config@2023-12-01' = {
     }
     httpLogs: {
       fileSystem: {
-        enabled: true
-        retentionInDays: 7
-        retentionInMb: 35
+        enabled: false
       }
     }
   }
@@ -314,9 +318,7 @@ resource relayLogs 'Microsoft.Web/sites/config@2023-12-01' = {
     }
     httpLogs: {
       fileSystem: {
-        enabled: true
-        retentionInDays: 7
-        retentionInMb: 35
+        enabled: false
       }
     }
   }
