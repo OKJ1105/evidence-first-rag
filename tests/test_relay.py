@@ -728,6 +728,66 @@ class TheRecords(RelayCase):
         self.assertNotIn(LOG_MARKER, record.getMessage())
         self.assertEqual(self.stub.calls, [])
 
+    def test_a_trailing_slash_on_the_route_leaves_one_line(self):
+        """#280 B1: the router answers `/chat/` itself, with a redirect, so no
+        route and no refusal handler of this app's runs. The line is written
+        outside them all, which is why it is written at all."""
+        client = self.relay()
+        with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
+            # Not followed: following it would re-post to `/chat` and leave a
+            # second line, which is the one thing this case cannot tell apart.
+            response = client.post(f"{relay.PATH}/", content=b"{}", follow_redirects=False)
+        [record] = logs.records
+        line = json.loads(record.getMessage())
+        self.assertEqual(set(line), {"timestamp", "path", "http_status", "latency_ms"})
+        self.assertEqual(line["path"], "(other)")
+        self.assertEqual(line["http_status"], response.status_code)
+        self.assertEqual(self.stub.calls, [])
+
+    def test_a_handler_that_raises_still_leaves_one_line(self):
+        """#280 B2: a caller that writes a few bytes and goes away makes
+        `request.stream()` raise `ClientDisconnect`, which is no Section 4.6
+        refusal and so leaves the route by exception. The line is written in a
+        `finally`, as `api/request_log.RequestLog` writes the surface's."""
+        import asyncio
+
+        from starlette.requests import ClientDisconnect
+
+        stub = Stub()
+        app = relay.create_app(stub, mcp_url=MCP_URL, ceiling=1000)
+        incoming = [
+            {"type": "http.request", "body": b'{"messa', "more_body": True},
+            {"type": "http.disconnect"},
+        ]
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": relay.PATH,
+            "raw_path": relay.PATH.encode(),
+            "root_path": "",
+            "query_string": b"",
+            "headers": [(b"content-length", b"5000"), (b"content-type", b"application/json")],
+            "client": ("192.0.2.10", 54321),
+            "server": ("testserver", 80),
+        }
+
+        async def receive():
+            return incoming.pop(0) if incoming else {"type": "http.disconnect"}
+
+        async def send(message):
+            pass
+
+        with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
+            with self.assertRaises(ClientDisconnect):
+                asyncio.run(app(scope, receive, send))
+        [record] = logs.records
+        line = json.loads(record.getMessage())
+        self.assertEqual((line["path"], line["http_status"]), (relay.PATH, 500))
+        self.assertEqual(stub.calls, [])
+
     def test_a_refusal_is_logged_by_kind(self):
         client = self.relay(ceiling=None)
         with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:

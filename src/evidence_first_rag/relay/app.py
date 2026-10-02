@@ -15,7 +15,10 @@ What the relay does, in the order it does it:
    function of the request: the same bytes for the same request (Section 6).
 3. **The response passes through unchanged** (Section 4.4), with
    `scope_checks` computed beside it (Section 4.5) and never inside it.
-4. **One log line per request, with no message text** (Section 4.10).
+4. **One log line per request, with no message text** (Section 4.10), written
+   by `RequestLog` outermost so that a request this route never answers --
+   an unserved path, a trailing slash, a handler that raised -- leaves its
+   line too (`deploy-v0.1` Section 4.7, #280).
 
 The relay holds no conversation. Every check reads the request and the
 response and nothing else, which is what lets a stateless Messages API sit
@@ -471,6 +474,73 @@ def log_line(
     return json.dumps(record, separators=(",", ":"))
 
 
+# The key the route leaves the Section 4.10 fields only it can know under, in
+# the ASGI scope it shares with `RequestLog`.
+RECORD = "efr_relay_record"
+
+
+class RequestLog:
+    """`deploy-v0.1` Section 4.7: one line per request, and exactly one (#280).
+
+    A pure ASGI wrapper, outermost, as `api/request_log.RequestLog` is for the
+    surface, so it sees every response: the ones this app's route and its
+    refusal handlers write, the 404 for a path `relay-v0.1` names nowhere, the
+    307 the router answers a trailing slash with, and the 500 left by a handler
+    that raised past every layer. Writing the line here rather than inside the
+    handlers is what makes "every request" structural rather than a property of
+    each handler remembering: a request that reaches no handler of ours, or
+    leaves one by exception, still leaves its line.
+
+    What only the route can know it hands over in the scope. Section 4.10's
+    `usage` counts, tool names and result kinds are read off the *upstream*
+    Messages API response, which this wrapper never sees, and the refusal kind
+    is decided in the route; the status, the latency and the path are read here.
+    """
+
+    def __init__(self, app, *, logger=LOGGER, clock=time.perf_counter) -> None:
+        self.app = app
+        self.logger = logger
+        self.clock = clock
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        started = self.clock()
+        scope[RECORD] = {}
+        state = {"status": 500, "logged": False}
+
+        async def recording(message):
+            if message["type"] == "http.response.start":
+                state["status"] = message["status"]
+            elif message["type"] == "http.response.body" and not message.get("more_body", False):
+                self._write(state, scope, started)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, recording)
+        finally:
+            # A handler that raised past every layer still leaves a line.
+            self._write(state, scope, started)
+
+    def _write(self, state, scope, started) -> None:
+        if state["logged"]:
+            return
+        state["logged"] = True
+        fields = scope[RECORD]
+        self.logger.info(
+            log_line(
+                http_status=state["status"],
+                latency_ms=(self.clock() - started) * 1000,
+                refusal=fields.get("refusal"),
+                response=fields.get("response"),
+                # A path this relay does not serve is caller-chosen; its query
+                # string is never written at all.
+                path=PATH if scope["path"] == PATH else OTHER_PATH,
+            )
+        )
+
+
 # --------------------------------------------------------------------------
 # The route.
 # --------------------------------------------------------------------------
@@ -524,42 +594,39 @@ def create_app(
     mcp_url: str,
     ceiling: int | None,
     clock: Callable[[], float] = time.time,
-) -> starlette.applications.Starlette:
-    """The `relay-v0.1` route, over `caller`.
+) -> RequestLog:
+    """The `relay-v0.1` route, over `caller`, under its Section 4.7 request log.
 
     `ceiling` is the Section 8.3 count of model calls per UTC day, or `None`
     while none is registered.
+
+    Returned **wrapped** rather than as the `Starlette` application itself, so
+    that one line is written for every request and not only for the ones a
+    handler here answers (#280). Both are ASGI applications, which is all
+    `serve.build`'s uvicorn and the tests' `TestClient` ask of it.
     """
     caps = Caps(ceiling)
 
-    def respond(request_started: float, response, *, refused=None, body=None):
-        http_status = REFUSALS[refused] if refused else 200
-        LOGGER.info(
-            log_line(
-                http_status=http_status,
-                latency_ms=(time.perf_counter() - request_started) * 1000,
-                refusal=refused,
-                response=body,
-            )
-        )
-        return response
+    def refused_with(request: starlette.requests.Request, kind: str):
+        """Section 4.6's answer, with the kind left for `RequestLog` to write."""
+        request.scope.setdefault(RECORD, {})["refusal"] = kind
+        return refusal(kind)
 
     async def chat(request: starlette.requests.Request):
-        started = time.perf_counter()
         try:
             caps.admit_request(client_address(request), clock())
             messages = parse_request(await bounded_body(request))
             caps.admit_call(clock())
         except Refused as refused:
-            return respond(started, refusal(refused.kind), refused=refused.kind)
+            return refused_with(request, refused.kind)
         try:
             response = await starlette.concurrency.run_in_threadpool(
                 caller, call_body(messages, mcp_url), dict(CALL_HEADERS)
             )
         except Exception:  # noqa: BLE001 - Section 4.6: any failure is this refusal
-            return respond(started, refusal("model_unavailable"), refused="model_unavailable")
+            return refused_with(request, "model_unavailable")
         if not _usable(response):
-            return respond(started, refusal("model_unavailable"), refused="model_unavailable")
+            return refused_with(request, "model_unavailable")
         content = response["content"]
         document = {
             "content": content,
@@ -567,39 +634,28 @@ def create_app(
             "scope_checks": scope_checks(messages, content),
             "relay": {"identifier": IDENTIFIER, "version": CONTRACT_VERSION, "model": MODEL},
         }
-        return respond(started, _json(document, 200), body=response)
+        # Section 4.10's `usage` counts, tool names and result kinds are read
+        # off the upstream response, which `RequestLog` never sees, so it is
+        # handed over here. Only those values reach the line (`RL-018`).
+        request.scope.setdefault(RECORD, {})["response"] = response
+        return _json(document, 200)
 
     async def not_allowed(request, exc):
         # Section 4.1: any other method on the path. The framework's own 405
         # would be plain text and carry an `Allow` header this contract does
         # not name.
-        started = time.perf_counter()
-        response = refusal("method_not_allowed")
-        LOGGER.info(
-            log_line(
-                http_status=405,
-                latency_ms=(time.perf_counter() - started) * 1000,
-                refusal="method_not_allowed",
-            )
-        )
-        return response
+        return refused_with(request, "method_not_allowed")
 
     async def not_found(request, exc):
-        # `deploy-v0.1` Section 4.7: one line per request, this one included
-        # (#280). The response is the framework's own: `relay-v0.1` names no
-        # other path, so this records it and changes nothing about it.
-        started = time.perf_counter()
-        response = starlette.responses.PlainTextResponse("Not Found", status_code=404)
-        LOGGER.info(
-            log_line(
-                http_status=404,
-                latency_ms=(time.perf_counter() - started) * 1000,
-                path=OTHER_PATH,
-            )
-        )
-        return response
+        # `relay-v0.1` names no path but this one, so an unserved path keeps
+        # the plain answer the framework's own default handler gives it. It
+        # leaves no Section 4.6 refusal kind in the record, and `RequestLog`
+        # writes the line for it as it does for every other request.
+        return starlette.responses.PlainTextResponse("Not Found", status_code=404)
 
-    return starlette.applications.Starlette(
-        routes=[starlette.routing.Route(PATH, chat, methods=["POST"])],
-        exception_handlers={404: not_found, 405: not_allowed},
+    return RequestLog(
+        starlette.applications.Starlette(
+            routes=[starlette.routing.Route(PATH, chat, methods=["POST"])],
+            exception_handlers={404: not_found, 405: not_allowed},
+        )
     )
