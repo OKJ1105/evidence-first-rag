@@ -7,9 +7,12 @@ person's words go:
 - to `relay`, inside a person's turn of a `POST /chat` that is refused as
   malformed before any model call, so the case costs nothing.
 
-Both routes take the marker in the body, never in the URL. The platform's HTTP
-log records query strings, and Section 4.7 forbids request bodies in logs, not
-URLs.
+Each request carries the marker twice: in the body, where a person's words go,
+and in the URL's query string, which neither route reads. Section 4.7's "a
+person's words may not" be logged binds every line in the platform's log
+store, a request's URL included (#279), so a store that records request
+targets -- uvicorn's access line, the platform's HTTP log -- fails the case
+rather than passing it unexamined.
 
 Both requests have to be answered by the app itself, in the app's own
 vocabulary, before the log store is read at all: a request that reached no
@@ -22,16 +25,23 @@ the download. That positive control shows the store is capturing the stream
 Section 4.7 constrains -- the container's standard output, the one place a
 request body could ever appear -- so an empty or unwired log store cannot pass
 vacuously. The route string alone would not show that: the platform's own HTTP
-log records the request line for both apps, and a download carrying only that
+log may record the request line for both apps, and a download carrying only that
 log would meet a looser control while holding no line that could carry a body
-(#255 B2). So each app's control names the shape of its own record. It does not
+(#255 B2). Whether that log can be turned off without also stopping the
+container's standard-output capture is unverified, so `infra/main.bicep` leaves
+it as it was, and this case measures it: the marker in the URL fails the case
+if any downloaded file records it (#279). The control does not rest on the log
+being on or off: each app's control names the shape of its own record. It does not
 tie the line to this request: earlier checks call the same routes, so a lagging
 store may show theirs first. The marker is fresh per run, so what it can miss
 is only a line not yet flushed. So the store is read at least `MINIMUM_READS`
 times, over about two minutes, before a pass is concluded, even when the
 control is already met by an earlier line. The case passes when both apps'
 own records are present and the marker appears in no file of either download.
-A finding names the file the marker was in, never the line.
+A finding names the file the marker was in, never the line, and every outcome
+-- a pass included -- records the file names the last download held, so what
+the store carried on a run is readable off the committed record rather than
+reconstructed from the sentence (#279 B2).
 
 Each read is bounded. A log store that never shows the app's own record of the
 request fails the case, and the case does not wait forever.
@@ -56,6 +66,9 @@ from .http_checks import fetch as network_fetch
 MARKER_PREFIX = "SAMPLE_DP008_"
 DISCOVER_PATH = "/v1/discover"
 CHAT_PATH = "/chat"
+# The query parameter that carries the marker in each URL. Neither route reads
+# a query string, so its presence changes no answer.
+MARKER_QUERY = "q"
 ATTEMPTS = 10
 MINIMUM_READS = 4
 PAUSE_SECONDS = 30
@@ -72,7 +85,7 @@ RELAY_REFUSAL_STATUS = 400
 
 # Each app's own record of a request to its route: the terms that have to be in
 # one line of one file of the download. Not the bare route string, which the
-# platform's HTTP log carries for both apps.
+# platform's HTTP log may carry for both apps (#279).
 #
 # `relay` writes the Section 4.10 record of `relay/app.py:log_line` -- one JSON
 # line per request, so `"path"`, the route and `"http_status"` are in it, and in
@@ -95,7 +108,8 @@ def send(fetch, surface_host, relay_host, marker, pause):
     """The two marked requests, each as `(status, body)`."""
     discover = json.dumps({"arguments": {"entity_kind": "signal", "term": marker}}).encode()
     surface_status, _, surface_raw = fetch(
-        "POST", f"https://{surface_host}{DISCOVER_PATH}", {"Content-Type": "application/json"}, discover
+        "POST", f"https://{surface_host}{DISCOVER_PATH}?{MARKER_QUERY}={marker}",
+        {"Content-Type": "application/json"}, discover,
     )
     pause(RATE_WINDOW_SECONDS)
     # Ends with the relay's turn, so Section 4.2 refuses it before any model call.
@@ -106,7 +120,8 @@ def send(fetch, surface_host, relay_host, marker, pause):
         ]
     }).encode()
     relay_status, _, relay_raw = fetch(
-        "POST", f"https://{relay_host}{CHAT_PATH}", {"Content-Type": "application/json"}, chat
+        "POST", f"https://{relay_host}{CHAT_PATH}?{MARKER_QUERY}={marker}",
+        {"Content-Type": "application/json"}, chat,
     )
     return (surface_status, surface_raw), (relay_status, relay_raw)
 
@@ -197,8 +212,8 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
     statuses = f"request statuses {surface_answer[0]} and {relay_answer[0]}"
     marked, seen = {}, {surface: False, relay: False}
     records = {surface: SURFACE_RECORD, relay: RELAY_RECORD}
-    # The last download's file names, so an unmet control says what the store
-    # did hold (#256 N6). Names only, never a line.
+    # The last download's file names, so the record says what the store did
+    # hold, met or not (#256 N6, #279 B2). Names only, never a line.
     names = {surface: [], relay: []}
     for attempt in range(ATTEMPTS):
         for app in (surface, relay):
@@ -223,10 +238,14 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
             f" files downloaded: { {app: names[app] for app in missing} }"
         )
     # The control may have been met by an earlier request's line, so the
-    # evidence says so rather than claiming more (#256 N7).
+    # evidence says so rather than claiming more (#256 N7). The file names are
+    # recorded on a pass as well, so a committed record says which files the
+    # store held and a later run that holds fewer is readable against it
+    # (#279 B2) -- which is what a change to the platform's logging switches
+    # would show up as. Names only, never a line.
     return True, (
         f"the marker is in no log file of either app; {statuses}; the control was met by a line"
-        " of each app's own shape, which may be an earlier request's"
+        f" of each app's own shape, which may be an earlier request's; files downloaded: {names}"
     )
 
 
