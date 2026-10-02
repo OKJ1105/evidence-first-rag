@@ -1,6 +1,6 @@
 """`deploy-v0.1` Section 8.1: the deployed cases that are read over the network.
 
-`DP-005`, `DP-009`, `DP-010` and `DP-012`, run by the deploy job against the
+`DP-005`, `DP-009`, `DP-010`, `DP-012` and `DP-019`, run by the deploy job against the
 deployed `surface`, `relay` and database. Each case returns `(passed, detail)`
 and never raises for a failed expectation, so one case cannot hide the next.
 
@@ -325,6 +325,42 @@ def dp012(fetch, relay_host):
     )
 
 
+# `api-v0.1` Section 4.5 and `relay-v0.1` Section 4.1: the four headers an
+# admitted preflight carries, beside `Access-Control-Allow-Origin`.
+ADMITTED_PREFLIGHT_HEADERS = {
+    "access-control-allow-methods": "POST",
+    "access-control-allow-headers": "content-type",
+    "vary": "Origin",
+}
+
+
+def dp019_registered_origin(fetch, url, origin):
+    """A preflight from the registered origin is admitted (`deploy-v0.1` `0.6.3`).
+
+    `DP-005` shows that a foreign origin is refused, which a deployment that
+    admits no origin at all also passes. This is the other half: the origin
+    Section 4.6 records gets HTTP 204 and the grant naming it exactly, with the
+    other three headers. The origin itself stays out of the detail, as every
+    host name does.
+    """
+    status, headers, raw = fetch(
+        "OPTIONS",
+        url,
+        {"Origin": origin, "Access-Control-Request-Method": "POST"},
+    )
+    allowed = _header(headers, "access-control-allow-origin")
+    if status != 204:
+        return False, f"{url} answered the registered origin's preflight with {_answer(status, raw)}"
+    if allowed != origin:
+        return False, f"{url} admitted the preflight but granted {'another origin' if allowed else 'no origin'}"
+    wrong = [
+        name for name, value in ADMITTED_PREFLIGHT_HEADERS.items() if _header(headers, name) != value
+    ]
+    if wrong:
+        return False, f"{url} admitted the preflight without the registered {', '.join(wrong)}"
+    return True, f"{url} admitted the registered origin's preflight with the four headers"
+
+
 def _guarded(case, *arguments):
     """One case, with an exception it did not expect recorded as it failing.
 
@@ -338,7 +374,7 @@ def _guarded(case, *arguments):
         return False, f"the check itself raised: {_reason(fault)}"
 
 
-def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.sleep, into=None):
+def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.sleep, into=None, origin=None):
     """Every case, in an order where none spends another's budget.
 
     `DP-012` goes first and `DP-009` last, after a full window, so the one
@@ -369,6 +405,17 @@ def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.
         "DP-005 relay foreign origin",
         *_guarded(dp005_foreign_origin, fetch, f"https://{relay_host}/chat"),
     )
+    if origin:
+        record(
+            f"DP-019 surface registered origin on {SURFACE_CORS_PATH}",
+            *_guarded(dp019_registered_origin, fetch, f"https://{surface_host}{SURFACE_CORS_PATH}", origin),
+        )
+        record(
+            "DP-019 relay registered origin",
+            *_guarded(dp019_registered_origin, fetch, f"https://{relay_host}/chat", origin),
+        )
+    else:
+        record("DP-019", False, "no registered origin was passed to the check")
     record("DP-005 database TLS", *_guarded(dp005_database_requires_tls, connect, operational_error))
     record("DP-010", *_guarded(dp010, fetch, surface_host))
     record("DP-012", *_guarded(dp012, fetch, relay_host))
@@ -385,6 +432,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--surface", required=True)
     parser.add_argument("--relay", required=True)
+    parser.add_argument("--origin", required=True, help="the registered origin, deploy-v0.1 Section 4.6")
     parser.add_argument("--out", default="http-checks.json")
     arguments = parser.parse_args(argv)
 
@@ -414,6 +462,7 @@ def main(argv=None) -> int:
             connect,
             psycopg.OperationalError,
             into=results,
+            origin=arguments.origin,
         )
     finally:
         with open(arguments.out, "w", encoding="utf-8") as handle:

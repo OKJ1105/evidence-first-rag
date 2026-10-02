@@ -89,6 +89,9 @@ jobs:
       COMMIT: ${{ github.sha }}
       MODE: ${{ inputs.mode || 'deploy' }}
       CASES: ${{ inputs.cases }}
+      # Section 4.6: the portfolio site's origin, the one origin both apps
+      # admit a preflight from. Passed to the template and to DP-019.
+      CORS_ORIGIN: https://junokaniwa.com
       # Flexible Server refuses a connection without TLS (Section 4.5).
       PGSSLMODE: require
     steps:
@@ -211,6 +214,7 @@ jobs:
                   "adminSecret": {"value": os.environ["ADMIN"]},
                   # `relay-v0.1` Section 8.3 registers it; the test pins the two together.
                   "relayDailyCeiling": {"value": "67"},
+                  "corsOrigin": {"value": os.environ["CORS_ORIGIN"]},
               },
           }
           with open(sys.argv[1], "w") as handle:
@@ -397,12 +401,13 @@ jobs:
               --commit "$COMMIT" \
               || failed="$failed AZURE"
           fi
-          # DP-005, DP-009, DP-010 and DP-012 over the network. DP-012 is the
-          # one model call a run makes.
+          # DP-005, DP-009, DP-010, DP-012 and DP-019 over the network. DP-012
+          # is the one model call a run makes.
           if want HTTP; then
             python -m evidence_first_rag.deploy.http_checks \
               --surface "${{ steps.infra.outputs.surfaceHost }}" \
               --relay "${{ steps.infra.outputs.relayHost }}" \
+              --origin "$CORS_ORIGIN" \
               || failed="$failed HTTP"
           fi
           # DP-004: the runtime identity cannot write.

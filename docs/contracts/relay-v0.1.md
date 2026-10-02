@@ -285,7 +285,7 @@ When the limit is reached, the Messages API refuses the call. The relay then ans
 | The CORS origin allowed to call `POST /chat`, and the client address used by the rate limit behind the hosting's proxy | The deployment contract |
 | Streaming responses | Not opened. A later minor version. |
 | `Access-Control-Max-Age` on the preflight | Not set at `0.4.0`, as `api-v0.1` `0.2.0` sets none. A browser therefore preflights each `POST`, which costs a round trip but no model call. Caching it is a later minor version if observed latency asks for it. |
-| A positive deployed check of the preflight | `deploy-v0.1`'s. `DP-005` asserts the foreign-origin refusal today. A check that the registered origin is admitted belongs with the patch that records the site's origin in its Section 4.6. |
+| A positive deployed check of the preflight | Done: `deploy-v0.1` `0.6.3` records the origin and registers `DP-019`, which asserts that the registered origin is admitted; `DP-005` asserts the foreign-origin refusal. |
 | Whether the page offers a person's scope choice for a non-`ambiguous` result with a `not_person_stated` dimension (P5 offers the candidate scopes only where an `ambiguous` result listed them) | The portfolio site's slice may propose it; adding it here is a minor version |
 
 ## 10. Change control

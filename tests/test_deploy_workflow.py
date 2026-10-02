@@ -426,6 +426,21 @@ class TheRelayCeiling(unittest.TestCase):
         self.assertIn(f"| `EFR_RELAY_DAILY_CEILING` | — | `{registered.group(1)}`,", deploy)
 
 
+class TheCorsOrigin(unittest.TestCase):
+    """`DP-018`, `deploy-v0.1` Section 4.6: the origin the contract records is
+    the one the template sets on both apps and the one `DP-019` sends."""
+
+    def test_the_workflow_passes_the_recorded_origin(self):
+        deploy = (ROOT / "docs" / "contracts" / "deploy-v0.1.md").read_text(encoding="utf-8")
+        recorded = re.search(r"\*\*The portfolio site's origin\*\* is \*\*`(https://[^`/]+)`\*\*", deploy)
+        self.assertIsNotNone(recorded, "deploy-v0.1 Section 4.6: no bold origin after 'The portfolio site's origin is' -- update this pattern if the sentence was reworded")
+        origin = recorded.group(1)
+        workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+        self.assertIn(f"      CORS_ORIGIN: {origin}\n", workflow)
+        self.assertIn('"corsOrigin": {"value": os.environ["CORS_ORIGIN"]}', step("Apply the provisioning definitions"))
+        self.assertIn('--origin "$CORS_ORIGIN"', step("Run the deployed checks"))
+
+
 class TheSecrets(unittest.TestCase):
     """DP-015: three secrets, written once, never printed."""
 
