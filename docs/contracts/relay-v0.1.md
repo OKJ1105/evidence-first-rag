@@ -4,7 +4,7 @@
 
 **Identifier:** `relay-v0.1`
 
-**Version:** `0.3.0` — the identifier names the document; the version tracks its obligations. The version changes when any observable obligation in Section 4, 5, 6, or 7 changes. Adding or removing a route, a request or response key, a refusal kind, or a page obligation, or changing a registered text or cap, is a minor change. **Enabling a tool is never a minor change**: Section 10. Adding a registered case that exercises an existing obligation is a patch change. Removing or weakening an obligation is not permitted at the contract layer; see Section 10.
+**Version:** `0.3.0` — the identifier names the document; the version tracks its obligations. **The version moves to `0.4.0` with the implementation slice that serves it, not with this text**, as `api-v0.1` `0.2.0` did ([#212](https://github.com/OKJ1105/evidence-first-rag/issues/212)): the served version must be one the relay conforms to, and `tests/test_relay.py` holds the two in step. Until then, the Section 4.1 preflight text below is accepted text that no deployed relay yet serves. The version changes when any observable obligation in Section 4, 5, 6, or 7 changes. Adding or removing a route, a request or response key, a refusal kind, or a page obligation, or changing a registered text or cap, is a minor change. **Enabling a tool is never a minor change**: Section 10. Adding a registered case that exercises an existing obligation is a patch change. Removing or weakening an obligation is not permitted at the contract layer; see Section 10.
 
 This contract is the one [ADR-0005](../adr/0005-the-chat-relay-is-a-host-this-project-operates.md) names as its next slice: the **relay**, the endpoint the portfolio site's chat calls and the only component that holds the Anthropic key. In [Contract Shape Framework](README.md) Section 5 terms it is a route contract for a surface *above* [mcp-v0.1](mcp-v0.1.md). It registers no entity, no template, no status family, no tool, and no route on the runtime.
 
@@ -20,6 +20,8 @@ This contract is binding on implementation from that date under [Contract Shape 
 
 **`0.3.0`** is binding from the owner's merge of the pull request that closes [#249](https://github.com/OKJ1105/evidence-first-rag/issues/249). That pull request carries the fresh independent design review Section 10 requires for a cap change, and the owner's decision recorded on #249.
 
+**`0.4.0`**'s text is accepted by the owner's merge of the pull request that closes [#224](https://github.com/OKJ1105/evidence-first-rag/issues/224). That pull request carries the fresh independent design review Section 10 requires for a minor version. The version line moves, and the text becomes binding on what is served, with the implementation slice. It adds **one obligation**: the CORS preflight and response header for the one registered origin (Section 4.1). It follows the shape `api-v0.1` `0.2.0` took for `/v1` on the owner's decision (a) on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894). Without it no browser can call `POST /chat`, because `deploy-v0.1` Section 4.5 allows the page's origin and Section 4.1 at `0.3.0` refused the preflight that a cross-origin JSON `POST` requires. **It removes no obligation.** Every refusal, cap and check is unchanged. An `OPTIONS` request that is not an admitted preflight is still `method_not_allowed`, and a `POST` receives the same body with or without an `Origin`.
+
 **How this document reached here.** Drafted on [#208](https://github.com/OKJ1105/evidence-first-rag/issues/208) against ADR-0005 ([#207](https://github.com/OKJ1105/evidence-first-rag/pull/207)). The budget figure was amended to 8,000 JPY in [#217](https://github.com/OKJ1105/evidence-first-rag/pull/217) while still `Proposed`. **`0.2.0`** lowers the Section 4.2 size bounds, the body from 128 KiB to **32 KiB** and a relay turn from 32 KiB to **16 KiB**, so that Section 8.3's ceiling can be positive under the budget. The committed 2026-09-29 computation ([#244](https://github.com/OKJ1105/evidence-first-rag/issues/244)) put the fixed cost at 6,733.50 JPY a month and the per-call bound at 128 KiB above one day's share of what is left, so every ceiling was zero. The owner chose this option on 2026-09-29, over cutting the fixed cost, raising the budget, or capping tool rounds, and fixed the figures on [#247](https://github.com/OKJ1105/evidence-first-rag/issues/247#issuecomment-5884648135) once the review of [#248](https://github.com/OKJ1105/evidence-first-rag/pull/248) showed that a relay turn carrying a maximal `discover_entity` result is 14,918 bytes, so a 12 KiB turn bound would have made it impossible to send back. **It removes no obligation**: every refusal and check is unchanged, and a smaller bound refuses more requests, never fewer. **`0.3.0`** changes what bounds spend (Section 8.3). At the 32 KiB body, the per-call worst case is 13.91 JPY at one tool call and 61.11 at five ([cost record](../acceptance/milestone-5/cost-2026-09-29-body-32k.json)). A count derived from it leaves one to three calls a day, so the owner chose on 2026-09-29 ([#249](https://github.com/OKJ1105/evidence-first-rag/issues/249), [ADR-0006](../adr/0006-relay-spend-is-bounded-by-the-provider-workspace.md)) to bound spend with the Anthropic workspace's monthly spend limit instead. The daily ceiling becomes a guard against exhaustion. **It removes no obligation**: the relay still fails closed without a registered ceiling, and spend still has a registered bound.
 
 **ADR-0005's status line still reads `Proposed`.** The owner adopted it as drafted on [#210](https://github.com/OKJ1105/evidence-first-rag/issues/210#issuecomment-5828675894) and merged it in [#207](https://github.com/OKJ1105/evidence-first-rag/pull/207). This is the same standing ADR-0004 has under the accepted `mcp-v0.1`: this repository's ADR status lines have not been moved on merge. A change to ADR-0005 that removes an item this contract implements is a change to this contract's authority, and it reopens this contract.
@@ -28,7 +30,7 @@ This contract is binding on implementation from that date under [Contract Shape 
 
 ### 3.1 What this contract fixes
 
-- **One route**, `POST /chat`: its request body, the Messages API call the relay makes, and its response body.
+- **One route**, `POST /chat`: its request body, the Messages API call the relay makes, and its response body; and **the CORS preflight** that lets a browser on the one registered origin call it (Section 4.1, `0.4.0`).
 - **The host configuration**: the model, the system prompt as a registered text, `max_tokens`, and the toolset that enables `discover_entity` alone (ADR-0005 item 2).
 - **The scope check** (ADR-0005 item 4): which scope values in a `discover_entity` call are the person's own, computed by the relay on every response.
 - **The caps and refusals** (ADR-0005 item 5), and **what the relay records** (item 6).
@@ -59,7 +61,28 @@ This contract is binding on implementation from that date under [Contract Shape 
 | --- | --- | --- |
 | `POST /chat` | `{"messages"}` | Section 4.4 |
 
-The path is outside `/v1`, which `api-v0.1` Section 4.1 fixes exhaustively, and outside `/mcp`. Any other method on the path is refused as `method_not_allowed`.
+The path is outside `/v1`, which `api-v0.1` Section 4.1 fixes exhaustively, and outside `/mcp`. Any other method on the path is refused as `method_not_allowed`, with one exception.
+
+**The exception: a CORS preflight** (`0.4.0`). An `OPTIONS` request to `/chat` is admitted only when all three of these hold:
+
+- it carries an `Origin` header equal to the **registered origin**;
+- it carries `Access-Control-Request-Method: POST`;
+- a registered origin is configured.
+
+An admitted preflight is answered **before any cap is checked**, with HTTP 204 and no body, and with these headers:
+
+- `Access-Control-Allow-Origin` equal to that origin;
+- `Access-Control-Allow-Methods: POST`;
+- `Access-Control-Allow-Headers: content-type`;
+- `Vary: Origin`.
+
+The registered origin is a single value read from the process environment as `EFR_CORS_ORIGIN`, never a wildcard. The deployment contract sets it (`deploy-v0.1` Section 4.6), and while it is unset no preflight is admitted. An `OPTIONS` request to `/chat` that fails any of the conditions is `method_not_allowed`, exactly as at `0.3.x`: no origin configured, another origin, or the request-method header absent or naming another method.
+
+**On a `POST` from the registered origin**, every response carries `Access-Control-Allow-Origin` equal to that origin and `Vary: Origin`, **refusals included**, and is otherwise the same response it would be without an `Origin`. The refusals must be included, because a browser withholds a response that lacks the header from the page. A `daily_ceiling_reached` the page could not read would reach the person as a network failure, which P7 forbids. A `POST` from any other origin, or with no `Origin`, receives no such header.
+
+**A preflight is not a request in Section 4.6's sense.** It reaches no cap, consumes none, and makes no model call. Its cost is the deployment's fixed cost, as for `surface`'s unauthenticated routes (`deploy-v0.1` Section 4.5). It is not a refusal kind and not a response: it carries no body, so a client reading bodies meets only Section 4.4's response and Section 4.6's refusals, as before.
+
+**CORS is not access control.** It decides which page a *browser* lets read the reply. A client that is not a browser sends no preflight and reads every reply, as at `0.3.x`. What bounds such a client is Section 4.6's caps, which this version does not change.
 
 ### 4.2 The request
 
@@ -131,7 +154,7 @@ A refusal carries no `content`. It is HTTP JSON `{"refusal", "detail"}`, with `d
 | Kind | HTTP | Condition |
 | --- | --- | --- |
 | `malformed_request` | 400 | Section 4.2 |
-| `method_not_allowed` | 405 | Section 4.1 |
+| `method_not_allowed` | 405 | Section 4.1, including an `OPTIONS` request that is not an admitted preflight |
 | `conversation_limit` | 422 | the request carries more than 10 person's turns |
 | `rate_limited` | 429 | more than **6** requests in any 60 seconds, or more than **60** in a UTC day, from one client address |
 | `daily_ceiling_reached` | 503 | the relay has already made the registered number of model calls in the current UTC day (Section 8.3) |
@@ -168,7 +191,7 @@ It supersedes, for this host only, the two sentences of `mcp-v0.1` Section 4.4's
 
 ### 4.10 What the relay records
 
-The relay stores no message text and **logs no message text**, neither a person's turn nor a model block. Per request it logs exactly the timestamp, the refusal kind or HTTP 200, the latency, the Messages API usage counts, the names of the tools called, and for each `mcp_tool_result` its result `status`, or its refusal kind when it carries `isError` true. What that feeds, and how long it is kept, is the deployment contract's.
+The relay stores no message text and **logs no message text**, neither a person's turn nor a model block. Per request it logs exactly the timestamp, the refusal kind or HTTP 200, the latency, the Messages API usage counts, the names of the tools called, and for each `mcp_tool_result` its result `status`, or its refusal kind when it carries `isError` true. An admitted preflight (Section 4.1) logs one line carrying the timestamp, HTTP 204 and the latency, and nothing else. What that feeds, and how long it is kept, is the deployment contract's.
 
 ## 5. Outcome coverage
 
@@ -190,6 +213,7 @@ The relay adds nothing to `evidence_bundle`, `source_trace` or `limitations`, re
 | Section 4.3 the call, toolset and system prompt | Automated, against a stub Messages API client: `RL-005` asserts the exact body parameter set and, separately, the header, that `configs` enables `discover_entity` alone and `default_config` disables the rest, and that `system` equals the Section 4.9 text read off this document byte for byte |
 | Section 4.4 pass-through | Automated: `RL-006`, the response's `content` equals the stub's byte for byte |
 | Section 4.5 scope check | Automated: `RL-007` to `RL-010` |
+| Section 4.1 the CORS preflight (`0.4.0`) | Automated: `RL-023` to `RL-025` |
 | Section 4.6 caps and refusals | Automated: `RL-011` to `RL-016`, one per kind, each asserting that **no model call was made** when a cap refuses |
 | Section 4.8 identity | Automated where observable: `RL-017`, the relay's settings expose no database credential and the runtime's no Anthropic key. The deployment contract carries the deployed check. |
 | Section 4.10 records | Automated: `RL-018`, as registered below |
@@ -224,6 +248,9 @@ Every case runs against a stub Messages API client that returns a registered `co
 | `RL-016` | the stub returns a `tool_use` block | `model_unavailable` |
 | `RL-017` | the relay's and the runtime's settings | neither holds the other's secret |
 | `RL-018` | a person's turn containing a registered marker `SAMPLE_LOG_MARKER_7Q2`, with logs captured | the marker appears in no log line |
+| `RL-023` | with the registered origin `https://sample-site.example` configured, an `OPTIONS /chat` from that origin with `Access-Control-Request-Method: POST`: once from an address whose per-minute limit is exhausted, with the daily ceiling also reached; then seven times from a fresh address, followed by one `POST` from that address under a ceiling not yet reached | every preflight HTTP 204, no body, the four headers of Section 4.1 exactly, and no model call; the `POST` is answered 200, because no preflight consumed the address's limit |
+| `RL-024` | an `OPTIONS /chat` from another origin; from the registered origin with no origin configured; from the registered origin with `Access-Control-Request-Method: DELETE`; and from the registered origin with that header absent | `method_not_allowed` in all four, as at `0.3.x`; no `Access-Control-Allow-Origin` on any |
+| `RL-025` | a `POST /chat` from the registered origin answered 200; the same origin refused as `malformed_request`; the same origin refused as `daily_ceiling_reached`; and the 200 request from another origin and with no `Origin` | the first three carry `Access-Control-Allow-Origin` equal to the origin and `Vary: Origin`, with bodies byte-equal to the same request without an `Origin`; the last two carry no `Access-Control-Allow-Origin` |
 
 ### 8.2 Deferral of the acceptance evidence
 
@@ -255,6 +282,8 @@ When the limit is reached, the Messages API refuses the call. The relay then ans
 | The workspace spend limit | The owner sets it in the Anthropic Console, and records the statement before the first deployed run (Section 8.3) |
 | The CORS origin allowed to call `POST /chat`, and the client address used by the rate limit behind the hosting's proxy | The deployment contract |
 | Streaming responses | Not opened. A later minor version. |
+| `Access-Control-Max-Age` on the preflight | Not set at `0.4.0`, as `api-v0.1` `0.2.0` sets none. A browser therefore preflights each `POST`, which costs a round trip but no model call. Caching it is a later minor version if observed latency asks for it. |
+| A positive deployed check of the preflight | `deploy-v0.1`'s. `DP-005` asserts the foreign-origin refusal today. A check that the registered origin is admitted belongs with the patch that records the site's origin in its Section 4.6. |
 | Whether the page offers a person's scope choice for a non-`ambiguous` result with a `not_person_stated` dimension (P5 offers the candidate scopes only where an `ambiguous` result listed them) | The portfolio site's slice may propose it; adding it here is a minor version |
 
 ## 10. Change control
