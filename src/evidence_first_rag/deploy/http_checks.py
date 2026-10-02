@@ -340,8 +340,8 @@ def dp019_registered_origin(fetch, url, origin):
     `DP-005` shows that a foreign origin is refused, which a deployment that
     admits no origin at all also passes. This is the other half: the origin
     Section 4.6 records gets HTTP 204 and the grant naming it exactly, with the
-    other three headers. The origin itself stays out of the detail, as every
-    host name does.
+    other three headers. The detail names the app's URL, as `DP-005`'s does,
+    and never the origin.
     """
     status, headers, raw = fetch(
         "OPTIONS",
