@@ -7,9 +7,12 @@ person's words go:
 - to `relay`, inside a person's turn of a `POST /chat` that is refused as
   malformed before any model call, so the case costs nothing.
 
-Both routes take the marker in the body, never in the URL. The platform's HTTP
-log records query strings, and Section 4.7 forbids request bodies in logs, not
-URLs.
+Each request carries the marker twice: in the body, where a person's words go,
+and in the URL's query string, which neither route reads. Section 4.7's "a
+person's words may not" be logged binds every line in the platform's log
+store, a request's URL included (#279), so a store that records request
+targets -- uvicorn's access line, the platform's HTTP log -- fails the case
+rather than passing it unexamined.
 
 Both requests have to be answered by the app itself, in the app's own
 vocabulary, before the log store is read at all: a request that reached no
@@ -56,6 +59,9 @@ from .http_checks import fetch as network_fetch
 MARKER_PREFIX = "SAMPLE_DP008_"
 DISCOVER_PATH = "/v1/discover"
 CHAT_PATH = "/chat"
+# The query parameter that carries the marker in each URL. Neither route reads
+# a query string, so its presence changes no answer.
+MARKER_QUERY = "q"
 ATTEMPTS = 10
 MINIMUM_READS = 4
 PAUSE_SECONDS = 30
@@ -95,7 +101,8 @@ def send(fetch, surface_host, relay_host, marker, pause):
     """The two marked requests, each as `(status, body)`."""
     discover = json.dumps({"arguments": {"entity_kind": "signal", "term": marker}}).encode()
     surface_status, _, surface_raw = fetch(
-        "POST", f"https://{surface_host}{DISCOVER_PATH}", {"Content-Type": "application/json"}, discover
+        "POST", f"https://{surface_host}{DISCOVER_PATH}?{MARKER_QUERY}={marker}",
+        {"Content-Type": "application/json"}, discover,
     )
     pause(RATE_WINDOW_SECONDS)
     # Ends with the relay's turn, so Section 4.2 refuses it before any model call.
@@ -106,7 +113,8 @@ def send(fetch, surface_host, relay_host, marker, pause):
         ]
     }).encode()
     relay_status, _, relay_raw = fetch(
-        "POST", f"https://{relay_host}{CHAT_PATH}", {"Content-Type": "application/json"}, chat
+        "POST", f"https://{relay_host}{CHAT_PATH}?{MARKER_QUERY}={marker}",
+        {"Content-Type": "application/json"}, chat,
     )
     return (surface_status, surface_raw), (relay_status, relay_raw)
 

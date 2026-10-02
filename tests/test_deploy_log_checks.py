@@ -37,7 +37,8 @@ class Recorder:
 
     def __call__(self, method, url, headers=None, body=None, timeout=90):
         self.requests.append((method, url, body))
-        route = log_checks.DISCOVER_PATH if url.endswith(log_checks.DISCOVER_PATH) else log_checks.CHAT_PATH
+        path = url.split("?", 1)[0]
+        route = log_checks.DISCOVER_PATH if path.endswith(log_checks.DISCOVER_PATH) else log_checks.CHAT_PATH
         status, raw = self.answers[route]
         return status, {}, raw
 
@@ -192,13 +193,24 @@ class TheRequestsHaveToBeAnswered(unittest.TestCase):
 
 
 class TheRequests(unittest.TestCase):
-    def test_the_marker_travels_in_the_body_never_the_url(self):
+    def test_the_marker_travels_in_the_body_and_the_url_query(self):
+        """#279: Section 4.7 binds a request's URL too, so the marker is in
+        both, and a store that records request targets fails the case."""
         _, fetch, _, _ = run(CLEAN)
         self.assertEqual(len(fetch.requests), 2)
         for method, url, body in fetch.requests:
             self.assertEqual(method, "POST")
-            self.assertNotIn(MARKER, url)
+            self.assertTrue(url.endswith(f"?{log_checks.MARKER_QUERY}={MARKER}"))
             self.assertIn(MARKER, body.decode())
+
+    def test_a_platform_log_recording_the_query_string_fails_the_case(self):
+        """#279: the request line the platform's HTTP log would write."""
+        line = f"2026-01-01T00:00:00 SAMPLE-SURFACE POST /v1/discover q={MARKER} 443 - - 200 0 0 12"
+        logs = {**CLEAN, "surface": {**CLEAN["surface"], "LogFiles/http/RawLogs/sample.log": line}}
+        (passed, detail), _, _, _ = run(logs)
+        self.assertFalse(passed)
+        self.assertIn("LogFiles/http/RawLogs/sample.log", detail)
+        self.assertNotIn(line, detail)
 
     def test_the_chat_request_is_refused_before_any_model_call(self):
         """It ends with the relay's turn, which Section 4.2 refuses."""
