@@ -12,7 +12,7 @@
     "model_text_is_stub": "Every content block of type text is authored stub prose standing in for the model. None is model output.",
     "relay": {
       "identifier": "relay-v0.1",
-      "version": "0.4.0"
+      "version": "0.5.0"
     },
     "what": "POST /chat request and response bodies for the relay-v0.1 Section 4.7 page obligations, built by tests/test_relay_responses.py through the real relay and the real /mcp surface."
   },
@@ -68,7 +68,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -173,7 +173,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -250,7 +250,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -325,7 +325,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -402,7 +402,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -478,7 +478,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -554,7 +554,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -630,7 +630,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -710,7 +710,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
@@ -761,7 +761,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [],
             "stop_reason": "end_turn"
@@ -825,7 +825,7 @@
             "relay": {
               "identifier": "relay-v0.1",
               "model": "claude-haiku-4-5",
-              "version": "0.4.0"
+              "version": "0.5.0"
             },
             "scope_checks": [
               {
