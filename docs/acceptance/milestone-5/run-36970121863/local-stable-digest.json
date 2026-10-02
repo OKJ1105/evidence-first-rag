@@ -1,0 +1,50 @@
+{
+  "row_counts": {
+    "approved_alias": 6,
+    "approved_entity": 17,
+    "entity_match_term": 23,
+    "entity_registry_state": 1,
+    "message_occurrence": 7,
+    "signal_mapping": 3,
+    "signal_occurrence": 13,
+    "source_snapshot": 4
+  },
+  "registry_digest": "1b81429adae7a373bf434b6a7e1e912991808c94376df849fdfd5c230c608ddb",
+  "templates": [
+    [
+      "TPL_DISCOVERY_EXACT_V1",
+      "1",
+      "0c6280f727cd0aca9f0c873e0d244c9128f603c65e440d5c99eeb128c8e8f045"
+    ],
+    [
+      "TPL_DISCOVERY_LEXICAL_V1",
+      "1",
+      "d44adb18fbb2c7f27b5f9bc18f1116d0ae22a67fa1feabc0c0fc6e0f8ad9fdec"
+    ],
+    [
+      "TPL_MESSAGE_FACTS_V1",
+      "2",
+      "ebacae39956da6c0638251eaf67fa722f77d54c49222d7f8df2c18576c884f73"
+    ],
+    [
+      "TPL_REGISTRY_STATE_V1",
+      "1",
+      "11455961497e5556aad6d4c8a640130cf84a01a2ce850d7f56047c58a782414e"
+    ],
+    [
+      "TPL_SIGNAL_FACTS_V1",
+      "2",
+      "38c1bd4e93c04a4c05ebd0b03e7fdf0f83fbb820ee4fa043c32195941762aad1"
+    ],
+    [
+      "TPL_SIGNAL_MAPPING_V1",
+      "2",
+      "25cc00cbe3f9e79bd12c4b11fe72981aa3a7212026b31d5faaab5b13fefa0e45"
+    ],
+    [
+      "TPL_SNAPSHOT_CANDIDATES_V1",
+      "1",
+      "f1b4fe82ccde7db78dd9e25de3f32b188d52055fdbea280fb5c7f796928f4904"
+    ]
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "DP-008": {
+    "passed": true,
+    "detail": "the marker is in no log file of either app; request statuses 200 and 400; the control was met by a line of each app's own shape, which may be an earlier request's"
+  }
+}

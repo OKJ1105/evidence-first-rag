@@ -1,0 +1,30 @@
+{
+  "DP-014 registry": {
+    "passed": true,
+    "detail": "adminUserEnabled=False, anonymousPullEnabled=False"
+  },
+  "DP-014 credential": {
+    "passed": true,
+    "detail": "tokens: none; admin credential: none"
+  },
+  "DP-014 roles": {
+    "passed": true,
+    "detail": "assignments on the registry: [('deploy', 'AcrPush'), ('relay', 'AcrPull'), ('surface', 'AcrPull')]"
+  },
+  "DP-014 settings": {
+    "passed": true,
+    "detail": "no registry credential setting"
+  },
+  "DP-014 surface image": {
+    "passed": true,
+    "detail": "tag 3676cebdbc9dbb147e07127622e0e57eee23423e, acrUseManagedIdentityCreds=True"
+  },
+  "DP-014 relay image": {
+    "passed": true,
+    "detail": "tag 3676cebdbc9dbb147e07127622e0e57eee23423e, acrUseManagedIdentityCreds=True"
+  },
+  "DP-003 settings": {
+    "passed": true,
+    "detail": "neither app names the other's credential"
+  }
+}
