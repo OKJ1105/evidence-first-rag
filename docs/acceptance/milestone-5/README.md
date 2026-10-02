@@ -11,7 +11,7 @@ The other files of a run's artifact are committed beside it in
 | Record | Run | Outcome |
 | --- | --- | --- |
 | [`deploy-b36303d08268b5de5872f926e33f41af5e5443e3.json`](deploy-b36303d08268b5de5872f926e33f41af5e5443e3.json), [`run-36677427212/`](run-36677427212/) | [36677427212](https://github.com/OKJ1105/evidence-first-rag/actions/runs/36677427212), the first passing deploy (2026-09-30) | `success`; deployed checks `pass`; all seven groups ran |
-| [`deploy-3676cebdbc9dbb147e07127622e0e57eee23423e.json`](deploy-3676cebdbc9dbb147e07127622e0e57eee23423e.json), [`run-36970121863/`](run-36970121863/) | [36970121863](https://github.com/OKJ1105/evidence-first-rag/actions/runs/36970121863), the first deploy with the surface's own request record (#268) and uvicorn's access log off (#274) (2026-10-02) | `success`; deployed checks `pass`; all seven groups ran. Each check states its own limitations in its file. |
+| [`deploy-3676cebdbc9dbb147e07127622e0e57eee23423e.json`](deploy-3676cebdbc9dbb147e07127622e0e57eee23423e.json), [`run-36970121863/`](run-36970121863/) | [36970121863](https://github.com/OKJ1105/evidence-first-rag/actions/runs/36970121863), the first deploy with the surface's own request record (#259, #268) and uvicorn's access log off (#274) (2026-10-02) | `success`; deployed checks `pass`; all seven groups ran. `secret-scan.json` and `secret-scan-record.json` state their scan limitations; `log-checks.json` states that DP-008's positive control may have been met by an earlier request's line. |
 
 `deploy-v0.1` Section 4.8's rollback target is the newest record here whose
 mode is `deploy` (a record without `mode` predates the field and is a deploy),
