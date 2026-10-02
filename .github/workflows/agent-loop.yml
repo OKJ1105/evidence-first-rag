@@ -248,8 +248,8 @@ jobs:
           # in docs/DEVELOPMENT_WORKFLOW.md). Two variables exist so that
           # giving the Reviewer a different model on one slice is a one-line
           # change rather than a new mechanism.
-          CI_AGENT_WRITER_MODEL: claude-opus-5
-          CI_AGENT_REVIEWER_MODEL: claude-opus-5
+          CI_AGENT_WRITER_MODEL: claude-opus-5-5
+          CI_AGENT_REVIEWER_MODEL: claude-opus-5-5
         run: node scripts/agent/run.mjs
 
       - name: Report a crashed run
