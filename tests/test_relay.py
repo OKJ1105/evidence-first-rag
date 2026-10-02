@@ -1,4 +1,4 @@
-"""`relay-v0.1` Section 8.1: the registered cases `RL-001` to `RL-022`.
+"""`relay-v0.1` Section 8.1: the registered cases `RL-001` to `RL-025`.
 
 Every case runs against a stub Messages API client that returns a registered
 `content` array, so no case calls a model, costs money, or varies between
@@ -155,14 +155,18 @@ class RelayCase(unittest.TestCase):
         if not HAS_RELAY:
             self.skipTest("the api extra is not installed")
 
-    def relay(self, stub=None, *, ceiling=1000, clock=None):
+    def relay(self, stub=None, *, ceiling=1000, clock=None, cors_origin=None, **client_options):
         self.stub = Stub() if stub is None else stub
         self.clock = Clock() if clock is None else clock
-        app = relay.create_app(self.stub, mcp_url=MCP_URL, ceiling=ceiling, clock=self.clock)
-        return TestClient(app)
+        app = relay.create_app(
+            self.stub, mcp_url=MCP_URL, ceiling=ceiling, cors_origin=cors_origin, clock=self.clock
+        )
+        return TestClient(app, **client_options)
 
-    def post(self, client, messages=None, *, raw=None, address="192.0.2.10"):
+    def post(self, client, messages=None, *, raw=None, address="192.0.2.10", origin=None):
         headers = {"x-forwarded-for": address, "content-type": "application/json"}
+        if origin is not None:
+            headers["origin"] = origin
         if raw is not None:
             return client.post(relay.PATH, content=raw, headers=headers)
         messages = [person("What is SAMPLE_ALIAS_GEARBOX_STATE?")] if messages is None else messages
@@ -364,7 +368,7 @@ class TheResponse(RelayCase):
         self.assertEqual(body["stop_reason"], "end_turn")
         self.assertEqual(
             body["relay"],
-            {"identifier": "relay-v0.1", "version": "0.3.0", "model": "claude-haiku-4-5"},
+            {"identifier": "relay-v0.1", "version": "0.4.0", "model": "claude-haiku-4-5"},
         )
 
     def test_RL_020_a_tool_refusal_passes_through(self):
@@ -652,6 +656,32 @@ class TheSecretsAreSeparated(unittest.TestCase):
                     relay_serve.build(partial)
                 self.assertIn(missing, str(raised.exception))
 
+    def test_the_registered_origin_is_read_from_the_environment(self):
+        """Section 4.1 (`0.4.0`): `EFR_CORS_ORIGIN`, and none while it is unset
+        or empty."""
+        if not HAS_RELAY:
+            self.skipTest("the api extra is not installed")
+        try:
+            import anthropic  # noqa: F401
+        except ImportError:
+            self.skipTest("the adapter extra is not installed")
+        from unittest import mock
+
+        # Not wired to standard output here: this case reads statuses, not lines.
+        self.enterContext(mock.patch.object(relay_serve, "configure_logging"))
+        base = {
+            "ANTHROPIC_API_KEY": "SAMPLE_KEY_NOT_A_SECRET",
+            "EFR_RELAY_MCP_URL": MCP_URL,
+            "EFR_RELAY_DAILY_CEILING": "100",
+        }
+        preflight = {"origin": ORIGIN, "access-control-request-method": "POST"}
+        client = TestClient(relay_serve.build({**base, "EFR_CORS_ORIGIN": ORIGIN}))
+        self.assertEqual(client.options(relay.PATH, headers=preflight).status_code, 204)
+        for environment in (base, {**base, "EFR_CORS_ORIGIN": ""}):
+            with self.subTest(configured=environment.get("EFR_CORS_ORIGIN")):
+                client = TestClient(relay_serve.build(environment))
+                self.assertEqual(client.options(relay.PATH, headers=preflight).status_code, 405)
+
     def test_an_unregistered_ceiling_is_none(self):
         if not HAS_RELAY:
             self.skipTest("the api extra is not installed")
@@ -660,6 +690,160 @@ class TheSecretsAreSeparated(unittest.TestCase):
                 self.assertIsNone(relay_serve.daily_ceiling({"EFR_RELAY_DAILY_CEILING": value}))
         self.assertIsNone(relay_serve.daily_ceiling({}))
         self.assertEqual(relay_serve.daily_ceiling({"EFR_RELAY_DAILY_CEILING": "120"}), 120)
+
+
+# `RL-023` to `RL-025`'s registered origin, and one that is not it.
+ORIGIN = "https://sample-origin.example"
+OTHER_ORIGIN = "https://sample-other-origin.example"
+
+# Section 4.1: an admitted preflight's headers, exactly.
+PREFLIGHT_HEADERS = {
+    "access-control-allow-origin": ORIGIN,
+    "access-control-allow-methods": "POST",
+    "access-control-allow-headers": "content-type",
+    "vary": "Origin",
+}
+
+
+class ThePreflight(RelayCase):
+    """Section 4.1 (`0.4.0`): `RL-023` to `RL-025`."""
+
+    def preflight(self, client, *, origin=ORIGIN, method="POST", address="192.0.2.10"):
+        headers = {"x-forwarded-for": address}
+        if origin is not None:
+            headers["origin"] = origin
+        if method is not None:
+            headers["access-control-request-method"] = method
+        return client.options(relay.PATH, headers=headers)
+
+    def assert_admitted(self, response):
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        # The four headers exactly, and no other: no `content-type`, no
+        # `Allow`, no `Access-Control-Max-Age` (Section 9).
+        self.assertEqual(dict(response.headers), PREFLIGHT_HEADERS)
+
+    def test_RL_023_a_preflight_reaches_no_cap(self):
+        # An address whose per-minute limit is spent, under a ceiling that is
+        # also reached: six requests take both.
+        client = self.relay(ceiling=6, cors_origin=ORIGIN)
+        for _ in range(6):
+            self.assertEqual(self.post(client, origin=ORIGIN).status_code, 200)
+        self.assert_refused(self.post(client, origin=ORIGIN), "rate_limited", 429)
+        with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
+            self.assert_admitted(self.preflight(client))
+        self.assertEqual(len(self.stub.calls), 6)
+        self.assert_one_preflight_line_each(logs.records, 1)
+
+        # Seven from a fresh address, then a `POST` from it under a ceiling
+        # not yet reached: the seventh `POST` in a minute would be refused, so
+        # a 200 shows that no preflight was counted.
+        client = self.relay(cors_origin=ORIGIN)
+        with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
+            for _ in range(7):
+                self.assert_admitted(self.preflight(client, address="192.0.2.20"))
+        self.assertEqual(self.stub.calls, [])
+        self.assert_one_preflight_line_each(logs.records, 7)
+        self.assertEqual(self.post(client, address="192.0.2.20", origin=ORIGIN).status_code, 200)
+        self.assertEqual(len(self.stub.calls), 1)
+
+    def assert_one_preflight_line_each(self, records, count):
+        """Section 4.10: exactly one line per admitted preflight, carrying the
+        `deploy-v0.1` Section 4.7 fields with HTTP 204, and nothing a `POST`
+        adds or any request-header value."""
+        self.assertEqual(len(records), count)
+        for record in records:
+            message = record.getMessage()
+            line = json.loads(message)
+            self.assertEqual(set(line), {"timestamp", "path", "http_status", "latency_ms"})
+            self.assertEqual((line["path"], line["http_status"]), (relay.PATH, 204))
+            for value in (ORIGIN, "sample-origin", "192.0.2.", "POST"):
+                self.assertNotIn(value, message)
+
+    def test_RL_024_a_preflight_short_of_any_condition_is_refused(self):
+        cases = {
+            "another origin": (ORIGIN, {"origin": OTHER_ORIGIN}),
+            "no origin configured": (None, {}),
+            "another method": (ORIGIN, {"method": "DELETE"}),
+            "no request-method header": (ORIGIN, {"method": None}),
+        }
+        for name, (configured, request) in cases.items():
+            with self.subTest(name):
+                client = self.relay(cors_origin=configured)
+                response = self.preflight(client, **request)
+                self.assert_refused(response, "method_not_allowed", 405)
+                self.assertNotIn("access-control-allow-origin", response.headers)
+                self.assertEqual(self.stub.calls, [])
+
+    def test_a_preflight_with_no_origin_header_is_refused(self):
+        client = self.relay(cors_origin=ORIGIN)
+        response = self.preflight(client, origin=None)
+        self.assert_refused(response, "method_not_allowed", 405)
+        self.assertNotIn("access-control-allow-origin", response.headers)
+
+    def test_a_preflight_on_another_path_is_not_admitted(self):
+        client = self.relay(cors_origin=ORIGIN)
+        # Not followed: the router redirects `/chat/` to `/chat`, and a browser
+        # does not follow a redirect on a preflight.
+        response = client.options(
+            f"{relay.PATH}/",
+            headers={"origin": ORIGIN, "access-control-request-method": "POST"},
+            follow_redirects=False,
+        )
+        self.assertNotEqual(response.status_code, 204)
+        self.assertNotIn("access-control-allow-origin", response.headers)
+
+    def test_RL_025_the_header_on_a_post(self):
+        def pair(ceiling, **post):
+            """The same request from the origin and without one, each on a
+            fresh relay so that neither spends the other's caps."""
+            relay_for = lambda: self.relay(ceiling=ceiling, cors_origin=ORIGIN)  # noqa: E731
+            return self.post(relay_for(), **post, origin=ORIGIN), self.post(relay_for(), **post)
+
+        cases = {
+            "answered 200": (1000, {}, 200),
+            "refused malformed_request": (1000, {"raw": b"{}"}, 400),
+            "refused daily_ceiling_reached": (None, {}, 503),
+        }
+        for name, (ceiling, post, status) in cases.items():
+            with self.subTest(name):
+                from_origin, without = pair(ceiling, **post)
+                self.assertEqual(from_origin.status_code, status)
+                self.assertEqual(from_origin.headers["access-control-allow-origin"], ORIGIN)
+                self.assertEqual(from_origin.headers["vary"], "Origin")
+                self.assertEqual(from_origin.content, without.content)
+
+        for name, origin in {"another origin": OTHER_ORIGIN, "no origin": None}.items():
+            with self.subTest(name):
+                response = self.post(self.relay(cors_origin=ORIGIN), origin=origin)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["vary"], "Origin")
+                self.assertNotIn("access-control-allow-origin", response.headers)
+
+    def test_vary_is_sent_on_a_post_with_no_origin_configured(self):
+        response = self.post(self.relay(), origin=ORIGIN)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["vary"], "Origin")
+        self.assertNotIn("access-control-allow-origin", response.headers)
+
+    def test_a_post_that_reaches_the_catch_all_still_carries_the_headers(self):
+        """#215 B2's lesson: a 500 written by the framework's outermost layer
+        must carry the header too, or the browser withholds it."""
+        from unittest import mock
+
+        client = self.relay(cors_origin=ORIGIN, raise_server_exceptions=False)
+        with mock.patch.object(relay, "scope_checks", side_effect=RuntimeError("SAMPLE_DEFECT")):
+            response = self.post(client, origin=ORIGIN)
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.headers["access-control-allow-origin"], ORIGIN)
+        self.assertEqual(response.headers["vary"], "Origin")
+
+    def test_the_origin_is_compared_never_reflected(self):
+        client = self.relay(cors_origin=ORIGIN)
+        for origin in (ORIGIN + "/", ORIGIN.upper(), "null", "*"):
+            with self.subTest(origin=origin):
+                response = self.post(client, origin=origin)
+                self.assertNotIn("access-control-allow-origin", response.headers)
 
 
 class TheRecords(RelayCase):
