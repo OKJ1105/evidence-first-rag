@@ -1,0 +1,1142 @@
+{
+  "_about": {
+    "api": {
+      "identifier": "api-v0.1",
+      "version": "0.2.0"
+    },
+    "assumed_not_observed": "The mcp_tool_result block shape (the CallToolResult's text blocks under content, isError as is_error, no structuredContent) is the shape tests/test_relay.py stubs. relay-v0.1 Section 4.2 records that the connector's wrapping is not yet observed on a deployed run.",
+    "mcp": {
+      "identifier": "mcp-v0.1",
+      "version": "0.1.1"
+    },
+    "model_text_is_stub": "Every content block of type text is authored stub prose standing in for the model. None is model output.",
+    "relay": {
+      "identifier": "relay-v0.1",
+      "version": "0.3.0"
+    },
+    "what": "POST /chat request and response bodies for the relay-v0.1 Section 4.7 page obligations, built by tests/test_relay_responses.py through the real relay and the real /mcp surface."
+  },
+  "conversations": {
+    "ambiguous_then_scope_from_list": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A on SAMPLE_NET_POWERTRAIN, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "That matches more than one snapshot.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "message",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "term": "SAMPLE_MSG_ENGINE_STATUS"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_REVISED\"}],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":null},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"\",\"method_version\":\"\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"\",\"registry_digest\":\"\",\"resolved_scope\":null,\"route\":\"entity_discovery\",\"row_count\":2,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_SNAPSHOT_CANDIDATES_V1\",\"template_version\":\"1\"},\"limitations\":[],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_REVISED\"}],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":null,\"resolved_scope\":null},\"status\":\"ambiguous\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        },
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A on SAMPLE_NET_POWERTRAIN, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "That matches more than one snapshot.",
+                      "type": "text"
+                    },
+                    {
+                      "id": "SAMPLE_TOOL_USE_1",
+                      "input": {
+                        "arguments": {
+                          "entity_kind": "message",
+                          "network_name": "SAMPLE_NET_POWERTRAIN",
+                          "project_code": "SAMPLE_PROJECT_ALPHA",
+                          "revision_label": "SAMPLE_REV_A",
+                          "term": "SAMPLE_MSG_ENGINE_STATUS"
+                        }
+                      },
+                      "name": "discover_entity",
+                      "server_name": "evidence-first-rag",
+                      "type": "mcp_tool_use"
+                    },
+                    {
+                      "content": [
+                        {
+                          "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_REVISED\"}],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":null},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"\",\"method_version\":\"\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"\",\"registry_digest\":\"\",\"resolved_scope\":null,\"route\":\"entity_discovery\",\"row_count\":2,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_SNAPSHOT_CANDIDATES_V1\",\"template_version\":\"1\"},\"limitations\":[],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_REVISED\"}],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":null,\"resolved_scope\":null},\"status\":\"ambiguous\"}}",
+                          "type": "text"
+                        }
+                      ],
+                      "is_error": false,
+                      "tool_use_id": "SAMPLE_TOOL_USE_1",
+                      "type": "mcp_tool_result"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "Use the first one.",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Using the first snapshot.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "message",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_MSG_ENGINE_STATUS"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{\"entity_kind\":\"message\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"parent_message_key\":null,\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\",\"term\":\"SAMPLE_MSG_ENGINE_STATUS\"},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":1,\"matched_text\":\"SAMPLE_MSG_ENGINE_STATUS\",\"method_identifier\":\"M-LEX-1\",\"method_version\":\"1\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"2026-09-12T00:00:00Z\",\"registry_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},\"route\":\"entity_discovery\",\"row_count\":1,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_DISCOVERY_EXACT_V1\",\"template_version\":\"1\"},\"limitations\":[],\"resolved\":{\"alias\":null,\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"entity_kind\":\"message\",\"match_kind\":\"lookup_key\",\"match_tier\":1,\"matched_text\":\"SAMPLE_MSG_ENGINE_STATUS\",\"rank\":1,\"reference\":{\"message_key\":\"SAMPLE_MSG_ENGINE_STATUS\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":null,\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"status\":\"resolved\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [
+                  "snapshot_label"
+                ],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "RL-010 shape: snapshot_label in the second call came from the first result's candidate_scopes.",
+      "obligations": [
+        "P4",
+        "P5"
+      ]
+    },
+    "candidates_not_person_stated": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "Which signal is SAMPLE_SIG_GEAR_POSITION?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Two entities match.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "signal",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_SIG_GEAR_POSITION"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[{\"alias\":null,\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"entity_kind\":\"signal\",\"match_kind\":\"lookup_key\",\"match_tier\":1,\"matched_text\":\"SAMPLE_SIG_GEAR_POSITION\",\"rank\":1,\"reference\":{\"message_key\":\"SAMPLE_MSG_TRANSMISSION_STATE\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"signal_key\":\"SAMPLE_SIG_GEAR_POSITION\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},{\"alias\":{\"approval_reference\":\"SAMPLE_APPROVAL_M3_101\",\"approved_at\":\"2026-03-05T00:00:00Z\",\"asserting_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"entity_kind\":\"signal\",\"match_kind\":\"approved_alias\",\"match_tier\":2,\"matched_text\":\"SAMPLE_SIG_GEAR_POSITION\",\"rank\":2,\"reference\":{\"message_key\":\"SAMPLE_MSG_DIAGNOSTIC_EVENT\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"signal_key\":\"SAMPLE_SIG_FAULT_CODE\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}}],\"evidence_bundle\":{\"bound_parameters\":{\"entity_kind\":\"signal\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"parent_message_key\":null,\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\",\"term\":\"SAMPLE_SIG_GEAR_POSITION\"},\"candidate_count\":2,\"candidate_set_id\":\"9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"M-LEX-1\",\"method_version\":\"1\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"2026-09-12T00:00:00Z\",\"registry_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},\"route\":\"entity_discovery\",\"row_count\":2,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_DISCOVERY_EXACT_V1\",\"template_version\":\"1\"},\"limitations\":[{\"detail\":\"No reference was resolved: the term matched more than one approved entity, or matched only below tier 2, and Section 4.7 permits no automatic choice among candidates. An explicit selection is required (Section 4.8).\",\"kind\":\"no_reference_resolved\"}],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[{\"approval_reference\":\"SAMPLE_APPROVAL_M3_101\",\"approved_at\":\"2026-03-05T00:00:00Z\",\"asserting_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}}],\"contributing_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[{\"message_key\":\"SAMPLE_MSG_TRANSMISSION_STATE\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},{\"message_key\":\"SAMPLE_MSG_DIAGNOSTIC_EVENT\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"producing_layer\":null,\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"status\":\"candidates\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "person_stated": [],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "RL-008 shape: all four scope values are not_person_stated.",
+      "obligations": [
+        "P5"
+      ]
+    },
+    "candidates_person_stated": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A on SAMPLE_NET_POWERTRAIN at SAMPLE_SNAP_BASE, which signal is SAMPLE_SIG_GEAR_POSITION?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Two entities match.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "signal",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_SIG_GEAR_POSITION"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[{\"alias\":null,\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"entity_kind\":\"signal\",\"match_kind\":\"lookup_key\",\"match_tier\":1,\"matched_text\":\"SAMPLE_SIG_GEAR_POSITION\",\"rank\":1,\"reference\":{\"message_key\":\"SAMPLE_MSG_TRANSMISSION_STATE\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"signal_key\":\"SAMPLE_SIG_GEAR_POSITION\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},{\"alias\":{\"approval_reference\":\"SAMPLE_APPROVAL_M3_101\",\"approved_at\":\"2026-03-05T00:00:00Z\",\"asserting_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"entity_kind\":\"signal\",\"match_kind\":\"approved_alias\",\"match_tier\":2,\"matched_text\":\"SAMPLE_SIG_GEAR_POSITION\",\"rank\":2,\"reference\":{\"message_key\":\"SAMPLE_MSG_DIAGNOSTIC_EVENT\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"signal_key\":\"SAMPLE_SIG_FAULT_CODE\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}}],\"evidence_bundle\":{\"bound_parameters\":{\"entity_kind\":\"signal\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"parent_message_key\":null,\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\",\"term\":\"SAMPLE_SIG_GEAR_POSITION\"},\"candidate_count\":2,\"candidate_set_id\":\"9611e3585b48c8d1cc01103f8fd4ba319f38d0805c4ab6e303ed4a63274e31b7\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"M-LEX-1\",\"method_version\":\"1\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"2026-09-12T00:00:00Z\",\"registry_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},\"route\":\"entity_discovery\",\"row_count\":2,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_DISCOVERY_EXACT_V1\",\"template_version\":\"1\"},\"limitations\":[{\"detail\":\"No reference was resolved: the term matched more than one approved entity, or matched only below tier 2, and Section 4.7 permits no automatic choice among candidates. An explicit selection is required (Section 4.8).\",\"kind\":\"no_reference_resolved\"}],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[{\"approval_reference\":\"SAMPLE_APPROVAL_M3_101\",\"approved_at\":\"2026-03-05T00:00:00Z\",\"asserting_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}}],\"contributing_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[{\"message_key\":\"SAMPLE_MSG_TRANSMISSION_STATE\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},{\"message_key\":\"SAMPLE_MSG_DIAGNOSTIC_EVENT\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"producing_layer\":null,\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"status\":\"candidates\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "A candidate list with an approved-alias candidate.",
+      "obligations": [
+        "P1",
+        "P3",
+        "P4a"
+      ]
+    },
+    "discovery_coverage_gap": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_NONE, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Here is what the lookup returned.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "message",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_NONE",
+                    "term": "SAMPLE_MSG_ENGINE_STATUS"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_NONE\"},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"\",\"method_version\":\"\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"\",\"registry_digest\":\"\",\"resolved_scope\":null,\"route\":\"entity_discovery\",\"row_count\":0,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_SNAPSHOT_CANDIDATES_V1\",\"template_version\":\"1\"},\"limitations\":[{\"detail\":\"no snapshot in the approved data scope matches project_code=SAMPLE_PROJECT_ALPHA, revision_label=SAMPLE_REV_A, network_name=SAMPLE_NET_POWERTRAIN, snapshot_label=SAMPLE_SNAP_NONE, so the coverage this request needs could not be established (Sections 4.3 and 5).\",\"kind\":\"coverage_not_established\"}],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":null,\"resolved_scope\":null},\"status\":\"coverage_gap\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "A negative discovery status, carried through as itself.",
+      "obligations": [
+        "P4",
+        "P4a"
+      ]
+    },
+    "discovery_invalid_request": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Here is what the lookup returned.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "message",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": ""
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"\",\"method_version\":\"\",\"read_only_safeguards\":{\"connection_opened\":false,\"read_only_transaction\":false,\"role_name\":\"\"},\"registry_built_at\":\"\",\"registry_digest\":\"\",\"resolved_scope\":null,\"route\":\"entity_discovery\",\"row_count\":0,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"\",\"template_version\":\"\"},\"limitations\":[],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":null,\"resolved_scope\":null},\"status\":\"invalid_request\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "A negative discovery status, carried through as itself.",
+      "obligations": [
+        "P4",
+        "P4a"
+      ]
+    },
+    "discovery_not_found": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Here is what the lookup returned.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "message",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_MSG_ENGINE_STATUS"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{\"entity_kind\":\"message\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"normalized_term\":[\"sample\",\"msg\",\"engine\",\"status\"],\"parent_message_key\":null,\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"M-LEX-1\",\"method_version\":\"1\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"2026-09-12T00:00:00Z\",\"registry_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},\"route\":\"entity_discovery\",\"row_count\":0,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_DISCOVERY_LEXICAL_V1\",\"template_version\":\"1\"},\"limitations\":[{\"detail\":\"No approved entity matched the term at any tier. Absence from the approved registry is not absence from the data: the registry is an allowlist (Section 4.2), and this result establishes nothing about what the loaded data contains.\",\"kind\":\"not_in_registry\"}],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":null,\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"status\":\"not_found\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "A negative discovery status, carried through as itself.",
+      "obligations": [
+        "P4",
+        "P4a"
+      ]
+    },
+    "discovery_unsupported": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A SAMPLE_NET_POWERTRAIN SAMPLE_SNAP_BASE, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Here is what the lookup returned.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "SAMPLE_KIND_OTHER",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_MSG_ENGINE_STATUS"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":null,\"matched_text\":\"\",\"method_identifier\":\"\",\"method_version\":\"\",\"read_only_safeguards\":{\"connection_opened\":false,\"read_only_transaction\":false,\"role_name\":\"\"},\"registry_built_at\":\"\",\"registry_digest\":\"\",\"resolved_scope\":null,\"route\":\"entity_discovery\",\"row_count\":0,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"\",\"template_version\":\"\"},\"limitations\":[],\"resolved\":null,\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[],\"entity_approval_reference\":\"\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[],\"producing_layer\":\"runtime\",\"resolved_scope\":null},\"status\":\"unsupported\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "A negative discovery status, carried through as itself.",
+      "obligations": [
+        "P4",
+        "P4a"
+      ]
+    },
+    "resolved_person_stated": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A on SAMPLE_NET_POWERTRAIN at SAMPLE_SNAP_BASE, which signal is SAMPLE_SIG_GEAR_POSITION?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "Looking that up.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "signal",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_SIG_GEAR_POSITION"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"contract\":{\"identifier\":\"api-v0.1\",\"version\":\"0.2.0\"},\"rendered\":null,\"result\":{\"candidate_scopes\":[],\"candidates\":[],\"evidence_bundle\":{\"bound_parameters\":{\"entity_kind\":\"signal\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"parent_message_key\":null,\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\",\"term\":\"SAMPLE_SIG_GEAR_POSITION\"},\"candidate_count\":0,\"candidate_set_id\":\"\",\"collation\":\"C\",\"contract_identifier\":\"entity-discovery-v0.1\",\"contract_version\":\"0.3.1\",\"match_tier\":1,\"matched_text\":\"SAMPLE_SIG_GEAR_POSITION\",\"method_identifier\":\"M-LEX-1\",\"method_version\":\"1\",\"read_only_safeguards\":{\"connection_opened\":true,\"read_only_transaction\":true,\"role_name\":\"SAMPLE_RUNTIME_ROLE\"},\"registry_built_at\":\"2026-09-12T00:00:00Z\",\"registry_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"},\"route\":\"entity_discovery\",\"row_count\":1,\"runtime_contract_identifier\":\"mvp-v0.1\",\"runtime_contract_version\":\"0.6.1\",\"selected_rank\":\"\",\"target_route\":\"\",\"template_name\":\"TPL_DISCOVERY_EXACT_V1\",\"template_version\":\"1\"},\"limitations\":[],\"resolved\":{\"alias\":null,\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"entity_kind\":\"signal\",\"match_kind\":\"lookup_key\",\"match_tier\":1,\"matched_text\":\"SAMPLE_SIG_GEAR_POSITION\",\"rank\":1,\"reference\":{\"message_key\":\"SAMPLE_MSG_TRANSMISSION_STATE\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"signal_key\":\"SAMPLE_SIG_GEAR_POSITION\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"source_trace\":{\"alias_provenance\":[],\"contributing_scopes\":[{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"entity_approval_reference\":\"SAMPLE_APPROVAL_M3_001\",\"fixture_provenance\":[\"fixtures/registry/approved_entity.jsonl\"],\"parent_messages\":[{\"message_key\":\"SAMPLE_MSG_TRANSMISSION_STATE\",\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}],\"producing_layer\":null,\"resolved_scope\":{\"network_name\":\"SAMPLE_NET_POWERTRAIN\",\"project_code\":\"SAMPLE_PROJECT_ALPHA\",\"revision_label\":\"SAMPLE_REV_A\",\"snapshot_label\":\"SAMPLE_SNAP_BASE\"}},\"status\":\"resolved\"}}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": false,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              },
+              {
+                "text": "SAMPLE_SIG_GEAR_POSITION is sent every 10 ms.",
+                "type": "text"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "RL-006 and RL-007 shapes; the last text block is fact-shaped stub prose.",
+      "obligations": [
+        "P1",
+        "P2",
+        "P3",
+        "P4a"
+      ]
+    },
+    "text_only": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "What can you look up?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "I can find which SAMPLE entity your words refer to.",
+                "type": "text"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "No tool call; nothing to render in the evidence region.",
+      "obligations": [
+        "P1"
+      ]
+    },
+    "tool_refusal_database_unavailable": {
+      "exchanges": [
+        {
+          "http_status": 200,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "In SAMPLE_PROJECT_ALPHA SAMPLE_REV_A on SAMPLE_NET_POWERTRAIN at SAMPLE_SNAP_BASE, what is SAMPLE_MSG_ENGINE_STATUS?",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "content": [
+              {
+                "text": "The lookup did not complete.",
+                "type": "text"
+              },
+              {
+                "id": "SAMPLE_TOOL_USE_1",
+                "input": {
+                  "arguments": {
+                    "entity_kind": "message",
+                    "network_name": "SAMPLE_NET_POWERTRAIN",
+                    "project_code": "SAMPLE_PROJECT_ALPHA",
+                    "revision_label": "SAMPLE_REV_A",
+                    "snapshot_label": "SAMPLE_SNAP_BASE",
+                    "term": "SAMPLE_MSG_ENGINE_STATUS"
+                  }
+                },
+                "name": "discover_entity",
+                "server_name": "evidence-first-rag",
+                "type": "mcp_tool_use"
+              },
+              {
+                "content": [
+                  {
+                    "text": "{\"detail\":\"the database could not be reached, so the request was never attempted (Section 4.3)\",\"refusal\":\"database_unavailable\"}",
+                    "type": "text"
+                  }
+                ],
+                "is_error": true,
+                "tool_use_id": "SAMPLE_TOOL_USE_1",
+                "type": "mcp_tool_result"
+              }
+            ],
+            "relay": {
+              "identifier": "relay-v0.1",
+              "model": "claude-haiku-4-5",
+              "version": "0.3.0"
+            },
+            "scope_checks": [
+              {
+                "not_person_stated": [],
+                "person_stated": [
+                  "project_code",
+                  "revision_label",
+                  "network_name",
+                  "snapshot_label"
+                ],
+                "tool_use_id": "SAMPLE_TOOL_USE_1"
+              }
+            ],
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "note": "RL-020 shape: is_error true, a database_unavailable refusal.",
+      "obligations": [
+        "P4b"
+      ]
+    }
+  },
+  "refusals": {
+    "conversation_limit": {
+      "exchanges": [
+        {
+          "http_status": 422,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "SAMPLE_TURN_0",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_1",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_2",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_3",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_4",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_5",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_6",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_7",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_8",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_9",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                },
+                {
+                  "content": "SAMPLE_TURN_10",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "detail": "The conversation has more than 10 of the person's turns.",
+            "refusal": "conversation_limit"
+          }
+        }
+      ],
+      "note": "The conversation_limit refusal.",
+      "obligations": [
+        "P7"
+      ]
+    },
+    "daily_ceiling_reached": {
+      "exchanges": [
+        {
+          "http_status": 503,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "SAMPLE_A",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "detail": "The relay has reached its daily limit of model calls.",
+            "refusal": "daily_ceiling_reached"
+          }
+        }
+      ],
+      "note": "The daily_ceiling_reached refusal.",
+      "obligations": [
+        "P7"
+      ]
+    },
+    "malformed_request": {
+      "exchanges": [
+        {
+          "http_status": 400,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "SAMPLE_A",
+                  "role": "user"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "S",
+                      "type": "text"
+                    }
+                  ],
+                  "role": "assistant"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "detail": "The request does not have the shape relay-v0.1 Section 4.2 fixes.",
+            "refusal": "malformed_request"
+          }
+        }
+      ],
+      "note": "The malformed_request refusal.",
+      "obligations": [
+        "P7"
+      ]
+    },
+    "method_not_allowed": {
+      "exchanges": [
+        {
+          "http_status": 405,
+          "request": {
+            "body": null,
+            "method": "GET"
+          },
+          "response": {
+            "detail": "This route accepts POST only.",
+            "refusal": "method_not_allowed"
+          }
+        }
+      ],
+      "note": "The method_not_allowed refusal.",
+      "obligations": [
+        "P7"
+      ]
+    },
+    "model_unavailable": {
+      "exchanges": [
+        {
+          "http_status": 502,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "SAMPLE_A",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "detail": "The model call did not return a usable response.",
+            "refusal": "model_unavailable"
+          }
+        }
+      ],
+      "note": "The model_unavailable refusal.",
+      "obligations": [
+        "P7"
+      ]
+    },
+    "rate_limited": {
+      "exchanges": [
+        {
+          "http_status": 429,
+          "request": {
+            "body": {
+              "messages": [
+                {
+                  "content": "SAMPLE_A",
+                  "role": "user"
+                }
+              ]
+            },
+            "method": "POST"
+          },
+          "response": {
+            "detail": "Too many requests from this client; try again later.",
+            "refusal": "rate_limited"
+          }
+        }
+      ],
+      "note": "The rate_limited refusal.",
+      "obligations": [
+        "P7"
+      ]
+    }
+  }
+}
