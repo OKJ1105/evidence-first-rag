@@ -252,6 +252,21 @@ class TheChatCall(unittest.TestCase):
     def test_another_model_fails(self):
         self.assertFalse(checks.dp012(self.fetch(self.good(relay={"model": "other"})), "relay")[0])
 
+    def test_an_answer_with_no_tool_call_fails(self):
+        """#286: a text-only answer leaves the deployed round trip unasserted."""
+        document = self.good(content=[{"type": "text", "text": "SAMPLE_REPLY_TEXT"}], scope_checks=[])
+        passed, detail = checks.dp012(self.fetch(document), "relay")
+        self.assertFalse(passed)
+        self.assertIn("block types ['text']", detail)
+        self.assertNotIn("SAMPLE_REPLY_TEXT", detail)
+
+    def test_a_call_answered_only_by_a_refusal_fails(self):
+        content = [
+            {"type": "mcp_tool_use", "name": "discover_entity", "id": "x", "input": {}},
+            {"type": "mcp_tool_result", "tool_use_id": "x", "is_error": True, "content": []},
+        ]
+        self.assertFalse(checks.dp012(self.fetch(self.good(content=content)), "relay")[0])
+
 
 class TheOrder(unittest.TestCase):
     def test_the_model_call_comes_before_the_rate_limit_is_spent(self):
