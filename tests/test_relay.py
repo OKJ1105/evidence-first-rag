@@ -91,10 +91,12 @@ def tool_result(document, *, is_error=False, block_id="SAMPLE_TOOL_USE_1"):
     }
 
 
-AMBIGUOUS = {
-    "status": "ambiguous",
-    "candidate_scopes": [SCOPE],
-}
+# The envelope the MCP surface really writes (`mcp-v0.1` Section 4.2), not a
+# hand-written document: its status is under `result` (#271).
+# `tests/test_ui_envelopes.py` keeps this file equal to the surface's output.
+AMBIGUOUS = json.loads((ROOT / "tests" / "ui_envelopes.json").read_text(encoding="utf-8"))[
+    "discovery_ambiguous"
+]
 
 # `RL-006`: text, a call, and its result.
 CONTENT = [
@@ -688,6 +690,29 @@ class TheRecords(RelayCase):
         self.assertEqual(line["usage"], {"input_tokens": 100, "output_tokens": 20})
         self.assertEqual(line["tools"], ["discover_entity"])
         self.assertEqual(line["tool_results"], ["ambiguous"])
+
+    def test_a_status_is_read_under_result_only(self):
+        """#271: a status at the envelope's top level is not the result's."""
+        decoy = copy.deepcopy(AMBIGUOUS)
+        decoy["status"] = "found"
+        del decoy["result"]["status"]
+        cases = {
+            "the real envelope": (tool_result(AMBIGUOUS), "ambiguous"),
+            "a top-level decoy only": (tool_result(decoy), "unreadable"),
+            "a result that is not an object": (tool_result({"result": "ambiguous"}), "unreadable"),
+        }
+        for name, (block, expected) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(relay._tool_result_kind(block), expected)
+
+    def test_a_refusal_the_mcp_surface_writes_is_read_by_kind(self):
+        """#272 N1: the refusal branch reads the body `mcp-v0.1` Section 4.3's
+        own writer produces, not only a hand-written one."""
+        if not HAS_MCP_SURFACE:
+            self.skipTest("the mcp extra is not installed")
+        written = mcp_surface.refusal("database_unavailable", mcp_surface.DATABASE_DETAIL)
+        block = tool_result(json.loads(written.content[-1].text), is_error=True)
+        self.assertEqual(relay._tool_result_kind(block), "database_unavailable")
 
     def test_a_refusal_is_logged_by_kind(self):
         client = self.relay(ceiling=None)

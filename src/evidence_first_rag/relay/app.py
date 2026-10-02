@@ -403,8 +403,11 @@ def _tool_result_kind(block: Mapping) -> str:
     """A `mcp_tool_result`'s status, or its refusal kind when it is an error.
 
     Read off the last text block, which `mcp-v0.1` Section 4.2 makes the
-    canonical JSON on every result and Section 4.3 the refusal body. A value
-    that cannot be read is logged as that, and never as a status.
+    canonical JSON on every result and Section 4.3 the refusal body. The two
+    are not nested alike: a refusal body is flat (`{"refusal", "detail"}`),
+    while a result is the `api-v0.1` envelope, whose status is under
+    `result` (#271). A value that cannot be read is logged as that, and never
+    as a status.
     """
     texts = [
         item.get("text")
@@ -417,8 +420,13 @@ def _tool_result_kind(block: Mapping) -> str:
         return "unreadable"
     # The Messages API names the flag `is_error`; `relay-v0.1` Section 4.10
     # writes the MCP spelling `isError`. Either marks a refusal.
-    key = "refusal" if (block.get("is_error") or block.get("isError")) else "status"
-    value = document.get(key) if isinstance(document, dict) else None
+    if not isinstance(document, dict):
+        return "unreadable"
+    if block.get("is_error") or block.get("isError"):
+        value = document.get("refusal")
+    else:
+        result = document.get("result")
+        value = result.get("status") if isinstance(result, dict) else None
     return value if isinstance(value, str) else "unreadable"
 
 
