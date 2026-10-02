@@ -275,12 +275,31 @@ resource relayAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   dependsOn: [relaySecret]
 }
 
-// Section 4.7: the platform's log store. The apps' own standard-output lines
-// (the per-request JSON records) are the one stream it holds here. The
-// platform's file-system HTTP log is **off**: it records each request line,
-// query string included, and Section 4.7 binds a request's URL and query
-// string as well as its body (`0.6.1`, #279). Off explicitly rather than by
-// omission, because an earlier deploy of this template turned it on.
+// Section 4.7: the platform's log store. The stream it has to hold is the
+// apps' own standard output -- the per-request JSON records. The platform's
+// file-system HTTP log is **off**: it records each request line, query string
+// included, and Section 4.7 binds a request's URL and query string as well as
+// its body (`0.6.1`, #279). Off explicitly rather than by omission, because an
+// earlier deploy of this template turned it on.
+//
+// **Unverified, and the owner's to settle (#279 B2).** Whether
+// `httpLogs.fileSystem` and the Linux container's standard-output capture are
+// two switches or one is not established here, and this repository holds no
+// observation either way: the committed `DP-008` record (Section 4.8) records
+// its pass sentence against a site where this was on. What is known points at
+// one switch rather than two -- `az webapp log config
+// --docker-container-logging {filesystem,off}` writes this same
+// `httpLogs.fileSystem` block, and the quota a Linux app is offered for
+// file-system logging is the `retentionInMb` that block carried here until
+// now. If they are one switch, `enabled: false` also stops `LogFiles` holding
+// the JSON lines Section 4.7 requires and `DP-008`'s positive control reads.
+// That is two Section 4.7 obligations in conflict -- the request line may not
+// be logged, and the per-request record must be -- which is the owner's
+// decision and not the writer's. What settles it: the deployed site's `logs`
+// configuration read once after an apply, or a checks-mode `DP-008` run
+// against it. Until then the deploy's own rollback is the guard: `DP-008`
+// fails closed when an app's own record is in no downloaded file, and records
+// the file names the download did hold, on a pass as well as on a failure.
 //
 // So no log here carries `retentionInDays` any more: Section 4.7's 7 days is
 // how long the platform keeps the standard-output stream, which is its

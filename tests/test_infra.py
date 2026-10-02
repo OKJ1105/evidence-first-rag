@@ -294,7 +294,10 @@ class TheLogs(unittest.TestCase):
         """#279: that log records each request line, query string included, and
         Section 4.7 binds a request's URL and query string as well as its body.
         Off explicitly, not by the platform's default, because an earlier deploy
-        of this template turned it on. With it off, no log here sets
+        of this template turned it on. Whether this same switch also carries the
+        Linux container's standard-output capture is unverified; the template
+        records what is known and what settles it, for the owner (#279 B2).
+        With it off, no log here sets
         `retentionInDays`: Section 4.7's 7 days is the platform's own retention
         of the standard-output stream, its default, which the first deploy
         settles (#231 N1)."""

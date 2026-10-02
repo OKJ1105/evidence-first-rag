@@ -36,7 +36,10 @@ is only a line not yet flushed. So the store is read at least `MINIMUM_READS`
 times, over about two minutes, before a pass is concluded, even when the
 control is already met by an earlier line. The case passes when both apps'
 own records are present and the marker appears in no file of either download.
-A finding names the file the marker was in, never the line.
+A finding names the file the marker was in, never the line, and every outcome
+-- a pass included -- records the file names the last download held, so what
+the store carried on a run is readable off the committed record rather than
+reconstructed from the sentence (#279 B2).
 
 Each read is bounded. A log store that never shows the app's own record of the
 request fails the case, and the case does not wait forever.
@@ -207,8 +210,8 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
     statuses = f"request statuses {surface_answer[0]} and {relay_answer[0]}"
     marked, seen = {}, {surface: False, relay: False}
     records = {surface: SURFACE_RECORD, relay: RELAY_RECORD}
-    # The last download's file names, so an unmet control says what the store
-    # did hold (#256 N6). Names only, never a line.
+    # The last download's file names, so the record says what the store did
+    # hold, met or not (#256 N6, #279 B2). Names only, never a line.
     names = {surface: [], relay: []}
     for attempt in range(ATTEMPTS):
         for app in (surface, relay):
@@ -233,10 +236,14 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
             f" files downloaded: { {app: names[app] for app in missing} }"
         )
     # The control may have been met by an earlier request's line, so the
-    # evidence says so rather than claiming more (#256 N7).
+    # evidence says so rather than claiming more (#256 N7). The file names are
+    # recorded on a pass as well, so a committed record says which files the
+    # store held and a later run that holds fewer is readable against it
+    # (#279 B2) -- which is what a change to the platform's logging switches
+    # would show up as. Names only, never a line.
     return True, (
         f"the marker is in no log file of either app; {statuses}; the control was met by a line"
-        " of each app's own shape, which may be an earlier request's"
+        f" of each app's own shape, which may be an earlier request's; files downloaded: {names}"
     )
 
 

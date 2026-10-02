@@ -111,6 +111,15 @@ class TheCase(unittest.TestCase):
         self.assertTrue(passed)
         self.assertIn("may be an earlier request's", detail)
 
+    def test_a_pass_records_the_file_names_the_download_held(self):
+        """#279 B2: the committed record says which files the store carried, so
+        a later run holding fewer -- a logging switch turned off with it -- is
+        readable against it. Names only, never a line."""
+        (passed, detail), _, _, _ = run(CLEAN)
+        self.assertTrue(passed)
+        self.assertIn("LogFiles/app.log", detail)
+        self.assertNotIn('"http_status"', detail)
+
     def test_a_pass_is_not_concluded_before_the_minimum_reads(self):
         (_, _), _, pauses, _ = run(CLEAN)
         self.assertEqual(pauses.count(log_checks.PAUSE_SECONDS), log_checks.MINIMUM_READS - 1)
