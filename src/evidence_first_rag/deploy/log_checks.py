@@ -79,12 +79,11 @@ RELAY_REFUSAL_STATUS = 400
 # no line of the platform's HTTP log. The terms are matched rather than the
 # serialized line, so the separators `log_line` writes with are not part of this.
 #
-# `surface` writes no per-request record of its own beyond uvicorn's access
-# line, which the `infra/main.bicep` entry point does not turn off. That line is
-# not the Section 4.7 JSON line -- that gap is the surface's to close, not this
-# case's -- but it is what the deployed process emits per request, and it is
-# emitted on the stream the case has to establish is in the download.
-SURFACE_RECORD = (f'"POST {DISCOVER_PATH} HTTP/',)
+# `surface` writes the same shape since #259: `api/request_log.py:log_line`,
+# one JSON line per request with `"path"`, the route and `"http_status"`. So
+# both controls name the app's own Section 4.7 record, and neither is met by
+# uvicorn's access line or the platform's HTTP log.
+SURFACE_RECORD = ('"path"', f'"{DISCOVER_PATH}"', '"http_status"')
 RELAY_RECORD = ('"path"', f'"{CHAT_PATH}"', '"http_status"')
 
 

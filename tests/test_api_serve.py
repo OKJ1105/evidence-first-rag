@@ -156,7 +156,8 @@ class TheAdapterIsOptional(unittest.TestCase):
         key would make the LLM a dependency of a system built not to need
         one."""
         app = serve.build(BASE)
-        served = {route.path for route in app.routes}
+        # `build` returns the app wrapped in the Section 4.7 request log.
+        served = {route.path for route in app.app.routes}
         for path in ("/v1/query", "/v1/ask", "/v1/discover", "/v1/select", "/v1/health"):
             self.assertIn(path, served)
 
