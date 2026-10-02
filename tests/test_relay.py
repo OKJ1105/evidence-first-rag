@@ -721,6 +721,9 @@ class TheRecords(RelayCase):
         with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
             response = client.get(f"/{LOG_MARKER}?q={LOG_MARKER}")
         self.assertEqual(response.status_code, 404)
+        # #284 O1: the body the `not_found` handler pins.
+        self.assertEqual(response.text, "Not Found")
+        self.assertTrue(response.headers["content-type"].startswith("text/plain"))
         [record] = logs.records
         line = json.loads(record.getMessage())
         self.assertEqual(set(line), {"timestamp", "path", "http_status", "latency_ms"})
@@ -787,6 +790,20 @@ class TheRecords(RelayCase):
         line = json.loads(record.getMessage())
         self.assertEqual((line["path"], line["http_status"]), (relay.PATH, 500))
         self.assertEqual(stub.calls, [])
+
+    def test_another_method_is_logged_with_its_refusal_kind(self):
+        """#284 N3: the 405 handler hands its kind to the wrapper through the
+        scope, a different path from the route's."""
+        client = self.relay()
+        with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
+            response = client.get(relay.PATH)
+        self.assertEqual(response.status_code, 405)
+        [record] = logs.records
+        line = json.loads(record.getMessage())
+        self.assertEqual(
+            (line["path"], line["http_status"], line.get("refusal")),
+            (relay.PATH, 405, "method_not_allowed"),
+        )
 
     def test_a_refusal_is_logged_by_kind(self):
         client = self.relay(ceiling=None)
