@@ -1,6 +1,6 @@
 # ADR-0003: FastAPI for the HTTP Surface
 
-**Status:** Proposed. Recorded by the writer session with the Milestone 4 surface slice ([#178](https://github.com/OKJ1105/evidence-first-rag/issues/178)); the repository owner's disposition is the acceptance.
+**Status:** Proposed. Recorded by the writer session with the Milestone 4 surface slice ([#178](https://github.com/OKJ1105/evidence-first-rag/issues/178)); the runner bullet amended 2026-10-02 on [#281](https://github.com/OKJ1105/evidence-first-rag/issues/281). The repository owner's disposition is the acceptance.
 
 **Date:** 2026-09-17
 
@@ -25,7 +25,12 @@ Two facts about this repository bear on the choice more than the usual compariso
 - **Both of FastAPI's default error responses are replaced.** A body failing Section 4.4 leaves as 400 `malformed_request`, not 422 with a list-valued `detail`; an unknown path under `/v1` leaves as 404 `unknown_route`. A catch-all handler covers what neither names — a driver condition `runtime/connection.py` does not wrap, or a defect in the surface — because otherwise the framework answers with a plain-text 500 carrying neither a result nor a refusal. With it, every non-200 response is written by one function.
 - **No response body is serialized by the framework.** Section 6 requires two identical requests to produce identical bytes, which is a claim about an escape set and a key order that no library default supplies, so every body is written by `api.serialize.dumps`.
 - `/docs` and `/openapi.json` are served. Section 4.5 bounds `unknown_route` to `/v1` and says this contract "says nothing" about a path outside it, so they are permitted — and a reader can then see the route surface without reading the contract.
-- Milestone 5 runs the same application under `gunicorn -k uvicorn.workers.UvicornWorker`, which is the ordinary Python startup on Azure App Service.
+- **The runner, amended on [#281](https://github.com/OKJ1105/evidence-first-rag/issues/281).** This bullet originally read: "Milestone 5 runs the same application under `gunicorn -k uvicorn.workers.UvicornWorker`, which is the ordinary Python startup on Azure App Service." **What Milestone 5 runs is `uvicorn --factory`, one process per app, not gunicorn**: [`infra/main.bicep`](../../infra/main.bicep) and [`compose.yaml`](../../compose.yaml) both carry that command, and since [#274](https://github.com/OKJ1105/evidence-first-rag/pull/274) both pass the uvicorn-only `--no-access-log`. Three reasons, and each of them is a reason not to change the deployment back:
+  - The `[api]` extra carries `fastapi`, `uvicorn` and `httpx` (Consequences, below), and no dependency anywhere in this repository declares `gunicorn`. The original command could not have started the image this repository builds.
+  - [`deploy-v0.1`](../contracts/deploy-v0.1.md) Section 4.1 gives each of the two apps its own always-available App Service site running one container. There is no process to supervise that the platform does not already supervise, so a process manager inside the container buys nothing here.
+  - `--no-access-log` is uvicorn's own flag. `deploy-v0.1` Section 4.7 needs it: uvicorn's access line writes the full request target, query string included, and Section 4.7 lets no person's words be logged. Under gunicorn that flag is rejected as an unrecognised argument, and dropping it loses the control rather than keeping it — gunicorn's access log is configured independently of uvicorn's.
+
+  The application, the `[api]` extra and every other point of this decision are unchanged.
 
 ## Alternatives considered
 
