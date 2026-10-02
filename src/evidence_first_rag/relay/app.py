@@ -430,7 +430,14 @@ def _tool_result_kind(block: Mapping) -> str:
     return value if isinstance(value, str) else "unreadable"
 
 
-def log_line(*, http_status: int, latency_ms: float, refusal=None, response=None) -> str:
+# A path the relay does not serve is caller-chosen and may carry a person's
+# words, so its record names it as this rather than as itself (#280).
+OTHER_PATH = "(other)"
+
+
+def log_line(
+    *, http_status: int, latency_ms: float, refusal=None, response=None, path: str = PATH
+) -> str:
     """The Section 4.10 record: no message text, no argument value, no key.
 
     Only integers are taken from `usage`, only tool names from `mcp_tool_use`
@@ -438,7 +445,7 @@ def log_line(*, http_status: int, latency_ms: float, refusal=None, response=None
     """
     record = {
         "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-        "path": PATH,
+        "path": path,
         "http_status": http_status,
         "latency_ms": round(latency_ms, 1),
     }
@@ -577,7 +584,22 @@ def create_app(
         )
         return response
 
+    async def not_found(request, exc):
+        # `deploy-v0.1` Section 4.7: one line per request, this one included
+        # (#280). The response is the framework's own: `relay-v0.1` names no
+        # other path, so this records it and changes nothing about it.
+        started = time.perf_counter()
+        response = starlette.responses.PlainTextResponse("Not Found", status_code=404)
+        LOGGER.info(
+            log_line(
+                http_status=404,
+                latency_ms=(time.perf_counter() - started) * 1000,
+                path=OTHER_PATH,
+            )
+        )
+        return response
+
     return starlette.applications.Starlette(
         routes=[starlette.routing.Route(PATH, chat, methods=["POST"])],
-        exception_handlers={405: not_allowed},
+        exception_handlers={404: not_found, 405: not_allowed},
     )

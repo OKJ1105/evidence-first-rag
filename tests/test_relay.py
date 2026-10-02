@@ -714,6 +714,20 @@ class TheRecords(RelayCase):
         block = tool_result(json.loads(written.content[-1].text), is_error=True)
         self.assertEqual(relay._tool_result_kind(block), "database_unavailable")
 
+    def test_a_path_the_relay_does_not_serve_leaves_one_line_naming_no_path(self):
+        """#280: `deploy-v0.1` Section 4.7's one line per request, for a
+        caller-chosen path too, without writing that path or its query."""
+        client = self.relay()
+        with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
+            response = client.get(f"/{LOG_MARKER}?q={LOG_MARKER}")
+        self.assertEqual(response.status_code, 404)
+        [record] = logs.records
+        line = json.loads(record.getMessage())
+        self.assertEqual(set(line), {"timestamp", "path", "http_status", "latency_ms"})
+        self.assertEqual((line["path"], line["http_status"]), ("(other)", 404))
+        self.assertNotIn(LOG_MARKER, record.getMessage())
+        self.assertEqual(self.stub.calls, [])
+
     def test_a_refusal_is_logged_by_kind(self):
         client = self.relay(ceiling=None)
         with self.assertLogs("evidence_first_rag.relay", level="INFO") as logs:
