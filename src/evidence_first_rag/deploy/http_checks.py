@@ -268,7 +268,15 @@ def dp009(fetch, relay_host):
 
 
 def dp012(fetch, relay_host):
-    """One deployed `POST /chat`, asserting what the relay controls."""
+    """One deployed `POST /chat`: what the relay controls, and one term it does not.
+
+    HTTP 200, the Section 4.3 block types, `scope_checks` and `relay.model` are
+    the relay's own. Since `deploy-v0.1` `0.6.2` the case also requires at least
+    one `discover_entity` call answered by a tool result that is not a refusal
+    (#286) -- and whether the model calls the tool is not in this repository's
+    control, so this one case carries a term the relay does not decide. The
+    model's words are asserted no more than before.
+    """
     body = json.dumps({"messages": [{"role": "user", "content": DP012_TEXT}]}).encode()
     status, _, raw = fetch("POST", f"https://{relay_host}/chat", {"Content-Type": "application/json"}, body)
     if status != 200:
@@ -292,9 +300,29 @@ def dp012(fetch, relay_host):
     checks = document.get("scope_checks")
     if not isinstance(checks, list) or len(checks) != len(calls):
         problems.append(f"{len(calls)} discover_entity calls but scope_checks {checks!r}")
+    # #286: the deployed relay-to-`/mcp` round trip is what the chat page
+    # depends on, so a run in which the model called no tool, or no call came
+    # back as a tool result that is not a refusal, asserts nothing about it.
+    results = [
+        block for block in content or []
+        if isinstance(block, dict) and block.get("type") == "mcp_tool_result"
+        and not (block.get("is_error") or block.get("isError"))
+    ]
+    if not calls:
+        problems.append("no discover_entity call, so the deployed tool round trip was not exercised")
+    elif not results:
+        problems.append("no tool result that is not a refusal")
     if (document.get("relay") or {}).get("model") != RELAY_MODEL:
         problems.append(f"relay.model is {(document.get('relay') or {}).get('model')!r}")
-    return (not problems), "; ".join(problems) or f"200 with {len(content)} blocks and {len(calls)} discover_entity calls"
+    # Block types only, never a block's text or input: they say which way the
+    # answer went without carrying the model's words or a person's (#286).
+    shape = [block.get("type") for block in content or [] if isinstance(block, dict)]
+    if problems:
+        return False, "; ".join(problems) + f"; block types {shape}"
+    return True, (
+        f"200 with {len(content)} blocks and {len(calls)} discover_entity calls,"
+        f" {len(results)} answered; block types {shape}"
+    )
 
 
 def _guarded(case, *arguments):
