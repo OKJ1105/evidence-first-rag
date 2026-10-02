@@ -282,6 +282,11 @@ class TheServicesStartInTheRightOrder(unittest.TestCase):
         self.assertIn("--factory", command)
         self.assertIn("evidence_first_rag.api.serve:build", command)
 
+    def test_the_surface_writes_no_uvicorn_access_line(self):
+        """#273: the access line carries the full request target, query string
+        included; the surface writes its own Section 4.7 record."""
+        self.assertIn("--no-access-log", self.services["surface"]["command"])
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
