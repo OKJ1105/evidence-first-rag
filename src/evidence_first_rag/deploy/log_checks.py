@@ -25,11 +25,13 @@ the download. That positive control shows the store is capturing the stream
 Section 4.7 constrains -- the container's standard output, the one place a
 request body could ever appear -- so an empty or unwired log store cannot pass
 vacuously. The route string alone would not show that: the platform's own HTTP
-log recorded the request line for both apps, and a download carrying only that
+log may record the request line for both apps, and a download carrying only that
 log would meet a looser control while holding no line that could carry a body
-(#255 B2). That log is turned off in `infra/main.bicep` under this reading
-(#279), and the control does not rest on its being off: each app's control
-names the shape of its own record. It does not
+(#255 B2). Whether that log can be turned off without also stopping the
+container's standard-output capture is unverified, so `infra/main.bicep` leaves
+it as it was, and this case measures it: the marker in the URL fails the case
+if any downloaded file records it (#279). The control does not rest on the log
+being on or off: each app's control names the shape of its own record. It does not
 tie the line to this request: earlier checks call the same routes, so a lagging
 store may show theirs first. The marker is fresh per run, so what it can miss
 is only a line not yet flushed. So the store is read at least `MINIMUM_READS`
@@ -83,7 +85,7 @@ RELAY_REFUSAL_STATUS = 400
 
 # Each app's own record of a request to its route: the terms that have to be in
 # one line of one file of the download. Not the bare route string, which the
-# platform's HTTP log carried for both apps while it was on (#279).
+# platform's HTTP log may carry for both apps (#279).
 #
 # `relay` writes the Section 4.10 record of `relay/app.py:log_line` -- one JSON
 # line per request, so `"path"`, the route and `"http_status"` are in it, and in
