@@ -411,6 +411,10 @@ def run(fetch, surface_host, relay_host, connect, operational_error, pause=time.
             *_guarded(dp019_registered_origin, fetch, f"https://{surface_host}{SURFACE_CORS_PATH}", origin),
         )
         record(
+            "DP-019 surface registered origin on /v1/select",
+            *_guarded(dp019_registered_origin, fetch, f"https://{surface_host}/v1/select", origin),
+        )
+        record(
             "DP-019 relay registered origin",
             *_guarded(dp019_registered_origin, fetch, f"https://{relay_host}/chat", origin),
         )

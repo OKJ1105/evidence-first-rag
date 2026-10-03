@@ -438,7 +438,13 @@ jobs:
           # DP-008: a fresh SAMPLE_* marker in a request body to each app, then
           # both apps' log stores read until each shows its route (#255). It
           # waits out the relay's rate window DP-009 filled.
+          # DP-020 then looks for this runner's own address in the same
+          # stores. It is masked before anything could print it, and passed
+          # in the environment, never on a command line.
           if want DP-008; then
+            RUNNER_ADDRESS="$(curl --silent --show-error --fail https://api.ipify.org || true)"
+            [ -n "$RUNNER_ADDRESS" ] && echo "::add-mask::$RUNNER_ADDRESS"
+            export RUNNER_ADDRESS
             python -m evidence_first_rag.deploy.log_checks \
               --group "$RESOURCE_GROUP" \
               --surface "${{ steps.infra.outputs.surfaceName }}" \

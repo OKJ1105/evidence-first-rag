@@ -158,7 +158,10 @@ class TheRegisteredOrigin(unittest.TestCase):
         connect = connecting(require=Refused("unreachable"), disable=Refused("unreachable"))
         checks.run(fetch, "surface", "relay", connect, Refused, pause=lambda s: None, origin=REGISTERED)
         registered = [url for method, url, headers in order if method == "OPTIONS" and headers.get("Origin") == REGISTERED]
-        self.assertEqual(registered, [f"https://surface{checks.SURFACE_CORS_PATH}", "https://relay/chat"])
+        self.assertEqual(
+            registered,
+            [f"https://surface{checks.SURFACE_CORS_PATH}", "https://surface/v1/select", "https://relay/chat"],
+        )
         results = checks.run(fetch, "surface", "relay", connect, Refused, pause=lambda s: None)
         self.assertFalse(results["DP-019"]["passed"])
 

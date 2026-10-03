@@ -1,4 +1,4 @@
-"""`deploy-v0.1` Section 8.1: `DP-008`, a person's words reach no log line.
+"""`deploy-v0.1` Section 8.1: `DP-008`, a person's words reach no log line; `DP-020`, nor a client's address.
 
 One request to each deployed app carries a fresh `SAMPLE_*` marker where a
 person's words go:
@@ -50,6 +50,7 @@ request fails the case, and the case does not wait forever.
 import argparse
 import io
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -249,6 +250,43 @@ def dp008(fetch, download, surface_host, relay_host, surface, relay, marker=None
     )
 
 
+# The management site's own request traces. The deploy job's `az webapp log
+# download` is itself a request to that site, so its traces may carry the
+# runner's address; no visitor reaches it, and `DP-020` reports those files
+# apart rather than reading them as a visitor's request (`0.7.0`).
+MANAGEMENT_TRACES = "/kudu/"
+
+
+def dp020(download, surface, relay, address):
+    """`deploy-v0.1` `0.7.0`: the runner's own address is in no log file.
+
+    Every earlier case in the run sent its requests to both apps from this
+    runner, so its address is what a store recording client addresses would
+    hold. One download per app, read after `DP-008` has seen each app's own
+    records. A finding names files only, and never the address: the record is
+    committed, and the job masks the address in its own output.
+    """
+    if not address:
+        return False, "no runner address was given, so nothing was looked for"
+    found, traces, http = {}, {}, {}
+    for app in (surface, relay):
+        for name, text in read_zip(download(app)):
+            if "/http/" in name or name.startswith("http/"):
+                http.setdefault(app, []).append(name)
+            if address not in text:
+                continue
+            bucket = traces if MANAGEMENT_TRACES in f"/{name}" else found
+            bucket.setdefault(app, []).append(name)
+    counts = {app: len(names) for app, names in traces.items()}
+    tail = (
+        f"management-site trace files holding it: {counts or 'none'};"
+        f" HTTP log files in the download: {http or 'none'}"
+    )
+    if found:
+        return False, f"the runner's address is in {found}; {tail}"
+    return True, f"the runner's address is in no log file of either app outside the management site; {tail}"
+
+
 def az_download(group):
     """The real reader: one `az webapp log download` per app, as bytes."""
 
@@ -279,10 +317,21 @@ def main(argv=None) -> int:
     except Exception as error:  # noqa: BLE001 - an unfinished case is a failed case, recorded
         passed, detail = False, f"the check itself failed: {type(error).__name__}"
     result = {"DP-008": {"passed": passed, "detail": detail}}
+    # Read from the environment, never the command line, so it is in no
+    # process listing; the job masks it in its log.
+    try:
+        found, where = dp020(
+            az_download(arguments.group), arguments.surface, arguments.relay,
+            os.environ.get("RUNNER_ADDRESS", "").strip(),
+        )
+    except Exception as error:  # noqa: BLE001 - recorded, as for DP-008
+        found, where = False, f"the check itself failed: {type(error).__name__}"
+    result["DP-020"] = {"passed": found, "detail": where}
     with open(arguments.out, "w", encoding="utf-8") as handle:
         json.dump(result, handle, indent=2)
-    print(("ok  " if passed else "FAIL"), "DP-008 -", detail)
-    return 0 if passed else 1
+    for case, outcome in result.items():
+        print(("ok  " if outcome["passed"] else "FAIL"), case, "-", outcome["detail"])
+    return 0 if all(outcome["passed"] for outcome in result.values()) else 1
 
 
 if __name__ == "__main__":
