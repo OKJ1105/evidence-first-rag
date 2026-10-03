@@ -12,6 +12,11 @@ version = "0.0.0"
 description = "Evidence-First RAG Runtime: bounded, read-only answers over structured engineering data."
 readme = "README.md"
 requires-python = ">=3.11"
+# All rights reserved (LICENSE, #307). A classifier rather than a PEP 639
+# `license` expression, which needs setuptools 77 where the floor above is 68;
+# setuptools already copies LICENSE into a built distribution by its default
+# `license-files` patterns.
+classifiers = ["License :: Other/Proprietary License"]
 
 # The PostgreSQL driver, chosen by the schema slice as the package layout
 # slice deferred it. psycopg 3 is the current generation of the driver and is

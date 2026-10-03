@@ -4,7 +4,9 @@ The repository's own license is in [LICENSE](../LICENSE): all rights reserved, r
 
 ## How this was read
 
-On 2026-10-03, in a fresh virtual environment (CPython 3.11, the Dockerfile's base) after `pip install -e ".[api,adapter]"`, which is what the [Dockerfile](../Dockerfile) installs. Each license below is that package's `License-Expression` metadata, or its `License ::` classifiers where it declares no expression, read with `importlib.metadata`. The table is the complete list of what that install put in the environment, less `pip`, `setuptools` and this project itself. It names the versions that resolved that day; the deployed image resolves the same ranges when it is built, so a later build can carry other versions.
+On 2026-10-03, in a fresh virtual environment (CPython 3.11, the Dockerfile's base) after `pip install -e ".[api,adapter]"`, which is what the [Dockerfile](../Dockerfile) installs. Each license below is that package's `License-Expression` metadata, or its `License ::` classifiers where it declares no expression, read with `importlib.metadata` by [`scripts/third_party_licenses.py`](../scripts/third_party_licenses.py), whose docstring gives the commands that regenerate the table. The table is the complete list of what that install put in the environment, less `pip`, `setuptools` and this project itself. It names the versions that resolved that day; the deployed image resolves the same ranges when it is built, so a later build can carry other versions.
+
+`distro`, `httpx-sse` and `pydantic-settings`, which earlier releases of `anthropic` and `mcp` required, were not in the environment that day.
 
 The direct dependencies (`pyproject.toml`) are `psycopg[binary]` (core); `fastapi`, `uvicorn[standard]`, `httpx` and `mcp` (extra `api`); and `anthropic` (extra `adapter`). Everything else in the table is pulled in by them.
 
@@ -57,6 +59,8 @@ The direct dependencies (`pyproject.toml`) are `psycopg[binary]` (core); `fastap
 | `websockets` | 17.1 | BSD-3-Clause |
 
 ## Notes
+
+- **This project's own packaging metadata** carries the classifier `License :: Other/Proprietary License`, and a built wheel carries `LICENSE` under `dist-info/licenses/`, by setuptools' default patterns.
 
 - **`psycopg` is LGPL-3.0.** This repository uses it unmodified, as a separately installed library, and does not copy its code. The LGPL's obligations attach to distributing the library; this repository distributes none, and the deployed image is pushed only to the project's own private registry. If an image or bundle containing it is ever distributed, the LGPL's conditions for that distribution have to be met then. `psycopg-binary` also bundles `libpq` and the libraries it links; their licenses travel with that wheel.
 - **`certifi` is MPL-2.0**, used unmodified.

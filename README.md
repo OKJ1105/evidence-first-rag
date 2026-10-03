@@ -79,6 +79,8 @@ The model SDK is an optional extra (`pip install evidence-first-rag[adapter]`). 
 
 The expected results the runner compares against are built from `fixtures/` by `src/evidence_first_rag/conformance/authoring.py`, not captured from the runtime. CI asserts the committed files are exactly what that tool produces, so the comparison is between two independently built documents rather than between the runtime and a recording of itself.
 
+What the repository and its demo do not do or establish is summarized in [Limitations](docs/limitations.md).
+
 See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, architecture boundaries, success criterion, roadmap, and release conditions.
 
 ## Running it
