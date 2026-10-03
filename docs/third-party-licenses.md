@@ -4,28 +4,57 @@ The repository's own license is in [LICENSE](../LICENSE): all rights reserved, r
 
 ## How this was read
 
-On 2026-10-03, from the package metadata (`License-Expression`, or the `License ::` classifiers where none is given) of a virtual environment with `pip install -e ".[api,adapter]"`, which is what the [Dockerfile](../Dockerfile) installs. It names the versions that resolved that day. The deployed image resolves the same ranges at build time, so a later build can carry other versions; the licenses below did not change across the versions this project has used, as far as was checked, which is not exhaustively.
+On 2026-10-03, in a fresh virtual environment (CPython 3.11, the Dockerfile's base) after `pip install -e ".[api,adapter]"`, which is what the [Dockerfile](../Dockerfile) installs. Each license below is that package's `License-Expression` metadata, or its `License ::` classifiers where it declares no expression, read with `importlib.metadata`. The table is the complete list of what that install put in the environment, less `pip`, `setuptools` and this project itself. It names the versions that resolved that day; the deployed image resolves the same ranges when it is built, so a later build can carry other versions.
 
-## Direct dependencies (`pyproject.toml`)
+The direct dependencies (`pyproject.toml`) are `psycopg[binary]` (core); `fastapi`, `uvicorn[standard]`, `httpx` and `mcp` (extra `api`); and `anthropic` (extra `adapter`). Everything else in the table is pulled in by them.
 
-| Package | Extra | Version read | License |
-| --- | --- | --- | --- |
-| `psycopg[binary]` | (core) | 3.3.6 | LGPL-3.0-only |
-| `fastapi` | `api` | 0.141.1 | MIT |
-| `uvicorn[standard]` | `api` | 0.53.0 | BSD-3-Clause |
-| `httpx` | `api` | 0.28.1 | BSD-3-Clause |
-| `mcp` | `api` | 2.2.0 | MIT |
-| `anthropic` | `adapter` | 1.7.0 | MIT |
-
-## Everything else the same environment installed
-
-MIT or MIT-0: `annotated-doc`, `annotated-types`, `anyio`, `attrs`, `cffi`, `docstring_parser`, `h11`, `httptools`, `jiter`, `jsonschema`, `jsonschema-specifications`, `mcp-types`, `pydantic`, `pydantic_core`, `pyjwt`, `pyyaml`, `referencing`, `rpds-py`, `truststore`, `watchfiles`.
-
-BSD-3-Clause: `click`, `httpcore`, `httpcore2`, `httpx2`, `idna`, `pycparser`, `python-dotenv`, `sse-starlette`, `starlette`, `websockets`.
-
-Apache-2.0: `opentelemetry-api`, `python-multipart`. Dual: `cryptography` (Apache-2.0 or BSD-3-Clause), `uvloop` (Apache-2.0 and MIT), `sniffio` (MIT or Apache-2.0).
-
-Other: `certifi` (MPL-2.0), `psycopg-binary` (LGPL-3.0-only), `typing_extensions` (PSF-2.0).
+| Package | Version | License, as declared |
+| --- | --- | --- |
+| `annotated-doc` | 0.0.5 | MIT |
+| `annotated-types` | 0.8.0 | MIT |
+| `anthropic` | 1.11.0 | MIT License |
+| `anyio` | 4.15.1 | MIT |
+| `attrs` | 26.1.0 | MIT |
+| `certifi` | 2026.7.22 | Mozilla Public License 2.0 (MPL 2.0) |
+| `cffi` | 2.1.1 | MIT-0 |
+| `click` | 8.5.0 | BSD-3-Clause |
+| `cryptography` | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
+| `docstring_parser` | 0.18.0 | MIT License |
+| `fastapi` | 0.142.2 | MIT |
+| `h11` | 0.16.0 | MIT License |
+| `httpcore` | 1.0.9 | BSD-3-Clause |
+| `httpcore2` | 2.13.1 | BSD-3-Clause |
+| `httptools` | 0.8.0 | MIT |
+| `httpx` | 0.28.1 | BSD License |
+| `httpx2` | 2.13.1 | BSD-3-Clause |
+| `idna` | 3.20 | BSD-3-Clause |
+| `jiter` | 0.17.0 | MIT |
+| `jsonschema` | 4.26.0 | MIT |
+| `jsonschema-specifications` | 2025.9.1 | MIT |
+| `mcp` | 2.3.0 | MIT License |
+| `mcp-types` | 2.3.0 | MIT License |
+| `opentelemetry-api` | 1.45.0 | Apache-2.0 |
+| `psycopg` | 3.3.6 | LGPL-3.0-only |
+| `psycopg-binary` | 3.3.6 | LGPL-3.0-only |
+| `pycparser` | 3.0 | BSD-3-Clause |
+| `pydantic` | 2.13.5 | MIT |
+| `pydantic_core` | 2.46.5 | MIT |
+| `pyjwt` | 2.15.1 | MIT |
+| `python-dotenv` | 1.2.4 | BSD-3-Clause |
+| `python-multipart` | 0.0.32 | Apache-2.0 |
+| `pyyaml` | 6.0.3 | MIT License |
+| `referencing` | 0.37.0 | MIT |
+| `rpds-py` | 2026.6.3 | MIT |
+| `sniffio` | 1.3.1 | MIT License; Apache Software License |
+| `sse-starlette` | 3.5.0 | BSD-3-Clause |
+| `starlette` | 1.7.0 | BSD-3-Clause |
+| `truststore` | 0.10.4 | MIT |
+| `typing-inspection` | 0.4.4 | MIT |
+| `typing_extensions` | 4.16.0 | PSF-2.0 |
+| `uvicorn` | 0.54.0 | BSD-3-Clause |
+| `uvloop` | 0.23.0 | Apache Software License; MIT License |
+| `watchfiles` | 1.3.0 | MIT License |
+| `websockets` | 17.1 | BSD-3-Clause |
 
 ## Notes
 
