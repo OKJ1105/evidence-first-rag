@@ -236,11 +236,6 @@ class TheRequests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(first.startswith("SAMPLE_"))
 
-
-if __name__ == "__main__":  # pragma: no cover
-    unittest.main()
-
-
 ADDRESS = "198.51.100.23"
 
 
@@ -277,3 +272,8 @@ class TheRunnerAddress(unittest.TestCase):
 
     def test_no_address_given_fails(self):
         self.assertFalse(self.check({"LogFiles/a.log": "x"}, address="")[0])
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()
+
