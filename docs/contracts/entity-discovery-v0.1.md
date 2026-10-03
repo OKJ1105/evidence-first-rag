@@ -22,6 +22,8 @@ Section 10 sets two preconditions for acceptance. Both are discharged in this do
 
 **How this document reached here.** `0.1.0` was merged to `main` as `Proposed` on 2026-09-08 by [#79](https://github.com/OKJ1105/evidence-first-rag/pull/79), after two loop reviews. `0.2.0` closed what a re-read and three further loop rounds found, and merged as `Proposed` as well. This line moved only after that, on its own pull request, because acceptance is a separate decision from any amendment that precedes it.
 
+**`0.4.0`** changes what an incomplete-scope discovery request does (Sections 4.3, 5, 7 and 8.1). Until then it listed every candidate scope and executed no discovery template, so a person could choose a scope and only then learn the term was not in it. On the portfolio's live demo the owner did exactly that: "which one? → this one → none" ([#314](https://github.com/OKJ1105/evidence-first-rag/issues/314)). Since `0.4.0` the registered method runs in each candidate scope, up to a bound of ten, and only the scopes where the term matched are listed. **The request still resolves nothing**: the status is `ambiguous` however many scopes are listed, one included, so the person still chooses the scope, and `mvp-v0.1` Section 4.2's rules all hold. It removes no obligation. It changes a status condition and adds an evidence field, so it is a minor version that requires a fresh independent design review (Section 10); that review is the one on the contract-only pull request that closes #314. **`0.4.0`'s text is accepted by the owner's merge of that pull request; the version line moves to `0.4.0`, and the text becomes binding on what is served, with the implementation slice that follows**, as `relay-v0.1` `0.4.0` did: the version a result reports must be one the runtime conforms to. The owner decided it, and the bound and the tier rule, on [#314](https://github.com/OKJ1105/evidence-first-rag/issues/314#issuecomment-5966788296). It is not the [#43](https://github.com/OKJ1105/evidence-first-rag/issues/43) decision, which concerns the `mvp-v0.1` fact routes.
+
 An accepted contract may still be amended. Section 10 governs how, and no amendment may weaken an obligation.
 
 ## 3. Scope
@@ -188,9 +190,14 @@ One route, `entity_discovery`. Its arguments are named, allowlisted, and validat
 
 **Scope is a precondition, not a search dimension.**
 
-- A request that omits or under-specifies any of the four scope dimensions is governed by `mvp-v0.1` Section 4.2 exactly as it stands: the runtime returns `ambiguous` and lists the candidate scopes from `TPL_SNAPSHOT_CANDIDATES_V1`. **No discovery template executes.** This contract adds nothing to that rule, narrows nothing in it, and does not decide the ordering question in [#43](https://github.com/OKJ1105/evidence-first-rag/issues/43).
+- A request that omits or under-specifies any of the four scope dimensions is `ambiguous`, and the runtime never supplies, defaults or selects a missing dimension (`mvp-v0.1` Section 4.2). Since `0.4.0` it is answered in three steps:
+  1. The candidate scopes are found with `TPL_SNAPSHOT_CANDIDATES_V1`, exactly as `mvp-v0.1` Section 4.2 finds them. None is `coverage_gap`, as before.
+  2. **The scope-search bound is 10.** When there are at most ten candidate scopes, the method Section 4.9 adopts runs once in each of them, with the request's other arguments, exactly as it would for a fully scoped request naming that scope. Each run is under `mvp-v0.1` Section 4.4's safeguards, inside the same read-only transaction.
+  3. `candidate_scopes` lists, in `TPL_SNAPSHOT_CANDIDATES_V1`'s order, only the candidate scopes in which at least one approved entity matched the term **at any tier**. It names no entity and carries no candidate. The outcome is `ambiguous` whether one scope is listed or several: a listed scope is where the term was found, not a selection, and the person chooses one and discovers again with it. When the term matched in no searched scope, the outcome is `not_found` (Section 5).
+
+  With more than ten candidate scopes, no discovery template executes, every candidate scope is listed as before `0.4.0`, and `limitations` says the term was not searched (Section 7).
 - A fully specified scope that matches no snapshot is `coverage_gap`, per `mvp-v0.1` Section 5.
-- Discovery therefore never resolves a scope dimension, and Charter Section 4.2's rule that an alias "cannot … bypass explicit scope resolution" holds by construction: an alias is only ever consulted inside one already-resolved snapshot.
+- Discovery therefore never resolves a scope dimension, and Charter Section 4.2's rule that an alias "cannot … bypass explicit scope resolution" holds by construction: an alias is only ever consulted inside one snapshot at a time, and an alias match in a candidate scope selects nothing — that scope is only listed for the person to choose.
 
 **`parent_message_key` is optional on purpose.** A signal's identity requires its parent Message (Charter Section 3.6), and discovery is the step that finds it: a user who knew the parent would not be discovering. Every candidate therefore carries the **complete** canonical signal reference, its parent included, and a term matching one signal key under two different parent messages in one snapshot produces two candidates and no auto-resolution (Section 4.7, fixture `DX-005`).
 
@@ -356,7 +363,7 @@ Step 4 is the whole trust mechanism. The selection is trusted because the runtim
 | `Q-EXACT` | exact identifier requests | a term equal to an approved entity's lookup key, byte for byte | `resolved`, with that canonical reference |
 | `Q-ALIAS` | approved aliases and spelling variations | a term equal to a registered `approved_alias` or `spelling_variant`, byte for byte | `resolved`, with that canonical reference |
 | `Q-SEMANTIC` | descriptive semantic requests | a term describing the entity without equalling any `match_text` | `candidates`, with the target's reference and the rank bound it must meet |
-| `Q-SCOPE` | entity name present, source scope missing or partial | a term that would match, with at least one scope dimension absent | `ambiguous`, with the candidate scopes; **no discovery template executes** |
+| `Q-SCOPE` | entity name present, source scope missing or partial | a term that would match, with at least one scope dimension absent | `ambiguous`, with the candidate scopes in which it matched (`0.4.0`); nothing resolved |
 | `Q-COLLIDE` | the same name in more than one source snapshot | a fully scoped request for a key that exists in two snapshots | `resolved`, in the named snapshot only; the other snapshot's occurrence must be absent from the result |
 | `Q-MULTI` | multiple plausible candidates | a term matching two or more approved entities in the resolved scope | `candidates`, with every expected reference; **never** `resolved` |
 | `Q-NOMATCH` | no-match requests | a term matching nothing at any tier in a resolved, covered snapshot | `not_found` |
@@ -410,15 +417,15 @@ Every status family this contract can produce, and the condition that produces i
 | --- | --- |
 | `resolved` | Scope resolves to exactly one snapshot and exactly one approved entity matches the term at tier 1 or tier 2 (Section 4.7). One canonical entity reference, with its tier and matched text. |
 | `candidates` | Scope resolves to exactly one snapshot and at least one approved entity matches at any tier, but Section 4.7's uniqueness condition does not hold. A ranked list of at most ten candidates; **no reference is resolved**, and explicit selection is required. |
-| `not_found` | Scope resolves to exactly one snapshot that is within approved coverage, and no approved entity matches the term at any tier. |
+| `not_found` | Scope resolves to exactly one snapshot that is within approved coverage, and no approved entity matches the term at any tier; or, since `0.4.0`, the scope is incomplete, there are at most ten candidate scopes, and no approved entity matches the term at any tier in any of them (Section 4.3). |
 | `coverage_gap` | The approved data scope does not contain, or cannot be established to contain, the coverage the request needs — a scope dimension no snapshot has. Returned instead of `not_found` whenever coverage cannot be established. |
-| `ambiguous` | Source scope is missing or under-specified. Governed by `mvp-v0.1` Section 4.2 unchanged: the candidate scopes are listed and **no discovery template executes**. |
+| `ambiguous` | Source scope is missing or under-specified, and either the term matched at any tier in at least one of at most ten candidate scopes — which are listed, and only those — or there are more than ten candidate scopes, which are all listed and not searched (Section 4.3). **Nothing is resolved**, one listed scope included. |
 | `invalid_request` | A malformed or empty term, a term over the length limit, a parameter outside the route allowlist, `parent_message_key` with `entity_kind` = `message`, or a contradictory scope. On a selection (Section 4.8): a `target_route` outside the three `mvp-v0.1` routes, a `mapping_key` without `target_route` = `signal_mapping`, a candidate-set digest that does not re-derive — including a re-run that yields no candidate list at all — a `selected_rank` naming no candidate, or a `target_route` the resolved candidate's `entity_kind` does not permit. No fact template executes in any of these. |
 | `unsupported` | The request is not representable by this contract at the producing layer: an `entity_kind` outside `message` and `signal`. A route name outside the **union registry** of Section 3.3 — neither this contract's two routes nor `mvp-v0.1` Section 4.5's three — never reaches this contract's validation at all: it is refused as an unregistered route before dispatch, with the producing layer recorded. The trace records the producing layer. |
 
 **`success` is not in this table, and its absence is the point.** `success` in `mvp-v0.1` Section 5 means a registered template returned facts. Discovery returns no facts, so a discovery result can never carry that status, and no reader can mistake a candidate list for an answer. The `success` that ends a discovery flow is the `mvp-v0.1` result of the fact route the selected reference is passed to.
 
-Every status carries an `evidence_bundle`, a `source_trace`, and a `limitations` list, including every negative outcome (Section 7). For `invalid_request`, `unsupported`, and the `ambiguous` case that is refused before dispatch, no discovery template executes and the evidence bundle records that no connection was opened for discovery.
+Every status carries an `evidence_bundle`, a `source_trace`, and a `limitations` list, including every negative outcome (Section 7). For `invalid_request` and `unsupported`, no discovery template executes and the evidence bundle records that no connection was opened for discovery. For `ambiguous` and `not_found` reached through an incomplete scope, `scope_search` records which templates ran in which candidate scope (Section 7).
 
 ## 6. Determinism
 
@@ -443,6 +450,17 @@ Every discovery result, and every selection refused before dispatch, carries the
 - `bound_parameters`: exactly the parameters bound, with values — including `normalized_term` where the lexical template ran. An outcome that opens no connection binds nothing and reports an empty value, never the arguments it rejected. This is `mvp-v0.1` Section 7's rule, and its reason holds here unchanged: a rejected proposal must not be recorded as something the runtime acted on. On a dispatched selection this key is the `target_route`'s parameters alone and the re-run's are `discovery_bound_parameters` (Section 4.8); nothing the runtime bound goes unrecorded either way.
 - `row_count`: the number of registry match rows the template returned, before truncation to `k`. On a dispatched selection this is the `target_route`'s own row count and the re-run's is `discovery_row_count` (Section 4.8).
 - `resolved_scope`: the single `(project_code, revision_label, network_name, snapshot_label)` used, or an explicit empty value.
+- `scope_search` (`0.4.0`), on every result reached through an incomplete scope, and absent otherwise. It carries:
+  - `bound`: 10;
+  - `candidate_scope_count`: the number of candidate scopes;
+  - `searched`: whether the term was searched, which is false above the bound;
+  - when searched, one entry per candidate scope, in `candidate_scopes` order, with:
+    - the four scope dimensions;
+    - `matched`;
+    - for a matched scope, the best `match_tier` and the number of approved entities that matched, before truncation to `k`;
+    - the `template_name`, `template_version` and `bound_parameters` of what ran there.
+
+  The top-level `template_name`, `bound_parameters` and `row_count` are then the explicit empty value, because no single template served the request. Nothing the runtime bound goes unrecorded.
 - `collation` in effect.
 - `read_only_safeguards`: the runtime role name, the read-only transaction flag, and whether a connection was opened.
 - `registry_digest` and `registry_built_at` — **the addition that makes a discovery result reproducible.** A result without them names no registry state, and Section 4.8's re-derivation would have nothing to compare against.
@@ -452,7 +470,7 @@ Every discovery result, and every selection refused before dispatch, carries the
 
 **`source_trace`**
 
-- The resolved scope of the snapshot every returned reference belongs to.
+- The resolved scope of the snapshot every returned reference belongs to. For a result reached through an incomplete scope, every candidate scope, and for each whether the term was searched there.
 - For a signal reference, the parent Message occurrence, separately identified.
 - **Alias provenance**, for every match at tier 2 and for every candidate whose `match_kind` is not `lookup_key`: the `approval_reference` of the alias, its `approved_at`, and the four scope dimensions of its asserting snapshot. This is the "approved alias provenance" [Project Charter](../PROJECT_CHARTER.md) Section 12 assigns to this contract, surfaced where a reader meets it rather than only in the table it was loaded from.
 - The `approval_reference` of the approved entity itself, for a `resolved` outcome.
@@ -467,7 +485,10 @@ Every discovery result, and every selection refused before dispatch, carries the
 - when any participating snapshot has a non-null `superseded_by`, naming it — inherited from `mvp-v0.1` Section 7 and required of an alias asserted by a superseded snapshot;
 - when a reference reached a fact route through the Section 4.8 selection path, naming the `candidate_set_id`, the candidate count it was selected from, and the `target_route` it was dispatched to. This is the explicit-selection entry `mvp-v0.1` Section 7 requires, now backed by a path that verifies it;
 - when a selection is refused because its re-run produced no candidate list (Section 4.8), naming the outcome the re-run produced — `resolved`, `not_found`, or `coverage_gap` — so that the caller knows whether to discover again or that the entity is no longer discoverable;
-- when the outcome is `coverage_gap`, stating what coverage could not be established.
+- when the outcome is `coverage_gap`, stating what coverage could not be established;
+- when the outcome is `ambiguous` and the term was searched (`0.4.0`), stating that the listed scopes are those in which an approved entity matched the term, that **no scope and no entity was selected**, and that the person chooses a scope to see the candidates there;
+- when the outcome is `ambiguous` and the term was not searched, stating that the candidate scopes exceed the bound of ten, that every candidate scope is listed, and that the term was searched in none;
+- when the outcome is `not_found` through an incomplete scope, stating how many candidate scopes were searched, alongside the allowlist entry every `not_found` carries.
 
 ## 8. Acceptance evidence
 
@@ -478,7 +499,8 @@ Each obligation is either an automated assertion over registered inputs or a rec
 | Section 4.1 registry schema and constraints | Automated. A data-level check asserts every constraint, including the exactly-one-occurrence-reference check, both partial unique constraints, the foreign keys into the `mvp-v0.1` tables, and the **absence** of a unique constraint on `alias_text` alone. |
 | Section 4.2 integrity | Automated. The same check asserts the three derivation rules for `entity_match_term`, the same-snapshot rule for an alias's asserting snapshot, the enumerated values of `entity_kind` and `alias_kind`, and that loading a match text whose normalization has no token aborts. Each must be shown to fail against a database from which the rule has been removed. |
 | Section 4.2 refresh and digest | Automated. Provisioning twice from the same fixture files produces the same `registry_digest`; provisioning from a registry file with an unresolvable natural key aborts with no partial load; the stored digest equals a recomputation from the loaded rows. |
-| Section 4.3 request validation | Automated. Fixtures `DX-011` through `DX-014` below, each asserting that no discovery template executed. |
+| Section 4.3 request validation | Automated. Fixtures `DX-012` through `DX-014` below, each asserting that no discovery template executed. |
+| Section 4.3 the incomplete-scope search (`0.4.0`) | Automated. Fixtures `DX-011` and `DX-024` to `DX-026` below. |
 | Section 4.4 templates | Automated. Negative tests for an unregistered template, a write keyword at registration, an unknown parameter, and a missing required parameter, under `mvp-v0.1` Section 4.4's safeguards; template-level tests assert each registered `LIMIT`, each `NULLS LAST`, and that the registered result column list contains no attribute column. |
 | Section 4.5 normalization and tiers | Automated. A unit-level table of terms and expected tiers, including the case-only difference that must reach tier 3 and never tier 1. |
 | Section 4.6 candidate contract | Automated. `DX-016` for truncation at `k`; a test asserting one candidate per entity where several match texts match; a test asserting no attribute column appears in a candidate. |
@@ -513,7 +535,10 @@ Every fixture uses `SAMPLE_*` identifiers only. Every status family in Section 5
 | `DX-008` | Descriptive term whose tokens are all contained in an entity's match tokens | `candidates` at `match_tier` 4, target present, ranked |
 | `DX-009` | Term matching nothing at any tier, in a resolved and covered snapshot | `not_found`, with the allowlist limitation |
 | `DX-010` | Scope names a `network_name` no snapshot has | `coverage_gap` |
-| `DX-011` | `snapshot_label` omitted | `ambiguous` with candidate scopes; no discovery template executed |
+| `DX-011` | `snapshot_label` omitted, with a term that matches in only some of the candidate scopes | `ambiguous`, listing exactly the scopes where it matched; `scope_search` with one entry per candidate scope; no reference resolved (`0.4.0`) |
+| `DX-024` | Scope incomplete, with a term that matches in exactly one candidate scope | `ambiguous`, that one scope listed; **not** `resolved` and not `candidates` |
+| `DX-025` | Scope incomplete, with a term that matches in no candidate scope | `not_found`, `scope_search` recording every scope searched, and the allowlist limitation |
+| `DX-026` | Scope incomplete, with more candidate scopes than the bound | `ambiguous`, every candidate scope listed, no discovery template executed, `searched` false, the not-searched limitation. Exercised with the bound lowered below the fixture's candidate count, since the fixtures hold four snapshots |
 | `DX-012` | Empty or whitespace-only term, and a term over the 200-byte limit | `invalid_request`, no connection opened |
 | `DX-013` | `parent_message_key` supplied with `entity_kind` = `message` | `invalid_request` |
 | `DX-014` | `entity_kind` outside `message` and `signal` | `unsupported`, producing layer recorded |
@@ -642,7 +667,7 @@ A bar is a judgement unless it is derived. Almost every bar below is **derived**
 | BM25 as a registered method | A later minor version of this contract, under Section 4.9. |
 | Vector or embedding-based candidate retrieval | A later minor version of this contract **and** a separately reviewed ADR, if any registry or database content would leave the process ([Project Charter](../PROJECT_CHARTER.md) Section 3.3). Charter Section 12's "whether vector search materially outperforms lexical and BM25 baselines" is answered by the comparison, not by a contract. |
 | Any scope-selection policy that resolves a scope dimension automatically | `mvp-v0.1` Section 9's row, unchanged. Not this contract's, and not prejudiced by it. |
-| Which Section governs a request whose scope is incomplete and whose entity reference cannot be formed | [#43](https://github.com/OKJ1105/evidence-first-rag/issues/43), against `mvp-v0.1`. Section 4.3 requires a complete scope and neither answers nor forecloses it. |
+| Which Section governs a request whose scope is incomplete and whose entity reference cannot be formed | [#43](https://github.com/OKJ1105/evidence-first-rag/issues/43), against `mvp-v0.1`'s fact routes. `0.4.0` changes only what a discovery request with an incomplete scope returns (Section 4.3), and neither answers nor forecloses it. |
 | The API and rendering surface for discovery and selection, and any export of a candidate list | Milestone 4 contracts. This contract fixes routes on the existing runtime, not an interface. |
 | Alias approval outside this repository | Out of scope. `approval_reference` is an opaque citation; this contract fixes that one is required, not how it is obtained. |
 
