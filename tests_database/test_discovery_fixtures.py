@@ -253,6 +253,11 @@ class ScopeAndRequest(FixtureCase):
         self.assertIs(result.status, DiscoveryStatus.NOT_FOUND)
         self.assertEqual(len(result.evidence_bundle.scope_search.scopes), 2)
         self.assertFalse(any(entry.matched for entry in result.evidence_bundle.scope_search.scopes))
+        # Section 8.1's DX-025 row: the candidates query stays the top-level
+        # template, the registry was read, and the allowlist limitation holds.
+        self.assertEqual(result.evidence_bundle.template_name, "TPL_SNAPSHOT_CANDIDATES_V1")
+        self.assertNotEqual(result.evidence_bundle.registry_digest, "")
+        self.assertIn(DiscoveryLimitationKind.NOT_IN_REGISTRY, self.kinds(result))
 
     def test_dx_012_an_empty_term_and_an_over_long_term_open_no_connection(self):
         for term in ("   ", "a" * 201):
