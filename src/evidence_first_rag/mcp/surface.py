@@ -66,7 +66,7 @@ from ..runtime.faults import ConnectionUnavailable, Fault
 # tool result's `contract` key is `api-v0.1`'s, because the envelope is that
 # contract's (Section 4.2).
 CONTRACT_IDENTIFIER = "mcp-v0.1"
-CONTRACT_VERSION = "0.1.1"
+CONTRACT_VERSION = "0.2.0"
 
 # Section 4.5: one path beside `/v1`, fixed by this slice. Not under `/v1`,
 # which `api-v0.1` Section 4.1 fixes exhaustively.
@@ -108,22 +108,26 @@ DESCRIPTIONS = {
         " report it as such and do not answer from anything but the result."
     ),
     "discover_entity": (
-        "Finds which approved entity a term may refer to, inside one"
-        " fully-specified source snapshot. `arguments` carries the four scope"
-        " values (project_code, revision_label, network_name, snapshot_label),"
-        " entity_kind (`message` or `signal`), term (the person's words for the"
-        " entity, at most 200 bytes), and optionally parent_message_key when"
-        " entity_kind is signal and the parent message is known. Every scope"
-        " value must be a value the person stated; never supply one the person"
-        " did not name. A `candidates` result is a ranked list and"
-        " is not an answer: show the candidates to the person and let the"
-        " person choose; do not choose for them, and do not call query_facts"
-        " with a candidate the person has not chosen. Use select_candidate with"
-        " the person's choice. A `resolved` result names exactly one entity and"
-        " may be used with query_facts directly. A `not_found` result means no"
-        " approved entity matched the term; it does not mean the entity does"
-        " not exist in the data. A negative status is a result: report it as"
-        " such."
+        "Finds which approved entity a term may refer to, in one source"
+        " snapshot, or, when a scope value is missing, in each snapshot"
+        " matching the values given, up to ten. `arguments` carries the four"
+        " scope values (project_code, revision_label, network_name,"
+        " snapshot_label), entity_kind (`message` or `signal`), term (the"
+        " person's words for the entity, at most 200 bytes), and optionally"
+        " parent_message_key when entity_kind is signal and the parent message"
+        " is known. Every scope value must be a value the person stated; never"
+        " supply one the person did not name. An `ambiguous` result lists the"
+        " snapshots in which the term was found, or every matching snapshot"
+        " when there are more than ten: show them to the person, let the person"
+        " choose one, and call again with it. A `candidates` result is a ranked"
+        " list and is not an answer: show the candidates to the person and let"
+        " the person choose; do not choose for them, and do not call"
+        " query_facts with a candidate the person has not chosen. Use"
+        " select_candidate with the person's choice. A `resolved` result names"
+        " exactly one entity and may be used with query_facts directly. A"
+        " `not_found` result means no approved entity matched the term; it does"
+        " not mean the entity does not exist in the data. A negative status is"
+        " a result: report it as such."
     ),
     "select_candidate": (
         "Completes a `candidates` result from discover_entity with the person's"

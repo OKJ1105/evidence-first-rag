@@ -46,8 +46,9 @@ class DiscoveryResult:
     limitations: tuple[DiscoveryLimitation, ...] = ()
     resolved: Candidate | None = None
     candidates: tuple[Candidate, ...] = ()
-    # Section 5 `ambiguous`: the candidate scopes, listed as mvp-v0.1 lists
-    # them. Empty for every other status.
+    # Section 5 `ambiguous`: since `0.4.0`, the candidate scopes in which the
+    # term matched, or every candidate scope above the Section 4.3 bound.
+    # Empty for every other status.
     candidate_scopes: tuple = ()
 
     def __post_init__(self) -> None:
@@ -135,6 +136,30 @@ class DiscoveryResult:
 
         if self.status is not DiscoveryStatus.AMBIGUOUS and self.candidate_scopes:
             raise ValueError("only ambiguous lists candidate scopes")
+
+        # `0.4.0`, Sections 4.3 and 7: the incomplete-scope search.
+        search = bundle.scope_search
+        if self.status is DiscoveryStatus.AMBIGUOUS and search is None:
+            raise ValueError("ambiguous records its scope_search (Section 7)")
+        if search is not None:
+            if self.status not in (DiscoveryStatus.AMBIGUOUS, DiscoveryStatus.NOT_FOUND):
+                raise ValueError(f"{self.status.value} is not reached through an incomplete scope")
+            if search.searched != (bundle.registry_digest != ""):
+                raise ValueError("an incomplete scope cites the registry state exactly when the term was searched")
+            if self.status is DiscoveryStatus.NOT_FOUND:
+                if not search.searched or search.matched_scopes:
+                    raise ValueError("not_found through an incomplete scope searched every candidate scope and matched in none")
+            elif search.searched:
+                if not search.matched_scopes or self.candidate_scopes != search.matched_scopes:
+                    raise ValueError("a searched ambiguous lists exactly the scopes where the term matched (Section 4.3)")
+            elif len(self.candidate_scopes) != search.candidate_scope_count:
+                raise ValueError("an unsearched ambiguous lists every candidate scope (Section 4.3)")
+            needed = (
+                DiscoveryLimitationKind.SCOPES_SEARCHED if search.searched
+                else DiscoveryLimitationKind.SCOPES_NOT_SEARCHED
+            )
+            if not self.has_limitation(needed):
+                raise ValueError(f"an incomplete scope requires a {needed.value} limitation (Section 7)")
 
         if self.status is DiscoveryStatus.UNSUPPORTED and self.source_trace.producing_layer is None:
             raise ValueError("unsupported must record its producing layer (Section 7)")

@@ -9,12 +9,15 @@ assigns and what evidence it assembles -- and `tests_database/
 test_discovery_fixtures.py` proves the rows against a real database.
 """
 
+import contextlib
 import datetime
 
 from evidence_first_rag import SCOPE_DIMENSIONS
 from evidence_first_rag.registry import get
 
-from .runtime_support import BASE, CHASSIS, CHASSIS_B, REVISED, FakeDatabase, candidate_row  # noqa: F401
+from evidence_first_rag.runtime.execution import Execution
+
+from .runtime_support import BASE, CHASSIS, CHASSIS_B, REVISED, FakeDatabase, FakeSession, candidate_row  # noqa: F401
 
 STATE_ROW = {
     "registry_digest": "a" * 64,
@@ -59,8 +62,33 @@ def discovery_row(
     return {column: values.get(column) for column in columns}
 
 
-def database(*, candidates=(candidate_row(),), state=(STATE_ROW,), exact=(), lexical=(), **kwargs):
-    return FakeDatabase(
+class ScopedDatabase(FakeDatabase):
+    """A fake whose discovery templates answer per scope: a discovery row is
+    returned only to a run bound to that row's own four scope dimensions, as
+    the real templates' scope predicate does. For the `0.4.0` incomplete-
+    scope search (Section 4.3), which runs the method once per candidate
+    scope; the plain fake answers every run with every row."""
+
+    @contextlib.contextmanager
+    def session(self):
+        self.sessions += 1
+        yield ScopedSession(self)
+
+
+class ScopedSession(FakeSession):
+    def execute(self, template, arguments):
+        execution = super().execute(template, arguments)
+        if template.name not in ("TPL_DISCOVERY_EXACT_V1", "TPL_DISCOVERY_LEXICAL_V1"):
+            return execution
+        bound = execution.bound_parameters
+        rows = tuple(
+            row for row in execution.rows if all(row[name] == bound[name] for name in SCOPE_DIMENSIONS)
+        )
+        return Execution(rows=rows, bound_parameters=bound)
+
+
+def database(*, candidates=(candidate_row(),), state=(STATE_ROW,), exact=(), lexical=(), scoped=False, **kwargs):
+    return (ScopedDatabase if scoped else FakeDatabase)(
         {
             "TPL_SNAPSHOT_CANDIDATES_V1": tuple(candidates),
             "TPL_REGISTRY_STATE_V1": tuple(state),

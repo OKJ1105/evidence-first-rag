@@ -6,8 +6,11 @@ contract puts them:
 1. Validate (`request.py`). Section 4.3: before any database access. Two
    statuses are decided here, and both open no connection.
 2. Resolve scope, with the mvp-v0.1 candidate query unchanged (Section 4.3:
-   "scope is a precondition, not a search dimension"). Two more statuses
-   are decided here, and neither executes a discovery template.
+   "scope is a precondition, not a search dimension"). No candidate scope
+   is `coverage_gap`. An incomplete scope is `ambiguous`; since `0.4.0`,
+   within the bound of ten it is searched scope by scope with the same
+   method (steps 3 and 4), and the scopes where the term matched are listed,
+   or `not_found` when it matched in none.
 3. Read the registry state (`TPL_REGISTRY_STATE_V1`), so the result names
    the state it was computed against.
 4. Run `TPL_DISCOVERY_EXACT_V1`; if it returns nothing, run
@@ -38,6 +41,9 @@ from .evidence import (
     DiscoveryLimitation,
     DiscoveryLimitationKind,
     DiscoveryTrace,
+    SCOPE_SEARCH_BOUND,
+    ScopeSearch,
+    ScopeSearchEntry,
 )
 from .request import (
     CANDIDATES_TEMPLATE,
@@ -59,6 +65,11 @@ NO_REFERENCE_RESOLVED = (
     "No reference was resolved: the term matched more than one approved entity,"
     " or matched only below tier 2, and Section 4.7 permits no automatic choice"
     " among candidates. An explicit selection is required (Section 4.8)."
+)
+SCOPES_LISTED = (
+    "The listed scopes are those in which an approved entity matched the term"
+    " at some tier (Section 4.3). No scope and no entity was selected: choose a"
+    " scope and discover again in it to see the candidates there."
 )
 NOT_IN_REGISTRY = (
     "No approved entity matched the term at any tier. Absence from the approved"
@@ -118,7 +129,9 @@ def discover(session, request: ValidatedDiscovery, fixture_provenance: tuple[str
     if not scopes:
         return _coverage_gap(request, safeguards, found, candidates_template, fixture_provenance)
     if not request.scope_is_complete:
-        return _ambiguous(request, safeguards, found, scopes, candidates_template, fixture_provenance)
+        if len(scopes) > SCOPE_SEARCH_BOUND:
+            return _ambiguous(request, safeguards, found, scopes, candidates_template, fixture_provenance)
+        return _search_scopes(request, safeguards, session, found, scopes, candidates_template, fixture_provenance)
     if len(scopes) != 1:
         raise DataFault(
             f"a complete scope matched {len(scopes)} snapshots; mvp-v0.1 Section 4.1"
@@ -126,29 +139,8 @@ def discover(session, request: ValidatedDiscovery, fixture_provenance: tuple[str
         )
     scope = scopes[0]
 
-    state = session.execute(get(STATE_TEMPLATE), {})
-    if len(state.rows) != 1:
-        raise DataFault(
-            f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
-            f" exactly one after provisioning"
-        )
-    registry_digest = state.rows[0]["registry_digest"]
-    registry_built_at = _timestamp(state.rows[0]["built_at"])
-
-    # Section 4.9 M-LEX-1: exact for tiers 1 and 2, then lexical for
-    # tiers 3 and 4 when E(T) is empty.
-    template = get(EXACT_TEMPLATE)
-    run = session.execute(template, dict(request.arguments))
-    if not run.rows:
-        template = get(LEXICAL_TEMPLATE)
-        run = session.execute(
-            template,
-            {
-                **{k: v for k, v in request.arguments.items() if k != "term"},
-                "normalized_term": list(request.normalized_term),
-            },
-        )
-
+    registry_digest, registry_built_at = _registry_state(session)
+    template, run = _run_method(session, request, dict(request.arguments))
     return _decide(request, safeguards, scope, registry_digest, registry_built_at, template, run, fixture_provenance)
 
 
@@ -234,6 +226,97 @@ def _decide(request, safeguards, scope, registry_digest, registry_built_at, temp
         candidates=candidates,
     )
 
+def _registry_state(session):
+    state = session.execute(get(STATE_TEMPLATE), {})
+    if len(state.rows) != 1:
+        raise DataFault(
+            f"entity_registry_state holds {len(state.rows)} rows; Section 4.1 requires"
+            f" exactly one after provisioning"
+        )
+    return state.rows[0]["registry_digest"], _timestamp(state.rows[0]["built_at"])
+
+
+def _run_method(session, request, arguments):
+    """Section 4.9 M-LEX-1 over one scope: exact for tiers 1 and 2, then
+    lexical for tiers 3 and 4 when E(T) is empty. `arguments` carries the
+    four scope dimensions it runs in."""
+    template = get(EXACT_TEMPLATE)
+    run = session.execute(template, arguments)
+    if not run.rows:
+        template = get(LEXICAL_TEMPLATE)
+        run = session.execute(
+            template,
+            {
+                **{k: v for k, v in arguments.items() if k != "term"},
+                "normalized_term": list(request.normalized_term),
+            },
+        )
+    return template, run
+
+
+def _search_scopes(request, safeguards, session, found, scopes, candidates_template, fixture_provenance):
+    """Section 4.3 (`0.4.0`): an incomplete scope within the bound, searched in
+    each candidate scope with the request's other arguments, exactly as a
+    fully scoped request naming that scope would run. Nothing is resolved."""
+    registry_digest, registry_built_at = _registry_state(session)
+    entries = []
+    for scope in scopes:
+        arguments = {**request.arguments, **{name: getattr(scope, name) for name in SCOPE_DIMENSIONS}}
+        template, run = _run_method(session, request, arguments)
+        rows = run.rows
+        entries.append(
+            ScopeSearchEntry(
+                scope=scope,
+                matched=bool(rows),
+                match_tier=min(int(row["match_tier"]) for row in rows) if rows else None,
+                match_count=len(rows),
+                template_name=template.name,
+                template_version=template.version,
+                bound_parameters=run.bound_parameters,
+            )
+        )
+    search = ScopeSearch(candidate_scope_count=len(scopes), searched=True, scopes=tuple(entries), bound=SCOPE_SEARCH_BOUND)
+    matched = search.matched_scopes
+    evidence = DiscoveryEvidence(
+        route=ROUTE,
+        read_only_safeguards=safeguards,
+        row_count=len(found.rows),
+        template_name=candidates_template.name,
+        template_version=candidates_template.version,
+        bound_parameters=found.bound_parameters,
+        resolved_scope=None,
+        registry_digest=registry_digest,
+        registry_built_at=registry_built_at,
+        method_identifier=METHOD_IDENTIFIER,
+        method_version=METHOD_VERSION,
+        scope_search=search,
+    )
+    trace = DiscoveryTrace(contributing_scopes=scopes, fixture_provenance=fixture_provenance)
+    if matched:
+        return DiscoveryResult(
+            status=DiscoveryStatus.AMBIGUOUS,
+            evidence_bundle=evidence,
+            source_trace=trace,
+            limitations=(
+                DiscoveryLimitation(kind=DiscoveryLimitationKind.SCOPES_SEARCHED, detail=SCOPES_LISTED),
+            ),
+            candidate_scopes=matched,
+        )
+    return DiscoveryResult(
+        status=DiscoveryStatus.NOT_FOUND,
+        evidence_bundle=evidence,
+        source_trace=trace,
+        limitations=(
+            DiscoveryLimitation(
+                kind=DiscoveryLimitationKind.SCOPES_SEARCHED,
+                detail=f"The term was searched in all {len(scopes)} candidate scopes of the"
+                f" incomplete scope, and matched in none (Section 4.3).",
+            ),
+            DiscoveryLimitation(kind=DiscoveryLimitationKind.NOT_IN_REGISTRY, detail=NOT_IN_REGISTRY),
+        ),
+    )
+
+
 def _coverage_gap(request, safeguards, found, template, fixture_provenance) -> DiscoveryResult:
     named = ", ".join(
         f"{name}={request.arguments[name]}" for name in SCOPE_DIMENSIONS if name in request.arguments
@@ -250,9 +333,18 @@ def _coverage_gap(request, safeguards, found, template, fixture_provenance) -> D
     )
 
 def _ambiguous(request, safeguards, found, scopes, template, fixture_provenance) -> DiscoveryResult:
-    limitations = ()
+    """Above the Section 4.3 bound: every candidate scope listed, the term
+    searched in none."""
+    limitations = (
+        DiscoveryLimitation(
+            kind=DiscoveryLimitationKind.SCOPES_NOT_SEARCHED,
+            detail=f"The incomplete scope has {len(scopes)} candidate scopes, more than the bound of"
+            f" {SCOPE_SEARCH_BOUND}, so every candidate scope is listed and the term was searched in"
+            f" none (Section 4.3).",
+        ),
+    )
     if template.truncated(len(found.rows)):
-        limitations = (
+        limitations += (
             DiscoveryLimitation(
                 kind=DiscoveryLimitationKind.TRUNCATED_BY_LIMIT,
                 detail=f"{template.name} returned its registered limit of {template.row_limit}"
@@ -260,11 +352,12 @@ def _ambiguous(request, safeguards, found, scopes, template, fixture_provenance)
             ),
         )
     return _scope_only(
-        request, safeguards, found, template, DiscoveryStatus.AMBIGUOUS, fixture_provenance, limitations, scopes
+        request, safeguards, found, template, DiscoveryStatus.AMBIGUOUS, fixture_provenance, limitations, scopes,
+        scope_search=ScopeSearch(candidate_scope_count=len(scopes), searched=False, bound=SCOPE_SEARCH_BOUND),
     )
 
 
-def _scope_only(request, safeguards, found, template, status, fixture_provenance, limitations, scopes=()):
+def _scope_only(request, safeguards, found, template, status, fixture_provenance, limitations, scopes=(), scope_search=None):
     """An outcome the mvp-v0.1 candidate query decided alone: no discovery
     template executed, so no registry state is cited (Section 5)."""
     return DiscoveryResult(
@@ -277,6 +370,7 @@ def _scope_only(request, safeguards, found, template, status, fixture_provenance
             template_version=template.version,
             bound_parameters=found.bound_parameters,
             resolved_scope=None,
+            scope_search=scope_search,
         ),
         source_trace=DiscoveryTrace(contributing_scopes=scopes, fixture_provenance=fixture_provenance),
         limitations=limitations,

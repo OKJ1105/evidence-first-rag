@@ -27,13 +27,14 @@ class DiscoveryStatus(enum.Enum):
 # Section 5, closing paragraph: "For `invalid_request`, `unsupported`, and the
 # `ambiguous` case that is refused before dispatch, no discovery template
 # executes and the evidence bundle records that no connection was opened for
-# discovery." The first two open no connection at all; `ambiguous` opens one
-# for the mvp-v0.1 candidate query and executes no discovery template.
+# discovery." The first two open no connection at all.
 OPENS_NO_CONNECTION = frozenset({DiscoveryStatus.INVALID_REQUEST, DiscoveryStatus.UNSUPPORTED})
 
-# The statuses under which no discovery template ran: the two above, plus the
-# two the mvp-v0.1 candidate query decides alone (Section 4.3).
+# The statuses under which no discovery template ran: the two above, plus
+# `coverage_gap`, which the mvp-v0.1 candidate query decides alone. Since
+# `0.4.0` `ambiguous` is not among them: an incomplete scope within the
+# Section 4.3 bound is searched, and `DiscoveryResult` checks that case by
+# its `scope_search` instead.
 EXECUTES_NO_DISCOVERY_TEMPLATE = OPENS_NO_CONNECTION | {
-    DiscoveryStatus.AMBIGUOUS,
     DiscoveryStatus.COVERAGE_GAP,
 }

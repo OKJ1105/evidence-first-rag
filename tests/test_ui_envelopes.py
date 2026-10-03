@@ -217,9 +217,10 @@ def _envelopes():
         "/v1/query", json={"route": "message_facts", "arguments": OPEN_SNAPSHOT}
     ).text
 
-    # `entity-discovery-v0.1` carries them in a top-level `candidate_scopes` and
-    # executes no discovery template (`WF-020`).
-    client = _client(_database({}, candidates=TWO_SNAPSHOTS))
+    # `entity-discovery-v0.1` carries them in a top-level `candidate_scopes`.
+    # Since `0.4.0` it searches each candidate scope first and lists where the
+    # term matched (`WF-020`), so the term matches here in both.
+    client = _client(_database({}, candidates=TWO_SNAPSHOTS, exact=(discovery_row(),)))
     built["discovery_ambiguous"] = client.post(
         "/v1/discover", json={"arguments": OPEN_SNAPSHOT_TERM}
     ).text

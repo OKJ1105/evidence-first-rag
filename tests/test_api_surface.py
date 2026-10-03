@@ -426,7 +426,7 @@ class TheFiveRoutes(SurfaceCase):
         # only guards the one in `app.py`.
         self.assertEqual(
             document["contracts"],
-            {CONTRACT_IDENTIFIER: CONTRACT_VERSION, "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {CONTRACT_IDENTIFIER: CONTRACT_VERSION, "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.4.0"},
         )
         # `export-v0.1` is not among them: it is not in this tree and no route
         # here serves one.
@@ -1172,11 +1172,12 @@ def _status_cases():
         "discovery/coverage_gap": ("/v1/discover",
                                    {"arguments": MESSAGE | {"network_name": "SAMPLE_NET_ABSENT"}},
                                    fact_database({}, candidates=())),
-        # `WF-020`: `DX-011`'s shape. That contract's Section 4.3 executes no
-        # discovery template when the scope does not resolve.
+        # `WF-020`: `DX-011`'s shape. Since `entity-discovery-v0.1` `0.4.0`
+        # an incomplete scope is searched in each candidate scope, and the
+        # result is `ambiguous` listing where the term matched.
         "discovery/ambiguous": ("/v1/discover",
                                 {"arguments": {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}},
-                                fact_database({})),
+                                fact_database({}, exact=(discovery_row(),))),
         "discovery/invalid_request": ("/v1/discover", {"arguments": MESSAGE | {"nonsense": "SAMPLE_X"}},
                                       fact_database({})),
         # `WF-021`: `DX-014`'s shape, an `entity_kind` outside the two. Never a
@@ -1229,14 +1230,18 @@ class StatusPassThrough(SurfaceCase):
         self.assertIsNotNone(document["evidence_bundle"]["resolved_scope"])
         self.assertEqual(document["evidence_bundle"]["row_count"], 0)
 
-    def test_wf_020_an_ambiguous_discovery_executes_no_discovery_template(self):
+    def test_wf_020_an_ambiguous_discovery_lists_where_the_term_matched(self):
         path, body, db = _status_cases()["discovery/ambiguous"]
         client, _ = surface(db)
         document = self.assert_result_envelope(client.post(path, json=body))["result"]
         self.assertEqual(document["status"], DiscoveryStatus.AMBIGUOUS.value)
         self.assertTrue(document["candidate_scopes"])
-        self.assertFalse(db.ran("TPL_DISCOVERY_EXACT_V1"))
-        self.assertFalse(db.ran("TPL_DISCOVERY_LEXICAL_V1"))
+        self.assertIsNone(document["resolved"])
+        self.assertEqual(document["candidates"], [])
+        self.assertTrue(db.ran("TPL_DISCOVERY_EXACT_V1"))
+        search = document["evidence_bundle"]["scope_search"]
+        self.assertTrue(search["searched"])
+        self.assertEqual([entry["scope"] for entry in search["scopes"] if entry["matched"]], document["candidate_scopes"])
 
     def test_wf_021_an_unknown_entity_kind_is_a_result_and_never_a_400(self):
         path, body, db = _status_cases()["discovery/unsupported"]

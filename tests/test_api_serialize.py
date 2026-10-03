@@ -130,7 +130,14 @@ def _results() -> dict:
         ),
         "discovery/not_found": discover(MESSAGE),
         "discovery/coverage_gap": discover(MESSAGE | {"network_name": "SAMPLE_NET_ABSENT"}, candidates=()),
-        "discovery/ambiguous": discover({k: v for k, v in MESSAGE.items() if k != "snapshot_label"}),
+        "discovery/ambiguous": discover({k: v for k, v in MESSAGE.items() if k != "snapshot_label"}, exact=(discovery_row(),)),
+        # `0.4.0`: above the Section 4.3 bound, listed and not searched.
+        "discovery/ambiguous/unsearched": discover(
+            {k: v for k, v in MESSAGE.items() if k != "snapshot_label"},
+            candidates=tuple(candidate_row(BASE | {"snapshot_label": f"SAMPLE_SNAP_{n:02d}"}) for n in range(11)),
+        ),
+        # `0.4.0`: searched in every candidate scope and matched in none.
+        "discovery/not_found/incomplete_scope": discover({k: v for k, v in MESSAGE.items() if k != "snapshot_label"}),
         "discovery/invalid_request": discover(MESSAGE | {"nonsense": "SAMPLE_X"}),
         "discovery/unsupported": discover(MESSAGE | {"entity_kind": "SAMPLE_KIND"}),
     }

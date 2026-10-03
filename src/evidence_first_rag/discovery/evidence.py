@@ -36,7 +36,7 @@ SELECTION_ROUTE = "entity_selection"
 
 # entity-discovery-v0.1 Section 1.
 CONTRACT_IDENTIFIER = "entity-discovery-v0.1"
-CONTRACT_VERSION = "0.3.1"
+CONTRACT_VERSION = "0.4.0"
 
 # Section 4.9: the one registered method, and the version every result and
 # every candidate-set digest carries.
@@ -60,6 +60,76 @@ class DiscoveryLimitationKind(enum.Enum):
     SELECTED_VIA_CANDIDATES = "selected_via_candidates"
     RERUN_PRODUCED_NO_LIST = "rerun_produced_no_list"
     COVERAGE_NOT_ESTABLISHED = "coverage_not_established"
+    # `0.4.0`, Section 4.3: an incomplete scope whose candidate scopes were
+    # searched, and one whose candidate scopes exceed the bound and were not.
+    SCOPES_SEARCHED = "scopes_searched"
+    SCOPES_NOT_SEARCHED = "scopes_not_searched"
+
+
+# Section 4.3 (`0.4.0`): the most candidate scopes an incomplete-scope request
+# searches. Above it the scopes are listed and the term is searched in none.
+SCOPE_SEARCH_BOUND = 10
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ScopeSearchEntry:
+    """One candidate scope of an incomplete-scope request, and what the
+    registered method found there (Section 7, `scope_search`)."""
+
+    scope: SnapshotScope
+    matched: bool
+    match_tier: int | None = None
+    match_count: int = 0
+    template_name: str = ""
+    template_version: str = ""
+    bound_parameters: Mapping[str, object] = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.scope, SnapshotScope):
+            raise ValueError("scope must be a SnapshotScope")
+        if not isinstance(self.matched, bool):
+            raise ValueError("matched must be a bool")
+        _count("match_count", self.match_count)
+        required_text("template_name", self.template_name)
+        required_text("template_version", self.template_version)
+        object.__setattr__(self, "bound_parameters", _frozen(self.bound_parameters))
+        if self.matched != (self.match_count > 0):
+            raise ValueError("a scope is matched exactly when its match_count is positive")
+        if self.matched != (self.match_tier is not None):
+            raise ValueError("a matched scope records its best match_tier, and only a matched one")
+        if self.match_tier is not None and (
+            not isinstance(self.match_tier, int) or isinstance(self.match_tier, bool)
+            or not 1 <= self.match_tier <= 4
+        ):
+            raise ValueError("match_tier is 1, 2, 3 or 4, or None")
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ScopeSearch:
+    """Section 7's `scope_search`: present on every result reached through
+    an incomplete scope, and nowhere else."""
+
+    candidate_scope_count: int
+    searched: bool
+    scopes: tuple[ScopeSearchEntry, ...] = ()
+    bound: int = SCOPE_SEARCH_BOUND
+
+    def __post_init__(self) -> None:
+        _count("candidate_scope_count", self.candidate_scope_count)
+        _count("bound", self.bound)
+        if not isinstance(self.searched, bool):
+            raise ValueError("searched must be a bool")
+        object.__setattr__(self, "scopes", _typed("scopes", self.scopes, ScopeSearchEntry))
+        if self.searched != (self.candidate_scope_count <= self.bound):
+            raise ValueError("the term is searched exactly when the candidate scopes are within the bound")
+        if self.searched and len(self.scopes) != self.candidate_scope_count:
+            raise ValueError("a searched request records one entry per candidate scope")
+        if not self.searched and self.scopes:
+            raise ValueError("an unsearched request records no per-scope entry")
+
+    @property
+    def matched_scopes(self) -> tuple[SnapshotScope, ...]:
+        return tuple(entry.scope for entry in self.scopes if entry.matched)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -111,6 +181,8 @@ class DiscoveryEvidence:
     # connection still records them.
     selected_rank: str = ""
     target_route: str = ""
+    # `0.4.0`: on every result reached through an incomplete scope.
+    scope_search: ScopeSearch | None = None
     contract_identifier: str = CONTRACT_IDENTIFIER
     contract_version: str = CONTRACT_VERSION
     runtime_contract_identifier: str = RUNTIME_CONTRACT_IDENTIFIER
@@ -135,6 +207,8 @@ class DiscoveryEvidence:
         ):
             raise ValueError("match_tier is 1, 2, 3 or 4, or None")
         object.__setattr__(self, "bound_parameters", _frozen(self.bound_parameters))
+        if self.scope_search is not None and not isinstance(self.scope_search, ScopeSearch):
+            raise ValueError("scope_search must be a ScopeSearch or None")
         for field in ("contract_identifier", "contract_version", "runtime_contract_identifier",
                       "runtime_contract_version", "collation"):
             required_text(field, getattr(self, field))

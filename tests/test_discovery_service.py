@@ -38,28 +38,90 @@ def kinds(result):
 
 
 class ScopeIsAPrecondition(unittest.TestCase):
-    """Section 4.3: the mvp-v0.1 candidate query runs first, unchanged, and
-    no discovery template executes unless it names exactly one snapshot."""
+    """Section 4.3: the mvp-v0.1 candidate query runs first, unchanged. A
+    complete scope runs the method in its one snapshot; an incomplete one,
+    since `0.4.0`, in each candidate scope within the bound."""
 
-    def test_dx_011_an_omitted_dimension_is_ambiguous_with_no_discovery_template(self):
+    # `0.4.0`, Section 4.3: an incomplete scope within the bound is searched
+    # in each candidate scope, and only the scopes where the term matched
+    # are listed. Nothing is resolved.
+
+    def test_dx_011_only_the_scopes_where_the_term_matched_are_listed(self):
         arguments = {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}
-        db, result = run(arguments, candidates=(candidate_row(BASE), candidate_row(REVISED)))
+        db, result = run(
+            arguments,
+            candidates=(candidate_row(BASE), candidate_row(REVISED)),
+            exact=(discovery_row(REVISED),),
+            scoped=True,
+        )
+        self.assertIs(result.status, DiscoveryStatus.AMBIGUOUS)
+        self.assertEqual(result.candidate_scopes, (SnapshotScope(**REVISED),))
+        self.assertIsNone(result.resolved)
+        self.assertEqual(result.candidates, ())
+        search = result.evidence_bundle.scope_search
+        self.assertTrue(search.searched)
+        self.assertEqual(search.candidate_scope_count, 2)
+        self.assertEqual([entry.matched for entry in search.scopes], [False, True])
+        self.assertEqual(search.scopes[1].match_tier, 1)
+        self.assertEqual(search.scopes[1].template_name, "TPL_DISCOVERY_EXACT_V1")
+        # Each candidate scope ran the method bound to that scope.
+        exact_scopes = [p["snapshot_label"] for name, p in db.calls if name == "TPL_DISCOVERY_EXACT_V1"]
+        self.assertEqual(exact_scopes, ["SAMPLE_SNAP_BASE", "SAMPLE_SNAP_REVISED"])
+        # The bundle names the candidate query and the registry state it searched.
+        self.assertEqual(result.evidence_bundle.template_name, "TPL_SNAPSHOT_CANDIDATES_V1")
+        self.assertEqual(result.evidence_bundle.registry_digest, "a" * 64)
+        self.assertIsNone(result.evidence_bundle.resolved_scope)
+        self.assertIn(DiscoveryLimitationKind.SCOPES_SEARCHED, kinds(result))
+
+    def test_dx_024_one_matching_scope_is_still_ambiguous(self):
+        # mvp-v0.1 Section 4.2 as amended, and Charter Section 3.3: one is
+        # still ambiguous, never resolved and never a candidate list.
+        arguments = {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}
+        db, result = run(arguments, candidates=(candidate_row(BASE),), exact=(discovery_row(BASE),), scoped=True)
+        self.assertIs(result.status, DiscoveryStatus.AMBIGUOUS)
+        self.assertEqual(result.candidate_scopes, (SnapshotScope(**BASE),))
+        self.assertIsNone(result.resolved)
+        self.assertEqual(result.candidates, ())
+
+    def test_dx_025_no_match_in_any_candidate_scope_is_not_found(self):
+        arguments = {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}
+        db, result = run(arguments, candidates=(candidate_row(BASE), candidate_row(REVISED)), scoped=True)
+        self.assertIs(result.status, DiscoveryStatus.NOT_FOUND)
+        self.assertEqual(result.candidate_scopes, ())
+        search = result.evidence_bundle.scope_search
+        self.assertTrue(search.searched)
+        self.assertEqual([entry.matched for entry in search.scopes], [False, False])
+        # Both tiers were tried in each scope before concluding.
+        self.assertEqual(len([n for n, _ in db.calls if n == "TPL_DISCOVERY_LEXICAL_V1"]), 2)
+        self.assertIn(DiscoveryLimitationKind.NOT_IN_REGISTRY, kinds(result))
+        self.assertIn(DiscoveryLimitationKind.SCOPES_SEARCHED, kinds(result))
+        self.assertIn("all 2 candidate scopes", result.limitations[0].detail)
+
+    def test_dx_026_above_the_bound_every_scope_is_listed_and_none_searched(self):
+        from evidence_first_rag.discovery import service
+
+        arguments = {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}
+        original = service.SCOPE_SEARCH_BOUND
+        service.SCOPE_SEARCH_BOUND = 1
+        try:
+            db, result = run(
+                arguments,
+                candidates=(candidate_row(BASE), candidate_row(REVISED)),
+                exact=(discovery_row(BASE),),
+                scoped=True,
+            )
+        finally:
+            service.SCOPE_SEARCH_BOUND = original
+        self.assertEqual(original, 10)
+        self.assertEqual(result.evidence_bundle.scope_search.bound, 1)
         self.assertIs(result.status, DiscoveryStatus.AMBIGUOUS)
         self.assertEqual(len(result.candidate_scopes), 2)
         self.assertFalse(db.ran("TPL_DISCOVERY_EXACT_V1"))
         self.assertFalse(db.ran("TPL_DISCOVERY_LEXICAL_V1"))
         self.assertFalse(db.ran("TPL_REGISTRY_STATE_V1"))
-        # The bundle names the template that did run, and no registry state.
-        self.assertEqual(result.evidence_bundle.template_name, "TPL_SNAPSHOT_CANDIDATES_V1")
         self.assertEqual(result.evidence_bundle.registry_digest, "")
-        self.assertIsNone(result.evidence_bundle.resolved_scope)
-
-    def test_one_candidate_is_still_ambiguous(self):
-        # mvp-v0.1 Section 4.2 as amended: one matching candidate is ambiguous.
-        arguments = {k: v for k, v in MESSAGE.items() if k != "snapshot_label"}
-        db, result = run(arguments, candidates=(candidate_row(BASE),))
-        self.assertIs(result.status, DiscoveryStatus.AMBIGUOUS)
-        self.assertFalse(db.ran("TPL_DISCOVERY_EXACT_V1"))
+        self.assertFalse(result.evidence_bundle.scope_search.searched)
+        self.assertIn(DiscoveryLimitationKind.SCOPES_NOT_SEARCHED, kinds(result))
 
     def test_dx_010_a_scope_no_snapshot_has_is_a_coverage_gap(self):
         db, result = run(MESSAGE | {"network_name": "SAMPLE_NET_BODY"}, candidates=())
@@ -227,7 +289,7 @@ class TheCandidateSetDigest(unittest.TestCase):
         db, result = run(MESSAGE | {"term": "sample msg"}, lexical=(discovery_row(match_tier=4), discovery_row(message_key="SAMPLE_MSG_X", match_tier=4)))
         expected = sha256_hex(canonical_json({
             "contract_identifier": "entity-discovery-v0.1",
-            "contract_version": "0.3.1",
+            "contract_version": "0.4.0",
             "registry_digest": "a" * 64,
             **BASE,
             "entity_kind": "message",
@@ -270,7 +332,7 @@ class TheEvidence(unittest.TestCase):
             _, result = run(arguments, **rows)
             bundle = result.evidence_bundle
             self.assertEqual(bundle.contract_identifier, "entity-discovery-v0.1")
-            self.assertEqual(bundle.contract_version, "0.3.1")
+            self.assertEqual(bundle.contract_version, "0.4.0")
             self.assertEqual(bundle.runtime_contract_identifier, "mvp-v0.1")
             self.assertEqual(bundle.collation, "C")
             self.assertEqual(result.source_trace.fixture_provenance, PROVENANCE)
