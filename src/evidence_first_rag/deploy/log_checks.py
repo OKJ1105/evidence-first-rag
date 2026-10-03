@@ -49,6 +49,7 @@ request fails the case, and the case does not wait forever.
 
 import argparse
 import io
+import ipaddress
 import json
 import os
 import secrets
@@ -268,6 +269,12 @@ def dp020(download, surface, relay, address):
     """
     if not address:
         return False, "no runner address was given, so nothing was looked for"
+    try:
+        # #306 N2: the address comes from a third party; an answer that is not
+        # an address would be in no file, and the case would pass vacuously.
+        ipaddress.ip_address(address)
+    except ValueError:
+        return False, "what was given as the runner's address is not an address, so nothing was looked for"
     found, traces, http = {}, {}, {}
     for app in (surface, relay):
         for name, text in read_zip(download(app)):

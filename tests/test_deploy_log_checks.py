@@ -236,6 +236,7 @@ class TheRequests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(first.startswith("SAMPLE_"))
 
+
 ADDRESS = "198.51.100.23"
 
 
@@ -272,6 +273,14 @@ class TheRunnerAddress(unittest.TestCase):
 
     def test_no_address_given_fails(self):
         self.assertFalse(self.check({"LogFiles/a.log": "x"}, address="")[0])
+
+    def test_something_that_is_not_an_address_fails(self):
+        # #306 N2: a third party's answer that is not an address would be in
+        # no file, and the case would pass having looked for nothing.
+        for given in ("<html>rate limited</html>", "198.51.100", "not-an-address"):
+            passed, detail = self.check({"LogFiles/a.log": "x"}, address=given)
+            self.assertFalse(passed, given)
+            self.assertNotIn(given, detail)
 
 
 if __name__ == "__main__":  # pragma: no cover

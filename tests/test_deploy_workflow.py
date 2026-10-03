@@ -455,6 +455,8 @@ class TheRunnerAddress(unittest.TestCase):
         self.assertNotIn("--address", checks)
         self.assertNotIn('"$RUNNER_ADDRESS" \\', checks)
 
+
+class TheSecrets(unittest.TestCase):
     """DP-015: three secrets, written once, never printed."""
 
     def test_only_the_three_database_secrets_are_named(self):
