@@ -278,19 +278,17 @@ class TheDiscoveryRoutes(StackCase):
             document["result"]["evidence_bundle"]["template_name"], "TPL_SNAPSHOT_CANDIDATES_V1"
         )
 
-    def test_wf_020_an_under_specified_discovery_is_ambiguous_and_runs_nothing(self):
+    def test_wf_020_an_under_specified_discovery_lists_where_the_term_matched(self):
         document = self.step(
             "/v1/discover",
-            {"arguments": UNDER_SPECIFIED | {"entity_kind": "message", "term": "SAMPLE_MSG_ENGINE_STATUS"}},
+            {"arguments": UNDER_SPECIFIED | {"entity_kind": "message", "term": "SAMPLE_MSG_TRANSMISSION_STATE"}},
             status="ambiguous",
         )
         result = document["result"]
-        self.assertEqual(
-            sorted(scope["snapshot_label"] for scope in result["candidate_scopes"]),
-            ["SAMPLE_SNAP_BASE", "SAMPLE_SNAP_REVISED"],
-        )
-        # `entity-discovery-v0.1` Section 4.3: no discovery template executed.
-        self.assertEqual(result["evidence_bundle"]["registry_digest"], "")
+        self.assertEqual([scope["snapshot_label"] for scope in result["candidate_scopes"]], ["SAMPLE_SNAP_BASE"])
+        # `entity-discovery-v0.1` Section 4.3 at `0.4.0`: every candidate scope searched.
+        self.assertTrue(result["evidence_bundle"]["scope_search"]["searched"])
+        self.assertEqual(len(result["evidence_bundle"]["scope_search"]["scopes"]), 2)
 
     def test_wf_021_an_unknown_entity_kind_is_a_result_and_never_a_400(self):
         """An unknown enumeration value looks structural and is not, so a
@@ -417,7 +415,7 @@ class TheSurfaceProperties(StackCase):
         # would assert that a dict equals itself.
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.2.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.2.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.4.0"},
         )
         # Section 4.7's optional adapter, as the stack started.
         self.assertFalse(document["adapter_configured"])

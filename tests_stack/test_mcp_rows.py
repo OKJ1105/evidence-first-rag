@@ -179,7 +179,7 @@ class TheEqualityRows(McpCase):
         self.assertEqual(self.equal_to_v1("/v1/query", body)["structuredContent"]["result"]["status"], "not_found")
 
     def test_mc_020(self):
-        body = {"arguments": UNDER_SPECIFIED | {"entity_kind": "message", "term": "SAMPLE_MSG_ENGINE_STATUS"}}
+        body = {"arguments": UNDER_SPECIFIED | {"entity_kind": "message", "term": "SAMPLE_MSG_TRANSMISSION_STATE"}}
         self.assertEqual(self.equal_to_v1("/v1/discover", body)["structuredContent"]["result"]["status"], "ambiguous")
 
     def test_mc_021(self):
@@ -239,7 +239,7 @@ class TheSurfaceRows(McpCase):
         initialization = self.session.initialization
         self.assertEqual(initialization["serverInfo"]["name"], "mcp-v0.1")
         # A literal, as `test_workflows.py` pins the health contracts (#258 N2).
-        self.assertEqual(initialization["serverInfo"]["version"], "0.1.1")
+        self.assertEqual(initialization["serverInfo"]["version"], "0.2.0")
         self.assertEqual(set(initialization["capabilities"]) - {"experimental"}, {"tools"})
 
 

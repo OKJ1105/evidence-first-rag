@@ -217,7 +217,7 @@ def _conversations():
         relay_client(
             Model(
                 [text("That matches more than one snapshot.")]
-                + discover(OPEN_SNAPSHOT_TERM, _database({}, candidates=TWO_SNAPSHOTS))
+                + discover(OPEN_SNAPSHOT_TERM, _database({}, candidates=TWO_SNAPSHOTS, exact=(discovery_row(),)))
             )
         ),
         [first_words],

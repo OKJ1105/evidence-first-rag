@@ -51,7 +51,14 @@ import decimal
 
 from ..discovery.canonical import json_text
 from ..discovery.candidate import AliasProvenance, Candidate
-from ..discovery.evidence import DiscoveryEvidence, DiscoveryLimitation, DiscoveryLimitationKind, DiscoveryTrace
+from ..discovery.evidence import (
+    DiscoveryEvidence,
+    DiscoveryLimitation,
+    DiscoveryLimitationKind,
+    DiscoveryTrace,
+    ScopeSearch,
+    ScopeSearchEntry,
+)
 from ..discovery.result import DiscoveryResult
 from ..discovery.status import DiscoveryStatus
 from ..evidence import (
@@ -233,6 +240,7 @@ def _discovery_json(result: DiscoveryResult) -> dict:
             "candidate_count": bundle.candidate_count,
             "selected_rank": bundle.selected_rank,
             "target_route": bundle.target_route,
+            "scope_search": _scope_search_json(bundle.scope_search),
         },
         "source_trace": {
             "resolved_scope": _scope_json(trace.resolved_scope),
@@ -278,6 +286,7 @@ def _discovery_result(document: dict) -> DiscoveryResult:
             candidate_count=bundle["candidate_count"],
             selected_rank=bundle["selected_rank"],
             target_route=bundle["target_route"],
+            scope_search=_scope_search_object(bundle["scope_search"]),
         ),
         source_trace=DiscoveryTrace(
             resolved_scope=_scope_object(trace["resolved_scope"]),
@@ -291,6 +300,50 @@ def _discovery_result(document: dict) -> DiscoveryResult:
         limitations=tuple(
             DiscoveryLimitation(kind=DiscoveryLimitationKind(item["kind"]), detail=item["detail"])
             for item in document["limitations"]
+        ),
+    )
+
+
+def _scope_search_json(search):
+    if search is None:
+        return None
+    return {
+        "bound": search.bound,
+        "candidate_scope_count": search.candidate_scope_count,
+        "searched": search.searched,
+        "scopes": [
+            {
+                "scope": _scope_json(entry.scope),
+                "matched": entry.matched,
+                "match_tier": entry.match_tier,
+                "match_count": entry.match_count,
+                "template_name": entry.template_name,
+                "template_version": entry.template_version,
+                "bound_parameters": _row_json(entry.bound_parameters),
+            }
+            for entry in search.scopes
+        ],
+    }
+
+
+def _scope_search_object(document):
+    if document is None:
+        return None
+    return ScopeSearch(
+        bound=document["bound"],
+        candidate_scope_count=document["candidate_scope_count"],
+        searched=document["searched"],
+        scopes=tuple(
+            ScopeSearchEntry(
+                scope=_scope_object(entry["scope"]),
+                matched=entry["matched"],
+                match_tier=entry["match_tier"],
+                match_count=entry["match_count"],
+                template_name=entry["template_name"],
+                template_version=entry["template_version"],
+                bound_parameters=_row_object(entry["bound_parameters"]),
+            )
+            for entry in document["scopes"]
         ),
     )
 

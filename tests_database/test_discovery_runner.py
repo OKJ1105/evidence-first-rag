@@ -212,9 +212,12 @@ class ARunOverTheRegisteredFixtures(unittest.TestCase):
         self.assertEqual(record["observed"]["completion"]["status"], "success")
         self.assertEqual(record["observed"]["completion"]["selected_rank"], 1)
 
-    def test_q_scope_executed_no_discovery_template(self):
+    def test_q_scope_searches_the_candidate_scopes_and_resolves_nothing(self):
+        # Section 4.3 at `0.4.0`: a missing scope dimension searches each
+        # candidate scope, so the registry digest is recorded; nothing resolves.
         record = self.by_identifier["SAMPLE-SCOPE-1"]
-        self.assertEqual(record["observed"]["registry_digest"], "")
+        self.assertEqual(record["observed"]["status"], "ambiguous")
+        self.assertNotEqual(record["observed"]["registry_digest"], "")
         self.assertEqual(record["observed"]["candidates"], [])
 
     def test_per_class_numbers_are_reported_for_every_class_present(self):

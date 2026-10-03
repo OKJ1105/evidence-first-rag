@@ -324,14 +324,13 @@ class TheRegisteredCases(SurfaceCase):
         self.assertEqual(document["rows"], [])
         self.assertTrue(document["evidence_bundle"]["template_name"])
 
-    def test_mc_020_an_ambiguous_discovery_executes_no_template_and_is_not_an_error(self):
+    def test_mc_020_an_ambiguous_discovery_lists_where_the_term_matched_and_is_not_an_error(self):
         path, body, db = _status_cases()["discovery/ambiguous"]
         client, services = surface(db)
         document = self.assert_equal_to_v1(services, client, path, body)["result"]
         self.assertEqual(document["status"], DiscoveryStatus.AMBIGUOUS.value)
         self.assertTrue(document["candidate_scopes"])
-        self.assertFalse(db.ran("TPL_DISCOVERY_EXACT_V1"))
-        self.assertFalse(db.ran("TPL_DISCOVERY_LEXICAL_V1"))
+        self.assertTrue(document["evidence_bundle"]["scope_search"]["searched"])
 
     def test_mc_021_an_unknown_entity_kind_is_a_result_and_never_an_error(self):
         path, body, db = _status_cases()["discovery/unsupported"]

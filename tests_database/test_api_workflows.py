@@ -278,21 +278,20 @@ class TheDiscoveryRoutes(WorkflowCase):
         )
         self.assertEqual(document["result"]["evidence_bundle"]["template_name"], "TPL_SNAPSHOT_CANDIDATES_V1")
 
-    def test_wf_020_dx_011_is_ambiguous_with_its_scopes_and_no_discovery(self):
+    def test_wf_020_dx_011_lists_the_scopes_where_the_term_matched(self):
         arguments = {k: v for k, v in POWERTRAIN.items() if k != "snapshot_label"}
         document = self.step(
             "/v1/discover",
-            {"arguments": arguments | {"entity_kind": "message", "term": "SAMPLE_MSG_ENGINE_STATUS"}},
+            {"arguments": arguments | {"entity_kind": "message", "term": "SAMPLE_MSG_TRANSMISSION_STATE"}},
             status=DiscoveryStatus.AMBIGUOUS.value,
         )
         result = document["result"]
-        self.assertEqual(
-            sorted(scope["snapshot_label"] for scope in result["candidate_scopes"]),
-            ["SAMPLE_SNAP_BASE", "SAMPLE_SNAP_REVISED"],
-        )
-        # That contract's Section 4.3: no discovery template executed.
-        self.assertEqual(result["evidence_bundle"]["template_name"], "TPL_SNAPSHOT_CANDIDATES_V1")
-        self.assertEqual(result["evidence_bundle"]["registry_digest"], "")
+        self.assertEqual([scope["snapshot_label"] for scope in result["candidate_scopes"]], ["SAMPLE_SNAP_BASE"])
+        # That contract's Section 4.3 at `0.4.0`: both candidate scopes searched.
+        search = result["evidence_bundle"]["scope_search"]
+        self.assertTrue(search["searched"])
+        self.assertEqual(len(search["scopes"]), 2)
+        self.assertNotEqual(result["evidence_bundle"]["registry_digest"], "")
 
     def test_wf_021_dx_014_is_a_result_and_never_a_400(self):
         """An unknown enumeration value looks structural and is not, so a
@@ -412,7 +411,7 @@ class TheSurfaceProperties(WorkflowCase):
         # that, by giving the parity tests a home with no optional import.
         self.assertEqual(
             document["contracts"],
-            {"api-v0.1": "0.2.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.3.1"},
+            {"api-v0.1": "0.2.0", "mvp-v0.1": "0.6.1", "entity-discovery-v0.1": "0.4.0"},
         )
         self.assertIs(document["adapter_configured"], False)
 

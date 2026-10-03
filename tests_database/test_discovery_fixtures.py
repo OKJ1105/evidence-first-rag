@@ -107,7 +107,7 @@ class FixtureCase(unittest.TestCase):
     def assert_evidence(self, result, database):
         bundle = result.evidence_bundle
         self.assertEqual(bundle.contract_identifier, "entity-discovery-v0.1")
-        self.assertEqual(bundle.contract_version, "0.3.1")
+        self.assertEqual(bundle.contract_version, "0.4.0")
         self.assertEqual(bundle.runtime_contract_identifier, "mvp-v0.1")
         self.assertEqual(bundle.route, "entity_discovery")
         self.assertEqual(bundle.collation, "C")
@@ -229,13 +229,30 @@ class ScopeAndRequest(FixtureCase):
         self.assertEqual(result.evidence_bundle.template_name, "TPL_SNAPSHOT_CANDIDATES_V1")
         self.assertEqual(result.evidence_bundle.registry_digest, "")
 
-    def test_dx_011_an_omitted_snapshot_label_is_ambiguous_and_executes_no_discovery_template(self):
-        arguments = {k: v for k, v in POWERTRAIN.items() if k != "snapshot_label"} | {"entity_kind": "message", "term": "SAMPLE_MSG_ENGINE_STATUS"}
+    def test_dx_011_an_omitted_snapshot_label_lists_only_where_the_term_matched(self):
+        # `0.4.0`: SAMPLE_MSG_TRANSMISSION_STATE is approved in SAMPLE_SNAP_BASE
+        # and not in SAMPLE_SNAP_REVISED, so of the two candidate scopes only
+        # one is listed, and nothing is resolved.
+        arguments = {k: v for k, v in POWERTRAIN.items() if k != "snapshot_label"} | {"entity_kind": "message", "term": "SAMPLE_MSG_TRANSMISSION_STATE"}
         result = self.answer(arguments)
         self.assertIs(result.status, DiscoveryStatus.AMBIGUOUS)
-        self.assertEqual({s.snapshot_label for s in result.candidate_scopes}, {"SAMPLE_SNAP_BASE", "SAMPLE_SNAP_REVISED"})
+        self.assertEqual([s.snapshot_label for s in result.candidate_scopes], ["SAMPLE_SNAP_BASE"])
+        self.assertIsNone(result.resolved)
+        search = result.evidence_bundle.scope_search
+        self.assertTrue(search.searched)
+        self.assertEqual(
+            {entry.scope.snapshot_label: entry.matched for entry in search.scopes},
+            {"SAMPLE_SNAP_BASE": True, "SAMPLE_SNAP_REVISED": False},
+        )
         self.assertEqual(result.evidence_bundle.template_name, "TPL_SNAPSHOT_CANDIDATES_V1")
-        self.assertEqual(result.evidence_bundle.registry_digest, "")
+        self.assertNotEqual(result.evidence_bundle.registry_digest, "")
+
+    def test_dx_025_a_term_matching_in_no_candidate_scope_is_not_found(self):
+        arguments = {k: v for k, v in POWERTRAIN.items() if k != "snapshot_label"} | {"entity_kind": "message", "term": "SAMPLE_MSG_ABSENT"}
+        result = self.answer(arguments)
+        self.assertIs(result.status, DiscoveryStatus.NOT_FOUND)
+        self.assertEqual(len(result.evidence_bundle.scope_search.scopes), 2)
+        self.assertFalse(any(entry.matched for entry in result.evidence_bundle.scope_search.scopes))
 
     def test_dx_012_an_empty_term_and_an_over_long_term_open_no_connection(self):
         for term in ("   ", "a" * 201):
