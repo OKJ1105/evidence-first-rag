@@ -223,6 +223,20 @@ def dp014_image(az, group, app, commit):
     return passed, f"tag {tag or '(none)'}, acrUseManagedIdentityCreds={managed}"
 
 
+def dp021_runtime(az, group, app):
+    """`deploy-v0.1` `0.7.0`: the command the app runs ends with uvicorn's
+    `--no-access-log` (#274), and the app is always on (Section 4.1).
+
+    Read off the platform's configuration rather than the template, so a
+    setting changed outside the deploy shows here.
+    """
+    configuration = az("webapp", "config", "show", "--resource-group", group, "--name", app)
+    command = (configuration.get("appCommandLine") or "").strip()
+    always_on = configuration.get("alwaysOn")
+    passed = command.endswith("--no-access-log") and always_on is True
+    return passed, f"command ends with --no-access-log: {command.endswith('--no-access-log')}, alwaysOn={always_on}"
+
+
 def dp003_settings(az, group, surface, relay):
     """Neither app holds the other's credential (`DP-003`, the settings half)."""
     surface_names = _settings(az, group, surface)
@@ -244,6 +258,8 @@ def run(az, group, registry, surface, relay, deploy_identity, commit):
         "DP-014 surface image": (dp014_image, az, group, surface, commit),
         "DP-014 relay image": (dp014_image, az, group, relay, commit),
         "DP-003 settings": (dp003_settings, az, group, surface, relay),
+        "DP-021 surface runtime": (dp021_runtime, az, group, surface),
+        "DP-021 relay runtime": (dp021_runtime, az, group, relay),
     }
     results = {}
     for name, (case, *arguments) in cases.items():

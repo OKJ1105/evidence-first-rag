@@ -441,6 +441,21 @@ class TheCorsOrigin(unittest.TestCase):
         self.assertIn('--origin "$CORS_ORIGIN"', step("Run the deployed checks"))
 
 
+class TheRunnerAddress(unittest.TestCase):
+    """`DP-020`: the runner's address is masked before anything could print it,
+    and reaches the check through the environment, never a command line."""
+
+    def test_masked_and_passed_in_the_environment(self):
+        checks = step("Run the deployed checks")
+        fetched = checks.index('RUNNER_ADDRESS="$(curl')
+        masked = checks.index('echo "::add-mask::$RUNNER_ADDRESS"')
+        run = checks.index("python -m evidence_first_rag.deploy.log_checks")
+        self.assertLess(fetched, masked)
+        self.assertLess(masked, run)
+        self.assertNotIn("--address", checks)
+        self.assertNotIn('"$RUNNER_ADDRESS" \\', checks)
+
+
 class TheSecrets(unittest.TestCase):
     """DP-015: three secrets, written once, never printed."""
 

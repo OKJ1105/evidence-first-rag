@@ -45,8 +45,8 @@ def good_state():
             },
         },
         "image": {
-            "surface": {"linuxFxVersion": f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:{COMMIT}", "acrUseManagedIdentityCreds": True},
-            "relay": {"linuxFxVersion": f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:{COMMIT}", "acrUseManagedIdentityCreds": True},
+            "surface": {"linuxFxVersion": f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:{COMMIT}", "acrUseManagedIdentityCreds": True, "appCommandLine": "uvicorn --factory evidence_first_rag.x:build --port 8000 --no-access-log", "alwaysOn": True},
+            "relay": {"linuxFxVersion": f"DOCKER|{LOGIN_SERVER}/evidence-first-rag:{COMMIT}", "acrUseManagedIdentityCreds": True, "appCommandLine": "uvicorn --factory evidence_first_rag.x:build --port 8000 --no-access-log", "alwaysOn": True},
         },
     }
 
@@ -160,6 +160,25 @@ class EachDeviationFails(unittest.TestCase):
 
     def test_relay_holding_a_database_credential(self):
         self.failing(lambda s: s["settings"]["relay"].update(MVP_RUNTIME_PASSWORD=vault_reference("mvp-runtime-password")), "DP-003 settings")
+
+
+class TheRuntime(unittest.TestCase):
+    """`DP-021`: the access log off and the app always on, read off the platform."""
+
+    def failing(self, app, **changes):
+        state = copy.deepcopy(good_state())
+        state["image"][app].update(changes)
+        outcome = results(state)
+        self.assertFalse(outcome[f"DP-021 {app} runtime"]["passed"], outcome)
+
+    def test_an_access_log_left_on_fails(self):
+        self.failing("relay", appCommandLine="uvicorn --factory evidence_first_rag.x:build --port 8000")
+        self.failing("surface", appCommandLine="uvicorn --no-access-log --port 8000")
+        self.failing("surface", appCommandLine=None)
+
+    def test_an_app_not_always_on_fails(self):
+        self.failing("relay", alwaysOn=False)
+        self.failing("surface", alwaysOn=None)
 
 
 class AFaultInOneCase(unittest.TestCase):

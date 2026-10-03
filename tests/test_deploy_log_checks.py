@@ -237,5 +237,51 @@ class TheRequests(unittest.TestCase):
         self.assertTrue(first.startswith("SAMPLE_"))
 
 
+ADDRESS = "198.51.100.23"
+
+
+class TheRunnerAddress(unittest.TestCase):
+    """`DP-020`: the runner's own address in no log file, outside the
+    management site's traces, and never in the detail."""
+
+    def check(self, surface_files, relay_files=None, address=ADDRESS):
+        logs = {"surface-app": zip_of(surface_files), "relay-app": zip_of(relay_files or {"LogFiles/a_docker.log": "x"})}
+        passed, detail = log_checks.dp020(lambda app: logs[app], "surface-app", "relay-app", address)
+        self.assertNotIn(ADDRESS, detail)
+        return passed, detail
+
+    def test_absent_everywhere_passes(self):
+        passed, detail = self.check({"LogFiles/a_docker.log": "a line"})
+        self.assertTrue(passed, detail)
+        self.assertIn("HTTP log files in the download: none", detail)
+
+    def test_in_a_container_log_or_an_http_log_fails(self):
+        for name in ("LogFiles/a_default_docker.log", "LogFiles/http/RawLogs/a.log"):
+            passed, detail = self.check({name: f"GET / {ADDRESS}:51234"})
+            self.assertFalse(passed, name)
+            self.assertIn(name, detail)
+
+    def test_an_http_log_without_it_passes_and_is_named(self):
+        passed, detail = self.check({"LogFiles/http/RawLogs/a.log": "GET / 200"})
+        self.assertTrue(passed, detail)
+        self.assertIn("LogFiles/http/RawLogs/a.log", detail)
+
+    def test_the_management_site_traces_are_reported_apart(self):
+        passed, detail = self.check({"LogFiles/kudu/trace/a.xml": f"<ip>{ADDRESS}</ip>"})
+        self.assertTrue(passed, detail)
+        self.assertIn("'surface-app': 1", detail)
+
+    def test_no_address_given_fails(self):
+        self.assertFalse(self.check({"LogFiles/a.log": "x"}, address="")[0])
+
+    def test_something_that_is_not_an_address_fails(self):
+        # #306 N2: a third party's answer that is not an address would be in
+        # no file, and the case would pass having looked for nothing.
+        for given in ("<html>rate limited</html>", "198.51.100", "not-an-address"):
+            passed, detail = self.check({"LogFiles/a.log": "x"}, address=given)
+            self.assertFalse(passed, given)
+            self.assertNotIn(given, detail)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
