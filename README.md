@@ -155,3 +155,7 @@ holding `SAMPLE_*` fixtures. Set `POSTGRES_PASSWORD`,
 - Implement one reviewable behavior slice per pull request, with its contract and fixtures reviewed before its code.
 
 Detailed contributor and agent constraints are in [AGENTS.md](AGENTS.md).
+
+## License
+
+All rights reserved: the repository is published to be read, and no license to use it is granted. See [LICENSE](LICENSE). Third-party licenses are recorded in [docs/third-party-licenses.md](docs/third-party-licenses.md).

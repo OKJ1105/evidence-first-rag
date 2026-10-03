@@ -1,0 +1,21 @@
+Copyright (c) 2026 Jun Okaniwa. All rights reserved.
+
+This repository is published so that its contents can be read. It is not open
+source.
+
+No license is granted, expressly or by implication, to use, copy, modify,
+merge, publish, distribute, sublicense or sell any part of it, or to use any
+part of it to provide a product or a service, without the prior written
+permission of the copyright holder.
+
+The only exception is what the GitHub Terms of Service grant to every user of
+a public repository on GitHub: viewing it, and forking it within GitHub.
+
+Third-party components keep their own licenses. Those this repository depends
+on are listed in docs/third-party-licenses.md.
+
+THE CONTENTS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE CONTENTS OR THEIR USE.
