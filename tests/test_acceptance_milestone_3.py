@@ -32,7 +32,6 @@ import unittest
 from evidence_first_rag.discovery import METHOD_IDENTIFIER, CaseOutcome, compute, per_class
 from evidence_first_rag.discovery.evaluation import (
     REGISTERED_AGAINST_DIGEST,
-    REGISTERED_AT,
     REGISTERED_SET,
     SAMPLE,
     THRESHOLDS,
@@ -49,6 +48,13 @@ ARTIFACT = (
 #: timestamp out -- each is preceded by a digit, so neither begins a word --
 #: and a lower-case digest is matched but carries no upper-case letter, so
 #: the check below passes over it.
+#: The run of record judged the `0.3.1` registration. `0.4.0` re-registered
+#: it under Section 4.10 rule 8 (#314): a later instant, and EV-SCOPE-5's
+#: term. The run is read against what it was judged by, so these two record
+#: the `0.3.1` registration where it differs from the current one.
+REGISTERED_AT_0_3_1 = "2026-09-13T15:55:00Z"
+ARGUMENTS_AT_0_3_1 = {"EV-SCOPE-5": {"term": "temperature reading"}}
+
 NAME = re.compile(r"\b[A-Za-z][A-Za-z0-9_.\-]*")
 
 #: How far a recomputed mean may sit from the reported one, in units in the
@@ -147,7 +153,8 @@ class TheCommittedRunIsTheRegisteredSet(unittest.TestCase):
         # request would pass a name comparison. This compares the question.
         for record, case in zip(self.document["cases"], REGISTERED_SET):
             with self.subTest(case=case.identifier):
-                self.assertEqual(record["request"], dict(case.arguments))
+                registered = dict(case.arguments) | ARGUMENTS_AT_0_3_1.get(case.identifier, {})
+                self.assertEqual(record["request"], registered)
                 self.assertEqual(record["query_class"], case.query_class)
                 self.assertEqual(record["expected"], {
                     "outcome": case.expected_outcome,
@@ -163,8 +170,8 @@ class TheCommittedRunIsTheRegisteredSet(unittest.TestCase):
 
     def test_the_registration_precedes_the_run(self):
         # Charter Section 9, and the reason the artifact carries both.
-        self.assertEqual(self.document["judgement"]["registered_at"], REGISTERED_AT)
-        self.assertLess(REGISTERED_AT, self.document["started_at"])
+        self.assertEqual(self.document["judgement"]["registered_at"], REGISTERED_AT_0_3_1)
+        self.assertLess(REGISTERED_AT_0_3_1, self.document["started_at"])
 
     def test_it_was_judged_by_the_registered_bars(self):
         self.assertEqual(

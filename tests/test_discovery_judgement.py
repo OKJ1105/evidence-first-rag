@@ -21,8 +21,8 @@ from evidence_first_rag.discovery.evaluation import (
 )
 
 DIGEST = REGISTERED_AGAINST_DIGEST
-AFTER = "2026-09-14T00:00:00Z"
-BEFORE = "2026-09-13T00:00:00Z"
+AFTER = "2026-10-04T00:00:00Z"
+BEFORE = "2026-10-02T00:00:00Z"
 
 OTHER = MessageReference(
     scope=SnapshotScope(

@@ -284,13 +284,10 @@ class TheRegisteredSet(unittest.TestCase):
         self.assertEqual(REGISTERED_AT, registered_at.group(1))
         self.assertEqual(REGISTRATION_CONTRACT_VERSION, version.group(1))
         self.assertEqual(REGISTERED_AGAINST_DIGEST, digest.group(1))
-        # The registration records the version it landed at. `0.4.0` (#314)
-        # moved the contract past it, as mvp-v0.1's thresholds record a past
-        # version, so the registration is never later than the document.
-        def parts(version):
-            return tuple(int(part) for part in version.split("."))
-
-        self.assertLessEqual(parts(REGISTRATION_CONTRACT_VERSION), parts(CONTRACT_VERSION))
+        # The registration landed at this version and the document is still
+        # there: unlike mvp-v0.1's thresholds, which record a past version,
+        # nothing has moved past this one yet.
+        self.assertEqual(REGISTRATION_CONTRACT_VERSION, CONTRACT_VERSION)
 
     def test_the_section_8_3_heading_carries_the_registered_instant(self):
         self.assertIn(f"registered {REGISTERED_AT}", section_8_3().splitlines()[0])

@@ -207,10 +207,12 @@ def authoring_failures(cases) -> list[str]:
 # Registered as a minor version of the contract, on the repository owner's
 # recorded decision (#152). Charter Section 9 requires a numeric adoption
 # threshold to be registered before the run it judges: `REGISTERED_AT` is that
-# instant, and no run over this set had happened when it was written.
+# instant, and no run over this set had happened when it was written. `0.4.0`
+# re-registered it under rule 8 with EV-SCOPE-5's term (#314); the Milestone 3
+# run of record judged `0.3.1`.
 
-REGISTERED_AT = "2026-09-13T15:55:00Z"
-REGISTRATION_CONTRACT_VERSION = "0.3.1"
+REGISTERED_AT = "2026-10-03T08:55:00Z"
+REGISTRATION_CONTRACT_VERSION = "0.4.0"
 
 # Section 8.3 item 2: the registry state the set was authored against. Section
 # 4.10 rule 8 makes this how a registry change that alters a registered case's
@@ -643,8 +645,9 @@ REGISTERED_SET: tuple[EvaluationCase, ...] = (
             _signal(_PT_BASE, _TRANSMISSION_STATE, "SAMPLE_SIG_TEMPERATURE"),
         ), target_route=Route.SIGNAL_FACTS),
 
-    # Q-SCOPE: one scope dimension absent, so mvp-v0.1 Section 4.2 answers
-    # `ambiguous` and no discovery template executes. EV-SCOPE-3 omits
+    # Q-SCOPE: one scope dimension absent. Since `0.4.0` each candidate scope is
+    # searched (Section 4.3), and every term below is found in at least one, so
+    # each stays `ambiguous`; EV-SCOPE-5 was re-registered for that (#314). EV-SCOPE-3 omits
     # snapshot_label where the remaining scope holds exactly one snapshot --
     # FX-113's rule that one candidate is still ambiguous. EV-SCOPE-4 omits
     # revision_label, so the class is not a test of one dimension.
@@ -676,7 +679,7 @@ REGISTERED_SET: tuple[EvaluationCase, ...] = (
         identifier="EV-SCOPE-5", query_class="Q-SCOPE",
         arguments={"project_code": _ALPHA, "revision_label": "SAMPLE_REV_A",
                    "network_name": "SAMPLE_NET_POWERTRAIN",
-                   "entity_kind": "signal", "term": "temperature reading"},
+                   "entity_kind": "signal", "term": "clutch"},
         expected_outcome="ambiguous"),
 
     # Q-NOMATCH: a name reserved as absent in fixtures/README.md. Each carries
