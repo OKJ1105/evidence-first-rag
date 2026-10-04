@@ -337,6 +337,50 @@ class StepSevenDispatches(unittest.TestCase):
         self.assertEqual(fact_templates_ran(a), ["TPL_SIGNAL_FACTS_V1"])
         self.assertEqual(fact_templates_ran(b), ["TPL_SIGNAL_MAPPING_V1"])
 
+class AnIncompleteScopeIsRefusedNotFaulted(unittest.TestCase):
+    """#318: a selection whose scope is incomplete. Its step-2 re-run takes
+    the Section 4.3 incomplete-scope path, which forms no candidate list, so
+    the selection is this contract's `invalid_request` naming the re-run --
+    `DX-023`'s refusal -- and never a fault."""
+
+    UNSCOPED = {k: v for k, v in DISCOVERY.items() if k != "snapshot_label"}
+    SELECT = {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"}
+
+    def assert_refused(self, result, outcome):
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        entry = [l for l in result.limitations if l.kind is DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST]
+        self.assertEqual(len(entry), 1)
+        self.assertIn(f"'{outcome}'", entry[0].detail)
+        self.assertIsNone(result.evidence_bundle.scope_search)
+
+    def test_a_rerun_that_lists_scopes(self):
+        db, result = select(self.UNSCOPED | self.SELECT)
+        self.assert_refused(result, "ambiguous")
+        self.assertEqual(fact_templates_ran(db), [])
+
+    def test_a_rerun_found_in_no_scope(self):
+        db, result = select(self.UNSCOPED | self.SELECT, exact=(), lexical=())
+        self.assert_refused(result, "not_found")
+        self.assertEqual(fact_templates_ran(db), [])
+
+    def test_a_rerun_above_the_bound_that_searched_nothing(self):
+        from evidence_first_rag.discovery import service
+
+        original = service.SCOPE_SEARCH_BOUND
+        service.SCOPE_SEARCH_BOUND = 0
+        try:
+            db, result = select(self.UNSCOPED | self.SELECT)
+        finally:
+            service.SCOPE_SEARCH_BOUND = original
+        self.assert_refused(result, "ambiguous")
+        self.assertEqual(result.evidence_bundle.registry_digest, "")
+        self.assertEqual(fact_templates_ran(db), [])
+
+    def test_a_rerun_that_is_a_coverage_gap(self):
+        db, result = select(DISCOVERY | self.SELECT, candidates=())
+        self.assert_refused(result, "coverage_gap")
+        self.assertEqual(fact_templates_ran(db), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

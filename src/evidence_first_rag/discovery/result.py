@@ -97,12 +97,16 @@ class DiscoveryResult:
             # And a refusal is internally consistent: either it opened
             # nothing and executed nothing, or it opened a connection and
             # reports the re-run it made (Section 7, as #88 amended it).
+            # A re-run that executed no discovery template -- a coverage
+            # gap, or an incomplete scope above the Section 4.3 bound --
+            # read no registry state, so it reports its template and an
+            # empty digest (#318); one that did reports both.
             executed = (bundle.template_name != "", bundle.registry_digest != "")
             if bundle.read_only_safeguards.connection_opened:
-                if not all(executed):
+                if not executed[0]:
                     raise ValueError(
                         f"a {SELECTION_ROUTE} outcome that opened a connection reports the re-run's"
-                        f" template and registry state (Section 7)"
+                        f" template (Section 7)"
                     )
             elif any(executed):
                 raise ValueError("nothing may be recorded as executed when no database was opened")

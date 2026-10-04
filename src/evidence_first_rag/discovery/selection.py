@@ -283,6 +283,11 @@ class Selection:
                 candidate_set_id=validated.candidate_set_id,
                 selected_rank=str(validated.selected_rank),
                 target_route=validated.target_route.value,
+                # #318: an incomplete-scope re-run carries the Section 4.3
+                # search record. Section 7's keys for a refused selection do
+                # not include it; the re-run's outcome is named by the
+                # rerun_produced_no_list limitation instead.
+                scope_search=None,
             ),
             source_trace=rerun.source_trace,
             limitations=tuple(limitations),
