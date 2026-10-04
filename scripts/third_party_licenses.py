@@ -39,7 +39,9 @@ def rows(distributions):
     found = {}
     for distribution in distributions:
         metadata = distribution.metadata
-        name = metadata["Name"].lower()
+        # A distribution whose metadata carries no `Name` is listed under its
+        # path rather than stopping the run (#311 O1).
+        name = (metadata.get("Name") or str(getattr(distribution, "_path", "(unnamed)"))).lower()
         if name not in SKIPPED:
             found[name] = (distribution.version, declared_license(metadata))
     return [f"| `{name}` | {version} | {license} |" for name, (version, license) in sorted(found.items())]

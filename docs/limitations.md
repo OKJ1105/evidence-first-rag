@@ -5,7 +5,7 @@ What this repository and its deployed demo do not do, or do not establish. Proje
 ## The data
 
 - **Every fact comes from synthetic fixtures.** Every identifier is `SAMPLE_*`. There is no real DBC, ARXML or production data, and no ingestion path for one: the initial implementation starts from normalized synthetic fixtures, and Section 11 keeps every fixture synthetic ([Charter](PROJECT_CHARTER.md); [`fixtures/`](../fixtures/)).
-- **The registry is small and hand-curated.** It holds four snapshots, seven messages, thirteen signals and three mappings. What the runtime and discovery show at this scale says nothing about their behaviour on a real network database.
+- **The data is small and hand-curated.** The fixtures (`fixtures/*.jsonl`) hold four snapshots, seven messages, thirteen signals and three mappings, and the approved registry (`fixtures/registry/`) holds seventeen entities and six aliases. What the runtime and discovery show at this scale says nothing about their behaviour on a real network database.
 
 ## What the evaluations establish
 

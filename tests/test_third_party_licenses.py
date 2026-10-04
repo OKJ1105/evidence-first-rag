@@ -38,6 +38,13 @@ class TheRows(unittest.TestCase):
         rows = licenses.rows([Distribution(name, "1", License_Expression="MIT") for name in ("zeta", "pip", "Alpha", "setuptools", "evidence-first-rag")])
         self.assertEqual(rows, ["| `alpha` | 1 | MIT |", "| `zeta` | 1 | MIT |"])
 
+    def test_a_distribution_with_no_name_is_listed_under_its_path_not_fatal(self):
+        # #311 O1: one broken install must not stop the table.
+        unnamed = Distribution("x", "5", License_Expression="MIT")
+        del unnamed.metadata["Name"]
+        unnamed._path = "/site/broken-5.dist-info"
+        self.assertEqual(licenses.rows([unnamed]), ["| `/site/broken-5.dist-info` | 5 | MIT |"])
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
