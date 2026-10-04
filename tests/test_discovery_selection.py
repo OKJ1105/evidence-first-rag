@@ -337,6 +337,40 @@ class StepSevenDispatches(unittest.TestCase):
         self.assertEqual(fact_templates_ran(a), ["TPL_SIGNAL_FACTS_V1"])
         self.assertEqual(fact_templates_ran(b), ["TPL_SIGNAL_MAPPING_V1"])
 
+class AnIncompleteScopeIsRefusedNotFaulted(unittest.TestCase):
+    """#318: a selection whose scope is incomplete is refused at step 1 --
+    Section 4.8's argument table requires every scope dimension, and a
+    candidate set can only come from a complete scope -- so it opens no
+    connection and never reaches the step-2 re-run."""
+
+    UNSCOPED = {k: v for k, v in DISCOVERY.items() if k != "snapshot_label"}
+    SELECT = {"candidate_set_id": "0" * 64, "selected_rank": "1", "target_route": "signal_facts"}
+
+    def test_an_incomplete_scope_is_refused_before_any_connection(self):
+        db, result = select(self.UNSCOPED | self.SELECT)
+        bundle = result.evidence_bundle
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        self.assertEqual(bundle.route, "entity_selection")
+        self.assertEqual(db.sessions, 0)
+        self.assertFalse(db.calls)
+        self.assertFalse(bundle.read_only_safeguards.connection_opened)
+        self.assertEqual(bundle.template_name, "")
+        self.assertEqual(bundle.registry_digest, "")
+        self.assertIsNone(bundle.scope_search)
+        for name in ("candidate_set_id", "selected_rank", "target_route"):
+            self.assertEqual(getattr(bundle, name), self.SELECT[name])
+        with self.assertRaises(DiscoveryRefusal) as raised:
+            validate(SelectionRequest(arguments=self.UNSCOPED | self.SELECT))
+        self.assertIn("snapshot_label", raised.exception.detail)
+
+    def test_a_rerun_that_is_a_coverage_gap(self):
+        db, result = select(DISCOVERY | self.SELECT, candidates=())
+        self.assertIs(result.status, DiscoveryStatus.INVALID_REQUEST)
+        entry = [l for l in result.limitations if l.kind is DiscoveryLimitationKind.RERUN_PRODUCED_NO_LIST]
+        self.assertEqual(len(entry), 1)
+        self.assertIn("'coverage_gap'", entry[0].detail)
+        self.assertEqual(fact_templates_ran(db), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

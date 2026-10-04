@@ -118,6 +118,16 @@ def validate(request: SelectionRequest) -> ValidatedSelection:
     discovery = validate_discovery(
         DiscoveryRequest(arguments={k: v for k, v in arguments.items() if k not in SELECTION_ARGUMENTS})
     )
+    # #318: Section 4.8's argument table requires every scope dimension, and
+    # a candidate set can only come from a complete scope. Refused here, so an
+    # incomplete scope never reaches the step-2 re-run or a connection.
+    if not discovery.scope_is_complete:
+        missing_scope = [name for name in SCOPE_DIMENSIONS if name not in discovery.arguments]
+        raise DiscoveryRefusal(
+            DiscoveryStatus.INVALID_REQUEST,
+            f"scope dimension(s) {missing_scope} are missing; {SELECTION_ROUTE!r} requires a complete"
+            f" scope (Section 4.8)",
+        )
     values = {name: _text(name, arguments[name]) for name in SELECTION_ARGUMENTS if name in arguments}
     missing = [name for name in ("candidate_set_id", "selected_rank", "target_route") if name not in values]
     if missing:

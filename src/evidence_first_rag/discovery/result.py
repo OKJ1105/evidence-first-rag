@@ -22,6 +22,7 @@ from .evidence import (
     DiscoveryLimitationKind,
     DiscoveryTrace,
 )
+from .request import CANDIDATES_TEMPLATE
 from .status import EXECUTES_NO_DISCOVERY_TEMPLATE, OPENS_NO_CONNECTION, DiscoveryStatus
 
 __all__ = ["DISCOVERY_ROUTE", "SELECTION_ROUTE", "K", "DiscoveryResult"]
@@ -97,9 +98,15 @@ class DiscoveryResult:
             # And a refusal is internally consistent: either it opened
             # nothing and executed nothing, or it opened a connection and
             # reports the re-run it made (Section 7, as #88 amended it).
+            # The one re-run that executes no discovery template is a
+            # coverage gap: it ran only the candidates query and read no
+            # registry state, so it reports that template and an empty
+            # digest (#318). Every other re-run reports both. An incomplete
+            # scope never re-runs: step 1 refuses it.
             executed = (bundle.template_name != "", bundle.registry_digest != "")
             if bundle.read_only_safeguards.connection_opened:
-                if not all(executed):
+                coverage_gap_rerun = bundle.template_name == CANDIDATES_TEMPLATE and not executed[1]
+                if not (all(executed) or coverage_gap_rerun):
                     raise ValueError(
                         f"a {SELECTION_ROUTE} outcome that opened a connection reports the re-run's"
                         f" template and registry state (Section 7)"
