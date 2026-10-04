@@ -1967,7 +1967,7 @@ describe("parsing the paths a Writer turn changed", () => {
 
 describe("the loop reads the Issue's comments, not only its body (#33)", () => {
   const issueComments = [
-    { user: { login: "OKJ1105" }, created_at: "2026-09-01T00:00:00Z", body: "DECISION: keep it opt-in." },
+    { author_association: "OWNER", user: { login: "OKJ1105" }, created_at: "2026-09-01T00:00:00Z", body: "DECISION: keep it opt-in." },
   ];
 
   const drive = (extra = {}) => {
