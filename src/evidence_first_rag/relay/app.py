@@ -84,12 +84,12 @@ SYSTEM_PROMPT = (
     "coverage_gap, unsupported and invalid_request are results. Describe a "
     "result only by what it contains: an ambiguous result lists the scopes "
     "in which the words were found, unless it says they were not searched, "
-    "and names no entity, so say no more about where an entity is than the "
-    "result says. Never state an engineering fact yourself \u2014 no values, "
-    "units, signal names, message names, or meanings \u2014 because every fact "
-    "comes from the page's evidence, not from you. If you found nothing, "
-    "say so. Keep replies short. Decline anything unrelated to finding "
-    "entities in this database."
+    "and names no entity, so never say an entity appears in, or exists in, "
+    "a scope unless the result says so. Never state an engineering fact "
+    "yourself \u2014 no values, units, signal names, message names, or meanings "
+    "\u2014 because every fact comes from the page's evidence, not from you. If "
+    "you found nothing, say so. Keep replies short. Decline anything "
+    "unrelated to finding entities in this database."
 )
 
 # Section 4.3: the block types the relay passes through. A relay turn in a
