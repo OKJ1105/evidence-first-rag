@@ -98,9 +98,9 @@ class DiscoveryResult:
             # nothing and executed nothing, or it opened a connection and
             # reports the re-run it made (Section 7, as #88 amended it).
             # A re-run that executed no discovery template -- a coverage
-            # gap, or an incomplete scope above the Section 4.3 bound --
-            # read no registry state, so it reports its template and an
-            # empty digest (#318); one that did reports both.
+            # gap -- read no registry state, so it reports its template and
+            # an empty digest (#318); one that did reports both. An
+            # incomplete scope never re-runs: step 1 refuses it.
             executed = (bundle.template_name != "", bundle.registry_digest != "")
             if bundle.read_only_safeguards.connection_opened:
                 if not executed[0]:

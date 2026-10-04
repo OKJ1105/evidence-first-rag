@@ -118,6 +118,16 @@ def validate(request: SelectionRequest) -> ValidatedSelection:
     discovery = validate_discovery(
         DiscoveryRequest(arguments={k: v for k, v in arguments.items() if k not in SELECTION_ARGUMENTS})
     )
+    # #318: Section 4.8's argument table requires every scope dimension, and
+    # a candidate set can only come from a complete scope. Refused here, so an
+    # incomplete scope never reaches the step-2 re-run or a connection.
+    if not discovery.scope_is_complete:
+        missing_scope = [name for name in SCOPE_DIMENSIONS if name not in discovery.arguments]
+        raise DiscoveryRefusal(
+            DiscoveryStatus.INVALID_REQUEST,
+            f"scope dimension(s) {missing_scope} are missing; {SELECTION_ROUTE!r} requires a complete"
+            f" scope (Section 4.8)",
+        )
     values = {name: _text(name, arguments[name]) for name in SELECTION_ARGUMENTS if name in arguments}
     missing = [name for name in ("candidate_set_id", "selected_rank", "target_route") if name not in values]
     if missing:
@@ -283,11 +293,6 @@ class Selection:
                 candidate_set_id=validated.candidate_set_id,
                 selected_rank=str(validated.selected_rank),
                 target_route=validated.target_route.value,
-                # #318: an incomplete-scope re-run carries the Section 4.3
-                # search record. Section 7's keys for a refused selection do
-                # not include it; the re-run's outcome is named by the
-                # rerun_produced_no_list limitation instead.
-                scope_search=None,
             ),
             source_trace=rerun.source_trace,
             limitations=tuple(limitations),
