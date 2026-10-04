@@ -15,6 +15,7 @@ neither.
 """
 
 import importlib.metadata
+import pathlib
 import sys
 
 SKIPPED = {"pip", "setuptools", "evidence-first-rag"}
@@ -39,7 +40,10 @@ def rows(distributions):
     found = {}
     for distribution in distributions:
         metadata = distribution.metadata
-        name = metadata["Name"].lower()
+        # A distribution whose metadata carries no `Name` is listed under its
+        # directory's own name rather than stopping the run (#311 O1). Only the
+        # last path part: the table is committed, and a local path must not be.
+        name = (metadata.get("Name") or pathlib.PurePath(str(getattr(distribution, "_path", "(unnamed)"))).name).lower()
         if name not in SKIPPED:
             found[name] = (distribution.version, declared_license(metadata))
     return [f"| `{name}` | {version} | {license} |" for name, (version, license) in sorted(found.items())]
