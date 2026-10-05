@@ -1,0 +1,50 @@
+{
+  "DP-005 surface redirect": {
+    "passed": true,
+    "detail": "301 to https://app-efr-surface-24mojngklnurs.azurewebsites.net/"
+  },
+  "DP-005 relay redirect": {
+    "passed": true,
+    "detail": "301 to https://app-efr-relay-24mojngklnurs.azurewebsites.net/"
+  },
+  "DP-005 surface foreign origin on /v1/query": {
+    "passed": true,
+    "detail": "https://app-efr-surface-24mojngklnurs.azurewebsites.net/v1/query refused the preflight as method_not_allowed"
+  },
+  "DP-005 surface foreign origin on /v1/ask": {
+    "passed": true,
+    "detail": "https://app-efr-surface-24mojngklnurs.azurewebsites.net/v1/ask refused the preflight as method_not_allowed"
+  },
+  "DP-005 relay foreign origin": {
+    "passed": true,
+    "detail": "https://app-efr-relay-24mojngklnurs.azurewebsites.net/chat refused the preflight as method_not_allowed"
+  },
+  "DP-019 surface registered origin on /v1/query": {
+    "passed": true,
+    "detail": "https://app-efr-surface-24mojngklnurs.azurewebsites.net/v1/query admitted the registered origin's preflight with the four headers"
+  },
+  "DP-019 surface registered origin on /v1/select": {
+    "passed": true,
+    "detail": "https://app-efr-surface-24mojngklnurs.azurewebsites.net/v1/select admitted the registered origin's preflight with the four headers"
+  },
+  "DP-019 relay registered origin": {
+    "passed": true,
+    "detail": "https://app-efr-relay-24mojngklnurs.azurewebsites.net/chat admitted the registered origin's preflight with the four headers"
+  },
+  "DP-005 database TLS": {
+    "passed": true,
+    "detail": "refused for want of TLS (matched 'encryption')"
+  },
+  "DP-010": {
+    "passed": true,
+    "detail": "no Origin: 200; foreign Origin: 403"
+  },
+  "DP-012": {
+    "passed": true,
+    "detail": "200 with 3 blocks and 1 discover_entity calls, 1 answered; block types ['mcp_tool_use', 'mcp_tool_result', 'text']"
+  },
+  "DP-009": {
+    "passed": true,
+    "detail": "statuses [400, 400, 400, 400, 400, 400, 429]"
+  }
+}
