@@ -32,8 +32,9 @@ What this repository and its deployed demo do not do, or do not establish. Proje
   - The platform's management-site traces do hold the address of the deploy job that read them.
   - That the apps saw the deploy job under the address `DP-020` searched for is expected, not verified.
   - What Azure records outside the app's log store cannot be asserted by this repository ([`deploy-v0.1`](contracts/deploy-v0.1.md), Section 4.7).
+- **Observed on the deployed demo, by the owner on 2026-10-05** (relay `0.7.0`, deploy of `0f79e2e`; the owner's screenshots, not committed here): a chat turn whose `discover_entity` call carried no scope value returned `ambiguous`, listing the two snapshots in which the term was found (`scope_search` searched, four candidate scopes). The owner chose one on the page; the page's `/v1/discover` returned `resolved`, and the owner's click sent `/v1/query`, which returned `success` from `TPL_MESSAGE_FACTS_V1`. That path never passes through `/v1/select`.
 - **Not yet observed on the deployed demo:**
-  - a candidate from the chat carried straight into `/v1/select`. Each half is observed (`DP-012`, `WF-003`), but not the two together.
+  - a candidate from the chat's `candidates` list carried into `/v1/select`. Each half is observed (`DP-012`, `WF-003`), but not the two together, and the path above is not this one.
   - the per-address daily limit, the daily ceiling and the conversation limit; each is unit-tested (`RL-011`, `RL-013`, `RL-014`).
   - `model_unavailable`, for a failed or timed-out model call (`RL-015`) and for an unregistered block type (`RL-016`);
   - cold-start latency.
