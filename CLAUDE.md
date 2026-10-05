@@ -17,4 +17,5 @@ Claude Code is the default writer for this repository. These instructions supple
 - Do not merge or approve a pull request.
 - Do not review a change you authored, in whole or in part. The independent review comes from a separate, non-authoring process — normally the Agent Loop — never from the writer session.
 - Do not treat Nimbalyst-local state as the task record. Copy adopted decisions and evidence into GitHub and the applicable repository artifact.
+- Record a decision the owner gives in chat as a neutral English statement: its date, what was decided, and where it applies. Do not quote the chat message itself. This repository is published, and its record should read as a record.
 - Do not install GitHub Apps, enable automated review, change OAuth grants, create or rotate Secrets, or alter Rulesets without explicit repository-owner approval.
