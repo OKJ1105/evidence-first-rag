@@ -44,10 +44,10 @@ The row also requires the recorded human decision C on #169, cited here "with th
 
 | Where | What runs | CI job |
 | --- | --- | --- |
-| `tests/test_api_surface.py` | every `WF-*` against an injected runtime | `repository-checks` (step "Package unit tests"), `adapter-checks` |
+| `tests/test_api_surface.py` | every `WF-*` against an injected runtime | `adapter-checks`, which installs the `api` extra. `repository-checks` installs nothing, so it imports the module and skips these tests. |
 | `tests_database/test_api_workflows.py` | the `WF-*` rows against a real PostgreSQL. The `WF-003` path is `test_the_three_steps_reach_a_fact_carrying_its_selection`. | `database-checks` |
 | `tests_stack/test_workflows.py` | the rows over HTTP against the running local stack (Section 4.7) | `local-stack` |
-| `tests/test_mcp_surface.py`, `tests_stack/test_mcp_rows.py` | `MC-*`, each the `/v1` result as a tool result. `MC-003` is `WF-003` as three tools. | `repository-checks`, `local-stack` |
+| `tests/test_mcp_surface.py`, `tests_stack/test_mcp_rows.py` | `MC-*`, each the `/v1` result as a tool result. `MC-003` is `WF-003` as three tools. | `tests/test_mcp_surface.py` in `adapter-checks` (`mcp` is in the `api` extra; `repository-checks` skips it). `tests_stack/test_mcp_rows.py` in `local-stack`. |
 
 The deployed environment runs the WF and MC rows that need no model, as `deploy-v0.1` Section 4.8's `WF/MC` group. See [the Milestone 5 records](milestone-5/README.md).
 
