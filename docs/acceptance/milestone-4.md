@@ -2,11 +2,11 @@
 
 **Milestone:** 4 — End-to-end workflow and export
 
-**Disposition:** *Pending — the repository owner's to record.*
+**Disposition:** Accepted
 
-**Date:** *set when the owner records the disposition*
+**Date:** 2026-10-07
 
-**Recorded by:** *the repository owner*
+**Recorded by:** the Claude Code writer session, at the repository owner's direction on 2026-10-07. The owner accepted this milestone with the limits stated under "What this record does not claim".
 
 This record collects the evidence for the Milestone 4 acceptance gate in [Project Charter](../PROJECT_CHARTER.md) Section 9. For each gate item it names the evidence that exists and where that evidence runs: an automated assertion over registered inputs, or a recorded human decision. Claude Code, the writer session, drafted it from that evidence. **The disposition is the owner's alone.**
 
