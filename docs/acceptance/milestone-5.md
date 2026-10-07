@@ -2,11 +2,11 @@
 
 **Milestone:** 5 — Azure deployment and learning loop
 
-**Disposition:** *Pending — the repository owner's to record.*
+**Disposition:** Accepted
 
-**Date:** *set when the owner records the disposition*
+**Date:** 2026-10-07
 
-**Recorded by:** *the repository owner*
+**Recorded by:** the Claude Code writer session, at the repository owner's direction on 2026-10-07. The owner accepted this milestone with the limits stated under "What this record does not claim".
 
 This record collects the evidence for the Milestone 5 acceptance gate in [Project Charter](../PROJECT_CHARTER.md) Section 9. For each gate item it names the evidence that exists: a deployed check registered in [`deploy-v0.1`](../contracts/deploy-v0.1.md) Section 8.1, a field of a committed deploy record, or contract text. Where the only evidence is contract text, the record says so. Claude Code, the writer session, drafted this record from that evidence. **The disposition is the owner's alone.**
 
