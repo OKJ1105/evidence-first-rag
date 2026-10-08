@@ -1,153 +1,181 @@
 # Evidence-First RAG Runtime
 
-Evidence-First RAG Runtime is a bounded backend for answering scoped message, signal, and mapping questions over structured engineering data.
+A bounded retrieval backend that answers scoped questions about message, signal and mapping definitions in structured engineering data. **Facts come only from registered, read-only SQL over PostgreSQL**, and each one carries its evidence: the scope, the query template, the bound parameters and its limitations. A language model may help find *which* entry a person means. It never supplies the fact.
 
-The name is deliberate. This is a RAG architecture with the retrieval layer re-grounded: retrieval means executing registered, read-only SQL templates over structured data — never semantic search presented as fact. Augmentation means attaching an inspectable evidence bundle with a source trace and explicit limitations to every result. Generation is constrained rendering that cannot add facts.
+- **Live demo:** <https://junokaniwa.com/demo/>, a chat page on the author's site. It calls this repository's deployment on Azure.
+- **Case study:** <https://junokaniwa.com/case-study/> covers the problem, the design decisions and how they changed, and the evaluation.
 
-The intended product user is an engineer who would otherwise open structured definition files and cross-check them by hand. The core rule is simple: AI may interpret intent and help locate an entity, but authoritative facts must come from approved, read-only queries over structured data.
+All data in this repository is synthetic (`SAMPLE_*`).
 
-## Status
+- [What it does](#what-it-does)
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
+- [Deployment](#deployment)
+- [Evaluation and evidence](#evaluation-and-evidence)
+- [Costs](#costs)
+- [Security](#security)
+- [Limitations](#limitations)
+- [Project documents](#project-documents)
+- [License](#license)
 
-The Project Charter is frozen and the [MVP runtime contract](docs/contracts/mvp-v0.1.md) is `Accepted`, so runtime behavior is specified by reviewed contracts before it is implemented. Implementation of that contract has started.
+## What it does
 
-The table below says how much of the contract executes today, section by section. It is here because a repository that describes an architecture without saying how much of it runs is a design document, and the two are hard to tell apart from the outside. Every slice that changes what runs updates this table.
+An engineer checking a signal or message definition often opens several structured files and compares them by hand. The same name can appear in two versions of the data with different values. In the synthetic data, `SAMPLE_MSG_ENGINE_STATUS` has a 10 ms cycle time in one snapshot and 20 ms in another. A search that matches the name can return a true value from the wrong version, and nothing in the answer shows it.
 
-- **Contracted** — specified and reviewed. No code.
-- **Types only** — the shape exists and is tested. Nothing executes it yet.
-- **Implemented** — it runs, with the acceptance evidence its contract section requires.
+This runtime treats the **scope** as part of an entry's identity: project, revision, network and snapshot. It never fills in a "latest" or default scope. When the scope or the entry is unclear, it lists the possibilities and lets the person choose.
 
-| Contract section | Surface | State |
-| --- | --- | --- |
-| 3.4 Platform | PostgreSQL 17, version-controlled DDL applied in lexical order | Implemented |
-| 4.1 Data model | Schema, columns, and uniqueness constraints | Implemented |
-| 4.2 Identity and scope | Canonical message and signal reference types | Types only |
-| 4.2 Identity and scope | Scope resolution, the candidate list, and the `ambiguous` threshold | Implemented |
-| 4.2 Identity and scope | Data-level invariant check over the loaded database | Implemented |
-| 4.3 Database identities | Provisioning and read-only runtime roles | Implemented |
-| 4.4 Template registry | Four fixed SQL templates, safeguards, and limits | Implemented |
-| 4.4 Template registry | The runtime role's five-second statement timeout | Implemented |
-| 4.5 Routes | The three route names, as a closed set | Implemented |
-| 4.5 Routes | Request validation, dispatch, and one entry per asserting relation | Implemented |
-| 4.6 Thin LLM Adapter | Deterministic revalidation of adapter output | Implemented |
-| 4.6 Thin LLM Adapter | The pinned model call and its recorded decoding configuration | Implemented |
-| 4.7 Deterministic baseline | Exact-match resolver over a curated table | Implemented |
-| 4.7 Deterministic baseline | The comparison harness and its pre-registration gate | Implemented |
-| 4.8 Answer rendering | Fixed-template rendering over a normalized result | Implemented |
-| 4.9 Conformance runner | Checks A through E, verdicts, failure classes | Implemented |
-| 4.9 Conformance runner | One JSON artifact per run, and the `D1` comparison rule | Implemented |
-| 4.10 Read-only invariance | State digests and the four refusal assertions | Implemented |
-| 4.11 Fixture serialization | The registered JSON Lines fixture files | Implemented |
-| 4.11 Fixture serialization | The loader that resolves natural keys at load time | Implemented |
-| 5 Outcome coverage | The seven status families, as a closed set | Types only |
-| 5 Outcome coverage | Each status produced by the condition Section 5 names | Implemented |
-| 6 Determinism | `C` collation and repeatable provisioning | Implemented |
-| 6 Determinism | Registered template ordering, tiebreakers, explicit `NULLS LAST` | Implemented |
-| 6 Determinism | The no-normalization rules | Implemented |
-| 7 Evidence obligations | `evidence_bundle`, `source_trace`, `limitations` types | Types only |
-| 7 Evidence obligations | All three assembled on every outcome, negatives included | Implemented |
-| 8.1 Required fixture cases | Structural fixture data for the registered cases | Implemented |
-| 8.1 Required fixture cases | Registered expected results per fixture | Implemented |
-| 8.3 Milestone 2 comparison | The curated request set and the adoption thresholds | Implemented |
+![How a question becomes a fact: you ask; the LLM, through one MCP tool, finds candidates but cannot fetch facts or choose; you choose; fixed read-only SQL on PostgreSQL returns the fact with its source. When nothing matches, the result is "not found", with no guess.](docs/images/request-flow.svg)
 
-[Milestone 3 Entity Discovery Contract v0.1](docs/contracts/entity-discovery-v0.1.md) is `Accepted 2026-09-11`. Its implementation has started, and the same table continues for it:
+**In the demo,** a person asks in their own words. The model can only search for candidates. Here it found the name in two snapshots, and the page lists both and chooses neither:
 
-| Contract section | Surface | State |
-| --- | --- | --- |
-| 4.1 The approved entity registry | Four tables, constraints, the runtime identity's `SELECT` on them (3.3 extension 2) | Implemented |
-| 4.2 Provenance, integrity, refresh | Registry fixtures under `fixtures/registry/`, loaded in the provisioning transaction; the five load-time rules; the data-level check | Implemented |
-| 4.2 The registry digest | Canonical JSON and `registry_digest` over the loaded rows | Implemented |
-| 4.5 Normalization | `normalize()` as the derived surface's tokenizer | Implemented |
-| 4.3 The discovery request | `entity_discovery` validated before any connection; scope as a precondition via the `mvp-v0.1` candidate query | Implemented |
-| 4.4 Registered templates | `TPL_REGISTRY_STATE_V1`, `TPL_DISCOVERY_EXACT_V1`, `TPL_DISCOVERY_LEXICAL_V1`, under `mvp-v0.1` Section 4.4's safeguards | Implemented |
-| 4.5 Match tiers | Tiers 1–4 computed in the registered SQL; `M-LEX-1` exact-then-lexical | Implemented |
-| 4.6–4.7 Candidates and auto-resolution | One entity per candidate, `k` = 10, tier-1-and-2 uniqueness; `candidate_set_id` per Section 4.8 | Implemented |
-| 4.8 The verified selection path | `entity_selection`: re-derivation, the digest check, dispatch to the `mvp-v0.1` route with the `selection` record | Implemented |
-| 5, 7 Outcomes and evidence (discovery) | Seven statuses, never `success`; both contracts' identities, alias provenance, the required limitations | Implemented |
-| 4.9 Retrieval methods | `M-LEX-1`, exact then lexical, recorded on every result | Implemented |
-| 4.10 The evaluation set | The case type, the eight classes, the authoring rules a program can check, and the run artifact | Implemented |
-| 4.10 The registered cases | The set itself, and `N` | Registered — forty cases, five per class, Section 8.3 at `0.3.1` |
-| 4.11 Metric definitions | `recall_at_k`, `mrr`, `false_resolution`, `correct_abstention`, `over_abstention`, `task_completion`, `latency`, per class and over the set | Implemented |
-| 8.3 Adoption thresholds | The numbers each adopted method must meet | Registered — per class, Section 8.3 at `0.3.1`; the runner judges against them |
+![Screenshot of the demo. The question asks the cycle time of SAMPLE_MSG_ENGINE_STATUS. The model's reply sits under "The model's words", marked as not evidence. A Lookups panel shows "Lookup: scope not specified" and two candidate scopes, SAMPLE_SNAP_BASE and SAMPLE_SNAP_REVISED, each with a "Use this scope" button and neither selected.](docs/images/demo-model-words-and-scopes.png)
 
-The four registered SQL templates are inspectable, the three routes execute them read-only as the runtime identity, and the conformance runner judges all sixteen registered fixture cases against a committed expected result and writes one artifact carrying its verdict. Provisioning, the data-level invariant check and the conformance run all open a database, and they run in CI against a service container rather than a local install, so a determinism claim is something anyone can re-run.
+After the person chooses a scope and then the message, the fact comes from the database. It appears under its own heading, with the route, template, bound parameters and read-only safeguards beside it:
 
-The adapter is built, its refusals are registered as fixture cases, and **the Section 4.7 comparison has been run**: the curated request set and the adoption thresholds contract Section 9 once left open were registered in Section 8.3 at `0.6.0`, and the run judged against them is committed at [`docs/acceptance/milestone-2/comparison.json`](docs/acceptance/milestone-2/comparison.json). Charter Section 9 requires a numeric threshold to be registered before the run it judges, so the harness refuses to produce a verdict without thresholds, and refuses again when the thresholds carry a registration timestamp that is not earlier than the run. Adopting the adapter remains a recorded human decision at the Milestone 2 gate: the [Milestone 2 acceptance record](docs/acceptance/milestone-2.md) collects the evidence for each gate item, and its disposition line is the repository owner's.
+![Screenshot of the answer. Answered, with its returned values: frame_identifier 256, message_key SAMPLE_MSG_ENGINE_STATUS, payload_byte_length 8, transmit_mode SAMPLE_MODE_CYCLIC and transmit_period_ms 10. The open Evidence panel lists the result contract api-v0.1 0.2.0, the bound parameters, contract mvp-v0.1 0.6.1, the read-only safeguards, the resolved scope SAMPLE_SNAP_BASE, the route message_facts, one row returned, and the template TPL_MESSAGE_FACTS_V1 version 2.](docs/images/demo-fact-from-database.png)
 
-Discovery is built and **the Section 4.10 evaluation run has happened**: the forty labeled cases and the per-class adoption thresholds are registered in Section 8.3 at `0.3.1`, and the run judged against them is committed at [`docs/acceptance/milestone-3/discovery-run.json`](docs/acceptance/milestone-3/discovery-run.json). The runner refuses to judge a run whose thresholds are not registered before it, whose registry is not the one the cases were authored against, or whose cases are not the registered forty, and exits non-zero when a run was not judged. Adopting `M-LEX-1` remains a recorded human decision at the Milestone 3 gate: the [Milestone 3 acceptance record](docs/acceptance/milestone-3.md) collects the evidence for each gate item, states what the run does not establish, and its disposition line is the repository owner's.
+*Screenshots recorded from the deployed demo on 2026-10-08, at commit `f8b82e6`. The step between them, choosing the scope and then the message, is not pictured.*
 
-The model SDK is an optional extra (`pip install evidence-first-rag[adapter]`). Charter Section 3.1 keeps the model outside the path that produces facts, so a plain install answers questions with no model library present at all.
+## Features
 
-The expected results the runner compares against are built from `fixtures/` by `src/evidence_first_rag/conformance/authoring.py`, not captured from the runtime. CI asserts the committed files are exactly what that tool produces, so the comparison is between two independently built documents rather than between the runtime and a recording of itself.
+- **Fixed, read-only SQL.** A closed set of registered query templates runs under a read-only database role. There is no free-form SQL and no text-to-SQL. The role is refused `INSERT`, `UPDATE`, `DELETE`, `CREATE` and `DROP` by PostgreSQL privileges.
+- **Evidence on every result, negatives included.** Each result carries an `evidence_bundle`: scope, template name and version, bound parameters and row count. It also carries a `source_trace` and explicit `limitations`.
+- **Explicit negative outcomes.** When the system cannot answer, it returns a named status instead of a plausible guess. The statuses cover no match in covered data, data that does not cover the question, more than one candidate or scope, a request outside what it is built for, and malformed or contradictory arguments.
+- **Entity discovery without silent resolution.** A term is matched against an approved registry by exact name, approved alias, then word match. A match is settled automatically only when exactly one entry matches its exact name or an approved alias. Anything else is a candidate list for the person to pick from.
+- **Two interfaces, one result.** An HTTP API (`/v1/query`, `/v1/discover`, `/v1/select`) and an MCP server at `/mcp` (`query_facts`, `discover_entity`, `select_candidate`) return the same envelope.
+- **A chat relay that holds one tool.** The demo's relay gives the model `discover_entity` only, so the model can search but cannot choose or fetch a fact. It enforces per-address and daily limits.
+- **The same build everywhere.** CI, the local stack and the Azure deploy use one container image and one provisioning module. Every deploy compares the deployed database and test verdicts with a local build of the same commit.
 
-What the repository and its demo do not do or establish is summarized in [Limitations](docs/limitations.md).
+## How it works
 
-See [Project Charter](docs/PROJECT_CHARTER.md) for the product direction, architecture boundaries, success criterion, roadmap, and release conditions.
+Finding candidates is the one MCP tool the demo's model can call:
 
-## Running it
+![Flowchart of the MCP tool "find candidates". Your term, then "Which version?": if the scope is missing, each version is searched and the person picks a version, offered only where the term was found. Given a version: exact name or approved alias, identified if exactly one. If none: word match, all words found, and the person picks a candidate, never automatically. If none: no match, "not found", no guess. Each match shows how it was found; facts come only after the person's click.](docs/images/finding-candidates.svg)
 
-You need a container runtime that provides `docker compose` — Docker Desktop,
-Colima, Podman with the compose plugin — and nothing else. No Python
-environment, no PostgreSQL, no model credential.
+The person's choice is sent to `/v1/select`. The selection path re-derives the candidate list and checks the cited `candidate_set_id` before dispatching the chosen reference to a fact route. A selection made against a list that has since changed is refused rather than answered.
+
+## Architecture
+
+![Architecture diagram. The visitor loads a static site from Cloudflare. Chat goes to the chat relay on Azure App Service, which holds the API key and sends the question to Claude (the LLM). Claude calls the MCP tool "find candidates" on the RAG backend. The visitor's click goes to the RAG backend, a FastAPI and MCP server, which runs fixed SQL on Azure Database for PostgreSQL 17 under a read-only role. Both apps run one image from Azure Container Registry, deployed by GitHub Actions with OIDC login, and each reads only its own secret from Azure Key Vault through its managed identity.](docs/images/architecture.svg)
+
+| Component | Role |
+| --- | --- |
+| `surface` app (Azure App Service, Linux) | FastAPI: the `/v1` HTTP API and the `/mcp` server, over the runtime. It connects to PostgreSQL with the read-only role. |
+| `relay` app (same plan, same image) | `POST /chat`: calls the Claude Messages API with the `surface` MCP server and one tool enabled. It holds no database credential. |
+| Azure Database for PostgreSQL Flexible Server 17 | The structured data and the approved entity registry, provisioned from the committed `sql/` and `fixtures/`. |
+| Azure Key Vault | The model key, readable by `relay` only, and the database passwords. Each app reads only its own secret through its managed identity. |
+| Azure Container Registry | One image per commit, tagged with the commit. No registry credential is stored. |
+| GitHub Actions | A manual `workflow_dispatch` from `main` only, signing in with OIDC. No cloud secret is stored in GitHub. |
+
+The chat page itself lives in the author's site repository and is not part of this one.
+
+## Getting started
+
+You need a container runtime that provides `docker compose`, such as Docker Desktop, Colima, or Podman with the compose plugin. You need nothing else: no Python environment, no PostgreSQL, no model credential.
 
 ```
 docker compose up
 ```
 
-That is the whole of it. The stack starts PostgreSQL 17, provisions it with the
-committed SQL and fixtures, and serves the API and the page at
-<http://127.0.0.1:8000>. Only that port is published; the database is reachable
-from the stack's own containers and not from your machine.
+The stack starts PostgreSQL 17, provisions it with the committed SQL and fixtures, and serves the API, the MCP server and a page at <http://127.0.0.1:8000>. Only that port is published; the database is reachable from the stack's own containers only.
 
-After changing anything under `src/`, `ui/`, `sql/` or `fixtures/`, start it
-with `docker compose up --build`: the image is built from those directories
-rather than mounting them, so without `--build` a second `up` serves the image
-it built the first time. Open that address, search the approved registry for
-an entity in one `SAMPLE_*` scope, choose among the candidates it offers, and
-read the fact it returns with its scope, its template, its bound parameters and
-its limitations beside it. Asking in your own words is what the MCP tool
-surface below is for: a host's model composes the calls, and the page is where
-the evidence behind a fact can be read at the source.
+- **The page** searches the approved registry in one `SAMPLE_*` scope, lists the candidates, and shows the fact you pick with its evidence beside it.
+- **The MCP server** is at <http://127.0.0.1:8000/mcp> (Streamable HTTP). A client that takes a remote MCP server's URL lets its model compose the calls in your own words. That host model is outside this repository, and [ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md) records where the "no evidence, no answer" guarantee ends because of it.
+- **No model credential is needed.** Neither the page nor the MCP server calls a model. The chat relay is not part of the local stack.
 
-`api-v0.1` Section 4.7 is why this is one command rather than a list of steps,
-and why the stack provisions through the same path CI uses rather than one of
-its own: Charter Section 9's Milestone 5 gate forbids a second schema or
-fixture meaning, so the way this starts locally is the way a deployment has to
-start.
+After changing anything under `src/`, `ui/`, `sql/` or `fixtures/`, run `docker compose up --build`. The image is built from those directories rather than mounted from them.
 
-**No model credential is needed.** Neither the page nor the MCP tool surface
-calls a model. `/v1/ask`, the Thin LLM Adapter's route, is still served — it
-refuses with `adapter_unavailable` until `ANTHROPIC_API_KEY` is in your
-environment — but it is no longer the documented way in. It stays in the route
-table because removing a route is a minor version of an `Accepted` contract,
-and the repository owner chose to retire only the documented path (#203,
-`api-v0.1` `0.1.2`). The adapter itself, not the route, remains available for
-evaluation ([ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md)
-item 5).
+The passwords in `compose.yaml` are defaults for a loopback-only stack holding `SAMPLE_*` fixtures. Set `POSTGRES_PASSWORD`, `MVP_PROVISIONING_PASSWORD` and `MVP_RUNTIME_PASSWORD` to override them.
 
-**The same stack serves the MCP tool surface at `/mcp`** — `mcp-v0.1`
-Section 4.5, Streamable HTTP, beside `/v1` in the same process over the same
-runtime. Three tools (`query_facts`, `discover_entity`, `select_candidate`)
-return the same envelope the corresponding `/v1` route returns, evidence
-included. A host that runs the loop — a client that takes a remote MCP server's
-URL, or an application calling the Messages API with `mcp_servers` set — is
-what makes the tools conversational; this repository owns no such loop, and
-[ADR-0004](docs/adr/0004-mcp-surface-and-the-tool-result-boundary.md) records
-where the "no evidence, no answer" guarantee ends because of it.
+<details>
+<summary>Running the checks without the stack</summary>
 
-The passwords in `compose.yaml` are defaults for a stack on your own loopback
-holding `SAMPLE_*` fixtures. Set `POSTGRES_PASSWORD`,
-`MVP_PROVISIONING_PASSWORD` and `MVP_RUNTIME_PASSWORD` to override them.
+The package is plain Python, and the model SDK is an optional extra (`pip install evidence-first-rag[adapter]`). A plain install answers questions with no model library present. CI runs the following on every pull request; see `.github/workflows/repository-checks.yml`:
 
-## Intended flow
+```
+python3 -m unittest discover --start-directory tests --top-level-directory .
+python3 scripts/checks/validate_fixtures.py
+python3 scripts/checks/validate_links.py
+python3 scripts/checks/scan_sensitive_strings.py
+node --test "scripts/agent/*.test.mjs" "ui/*.test.mjs"
+```
 
-1. Interpret a bounded user request.
-2. Produce an approved route and validated parameters.
-3. If a scoped canonical entity reference is missing, return ranked candidates from the approved entity registry and abstain when scope or identity remains ambiguous.
-4. Execute only a registered fixed SQL template against a read-only structured source.
-5. Return normalized facts or relations with an evidence bundle, source trace, and limitations.
-6. Render or export the validated result without changing its meaning.
+The database tests (`tests_database/`) and the stack tests (`tests_stack/`) need PostgreSQL and the running stack respectively, as in CI.
 
-## Repository policy
+</details>
+
+## Deployment
+
+The deployment is defined by [`deploy-v0.1`](docs/contracts/deploy-v0.1.md), with `infra/main.bicep` and `.github/workflows/deploy.yml`. A deploy is started by hand, from `main` only, under the repository owner's account. It is not something a fork can run as it is: it reads the owner's Azure identifiers from a protected GitHub environment.
+
+Each deploy rebuilds the database from the commit being deployed and then runs the deployed checks (`DP-*`):
+
+- the deployed database's row counts, registry digest and template digests equal a local build's;
+- the conformance verdicts are equal;
+- the runtime role cannot write;
+- no secret is in the image, the workflows or the artifact;
+- HTTPS and CORS are enforced;
+- no client address or message text is in the logs;
+- the model calls the search tool through the relay.
+
+A failed check rolls back the database and the image to the last passing commit. Every deploy's record is committed unedited under [`docs/acceptance/milestone-5/`](docs/acceptance/milestone-5/README.md).
+
+## Evaluation and evidence
+
+Every pass mark was registered before the run it judges, and each milestone closes on a recorded decision by the repository owner.
+
+| Milestone | What it established | Record |
+| --- | --- | --- |
+| 1 Query runtime | Fixed templates, read-only role, evidence on every outcome; sixteen registered fixture cases judged against expected results built separately from the data | [milestone-1](docs/acceptance/milestone-1.md) |
+| 2 Thin LLM adapter | The model adapter judged against a deterministic baseline on a pre-registered request set | [milestone-2](docs/acceptance/milestone-2.md), [run](docs/acceptance/milestone-2/comparison.json) |
+| 3 Entity discovery | Forty labelled cases in eight classes judged against per-class thresholds; no false resolution | [milestone-3](docs/acceptance/milestone-3.md), [run](docs/acceptance/milestone-3/discovery-run.json) |
+| 4 End-to-end workflow | The HTTP and MCP workflows end to end; rendering adds no facts | [milestone-4](docs/acceptance/milestone-4.md) |
+| 5 Azure deployment | The deployed environment matches the local build; the runtime identity cannot write | [milestone-5](docs/acceptance/milestone-5.md) |
+
+Each record states what it does not establish. For example, the adapter was tuned on the cases it was judged on, the search cases were written from the rules the search implements, and neither says anything about unseen questions. The adapter from Milestone 2 is not on the demo's path.
+
+[Implementation status](docs/implementation-status.md) maps each contract section to what runs.
+
+## Costs
+
+The deployment is sized as the smallest topology the project allows: one Linux App Service plan running two apps, the lowest Burstable PostgreSQL Flexible Server tier, Basic Container Registry, and Key Vault. The owner's budget alert is 8,000 JPY a month ([`deploy-v0.1`](docs/contracts/deploy-v0.1.md) Section 4.9). The committed cost computation puts the fixed charges at 6,733.50 JPY a month at the prices it records; see [Cost computations](docs/acceptance/milestone-5/README.md#cost-computations). Model spend is bounded by the relay's daily ceiling of 67 model calls and by the provider workspace's spend limit ([ADR-0006](docs/adr/0006-relay-spend-is-bounded-by-the-provider-workspace.md)). Prices change; recompute before relying on these numbers.
+
+## Security
+
+- **No secrets in the repository.** The model key and the database passwords are in Key Vault, read through each app's managed identity, and the deploy signs in to Azure with OIDC. Every deploy scans the image, the workflows and its own record (`DP-003`), and CI scans the tree and its whole history for sensitive strings.
+- **Credentials split by process.** Only `relay` can read the model key; only `surface` can read the database password.
+- **Least privilege in the database.** The runtime role has `SELECT` only, under a five-second statement timeout.
+- **No authentication.** The public routes are open. CORS admits one browser origin, which decides only which page a browser lets read the reply; it is not access control. The relay limits each address to 6 requests a minute and 60 a day, and all callers to 67 model calls a day.
+
+## Limitations
+
+This is a personal project on small synthetic data: four snapshots, seven messages, thirteen signals and three mappings. It does not show:
+
+- a comparison with vector search;
+- accuracy on unseen questions;
+- operation with real users;
+- availability: one instance per app, one region, and the platform's built-in metrics only.
+
+The model's own sentences are not checked. Matching is by words, not meaning, so a synonym is found only when it is registered as an approved alias. The full list, including what has and has not been observed on the deployed demo, is in [Limitations](docs/limitations.md).
+
+## Project documents
+
+- [Project Charter](docs/PROJECT_CHARTER.md): product direction, architecture boundaries, roadmap and release conditions.
+- [Contracts](docs/contracts/README.md): the reviewed contracts that specify behavior before it is implemented.
+  - [`mvp-v0.1`](docs/contracts/mvp-v0.1.md): the runtime;
+  - [`entity-discovery-v0.1`](docs/contracts/entity-discovery-v0.1.md): discovery;
+  - [`api-v0.1`](docs/contracts/api-v0.1.md): the HTTP API;
+  - [`mcp-v0.1`](docs/contracts/mcp-v0.1.md): the MCP server;
+  - [`relay-v0.1`](docs/contracts/relay-v0.1.md): the chat relay;
+  - [`deploy-v0.1`](docs/contracts/deploy-v0.1.md): the deployment.
+- [Architecture decision records](docs/adr/).
+- [Development workflow](docs/DEVELOPMENT_WORKFLOW.md) and [AGENTS.md](AGENTS.md).
+  - Most code and documents were written by AI coding sessions (Claude Code) and reviewed by a separate AI review loop ([Agent Loop](docs/agent-loop.md)).
+  - Every decision the workflow reserves for a person was the repository owner's: accepting contracts and ADRs, setting pass marks, accepting milestones, and merging.
+
+### Repository policy
 
 - Use synthetic fixtures and portable placeholder identifiers only.
 - Do not commit production data, real-world identifiers, credentials, or internal URLs.
@@ -156,8 +184,8 @@ holding `SAMPLE_*` fixtures. Set `POSTGRES_PASSWORD`,
 - Do not treat semantic retrieval results as authoritative facts.
 - Implement one reviewable behavior slice per pull request, with its contract and fixtures reviewed before its code.
 
-Detailed contributor and agent constraints are in [AGENTS.md](AGENTS.md).
-
 ## License
 
 All rights reserved: the repository is published to be read, and no license to use it is granted. See [LICENSE](LICENSE). Third-party licenses are recorded in [docs/third-party-licenses.md](docs/third-party-licenses.md).
+
+The figures under `docs/images/` are the author's, from the case study. The architecture diagrams use Microsoft's Azure service icons unmodified, as Microsoft permits in architecture diagrams.
