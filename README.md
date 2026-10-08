@@ -124,7 +124,7 @@ A failed check rolls back the database and the image to the last passing commit.
 
 ## Evaluation and evidence
 
-Every pass mark was registered before the run it judges, and each milestone closes on a recorded decision by the repository owner.
+Every pass mark was registered before the run it judges, and each milestone closes on a recorded decision by the repository owner. Milestones 1–4 are accepted; Milestone 5's disposition is pending.
 
 | Milestone | What it established | Record |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ Every pass mark was registered before the run it judges, and each milestone clos
 | 2 Thin LLM adapter | The model adapter judged against a deterministic baseline on a pre-registered request set | [milestone-2](docs/acceptance/milestone-2.md), [run](docs/acceptance/milestone-2/comparison.json) |
 | 3 Entity discovery | Forty labelled cases in eight classes judged against per-class thresholds; no false resolution | [milestone-3](docs/acceptance/milestone-3.md), [run](docs/acceptance/milestone-3/discovery-run.json) |
 | 4 End-to-end workflow | The HTTP and MCP workflows end to end; rendering adds no facts | [milestone-4](docs/acceptance/milestone-4.md) |
-| 5 Azure deployment | The deployed environment matches the local build; the runtime identity cannot write | [milestone-5](docs/acceptance/milestone-5.md) |
+| 5 Azure deployment | Evidence collected; the owner's disposition is pending. The deployed checks compare the deployed environment with the local build and test that the runtime identity cannot write | [milestone-5](docs/acceptance/milestone-5.md) |
 
 Each record states what it does not establish. For example, the adapter was tuned on the cases it was judged on, the search cases were written from the rules the search implements, and neither says anything about unseen questions. The adapter from Milestone 2 is not on the demo's path.
 
