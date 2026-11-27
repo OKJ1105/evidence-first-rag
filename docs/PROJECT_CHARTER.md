@@ -23,7 +23,7 @@ The system should support a complete improvement loop:
 
 ### 1.1 Target user and success criterion
 
-The product user is an engineer who currently answers scoped message, signal, and mapping questions by opening structured engineering definition files and cross-checking them by hand. That workflow is slow to repeat, and its conclusions are difficult for another engineer to verify later. The product user is distinct from the technical hiring reviewer who may evaluate this repository as portfolio evidence.
+The product user is an engineer who currently answers scoped message, signal, and mapping questions by opening structured engineering definition files and cross-checking them by hand. That workflow is slow to repeat, and its conclusions are difficult for another engineer to verify later.
 
 The project succeeds when the representative tasks registered in the applicable milestone contract produce the expected normalized result and inspectable evidence bundle, and when every task that cannot be answered within the approved data scope returns the expected explicit negative outcome instead of a plausible unsupported answer. Milestone acceptance requires the registered conformance checks to pass and the database to remain read-only; task definitions and thresholds are registered before the run that judges them.
 
