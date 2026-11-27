@@ -1,6 +1,6 @@
 # ADR-0003: FastAPI for the HTTP Surface
 
-**Status:** Proposed. Recorded by the writer session with the Milestone 4 surface slice ([#178](https://github.com/OKJ1105/evidence-first-rag/issues/178)); the runner bullet amended 2026-10-02 on [#281](https://github.com/OKJ1105/evidence-first-rag/issues/281). The repository owner's disposition is the acceptance.
+**Status:** Proposed. Recorded by the writer session with the Milestone 4 surface slice ([#178](https://github.com/OKJ1105/evidence-first-rag/issues/178)); the runner bullet amended 2026-10-02 on [#281](https://github.com/OKJ1105/evidence-first-rag/issues/281). The repository owner's disposition is the acceptance. The rejected WSGI alternative's wording amended 2026-11-27 on [#343](https://github.com/OKJ1105/evidence-first-rag/issues/343); the decision is unchanged.
 
 **Date:** 2026-09-17
 
@@ -36,7 +36,7 @@ Two facts about this repository bear on the choice more than the usual compariso
 
 **Python's standard-library `http.server`.** Adds no dependency at all, and was the writer's first recommendation. Rejected: its own documentation says it is not for production, it is not the standard startup path on the Charter Section 3.7 target, and it would mean hand-writing path dispatch, body reading and response writing — roughly twice the code, in exactly the places where a hand-written HTTP layer goes wrong.
 
-**A bare WSGI application behind Gunicorn.** Keeps the dependency count at one, removes every framework default there is to fight, and is the standard App Service startup. Rejected on a ground outside the code: this repository is a portfolio, and its purpose is served by a surface a reader recognises. WSGI is an interface rather than a framework, and "wrote a WSGI application" communicates less than the thing every Python API job advertisement names. The technical case was close; the purpose broke the tie, and recording that openly is better than dressing it up as an engineering result.
+**A bare WSGI application behind Gunicorn.** Keeps the dependency count at one, removes every framework default there is to fight, and is the standard App Service startup. Rejected on a ground outside the code: this repository is meant to be read by other engineers, and that purpose is served by a surface a reader recognises. WSGI is an interface rather than a framework, and "wrote a WSGI application" tells a reader less than naming a framework widely used for Python HTTP APIs. The technical case was close; that purpose broke the tie, and recording that openly is better than dressing it up as an engineering result.
 
 ## Consequences
 
