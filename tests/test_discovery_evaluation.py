@@ -197,7 +197,7 @@ class TheAuthoringRules(unittest.TestCase):
             with self.subTest(query_class=name):
                 cases = self.full_set()
                 index = next(i for i, registered in enumerate(cases) if registered.query_class == name)
-                cases[index] = case(f"{name}-0", name, term="EngineStatus_HS")
+                cases[index] = case(f"{name}-0", name, term="TERM_REAL_NAME")
                 failures = authoring_failures(cases)
                 self.assertTrue(
                     any("rule 1" in failure and "term=" in failure for failure in failures),
